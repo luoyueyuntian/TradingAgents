@@ -23,6 +23,7 @@ from tradingagents.agents.utils.news_data_tools import (
 )
 from tradingagents.agents.utils.prediction_markets_tools import get_prediction_markets
 from tradingagents.agents.utils.technical_indicators_tools import get_indicators
+from tradingagents.dataflows.market_profiles import get_market_profile, is_china_a_profile
 
 # Public surface: the data tools are imported here so agents and the graph
 # import them from one place, plus the instrument/language helpers defined below.
@@ -43,6 +44,7 @@ __all__ = [
     "resolve_instrument_identity",
     "get_instrument_context_from_state",
     "get_language_instruction",
+    "get_market_specific_instruction",
     "create_msg_delete",
 ]
 
@@ -63,6 +65,42 @@ def get_language_instruction() -> str:
     if lang.strip().lower() == "english":
         return ""
     return f" Write your entire response in {lang}."
+
+
+def get_market_specific_instruction(scope: str = "general") -> str:
+    """Return profile-specific prompt guidance for a given analyst scope."""
+    if not is_china_a_profile(get_market_profile()):
+        return ""
+
+    instructions = {
+        "market": (
+            " For mainland China A-shares, ground your market analysis in the "
+            "actual trading microstructure: T+1 cash-equity trading, daily price "
+            "limits, midday break, suspensions, and the fact that index/fund-flow "
+            "moves can dominate short-term single-name behavior."
+        ),
+        "news": (
+            " For mainland China A-shares, prioritize policy, liquidity, "
+            "regulatory tone, industry guidance, disclosure events, northbound "
+            "flow, and macro signals from China sources over US-specific narratives."
+        ),
+        "fundamentals": (
+            " For mainland China A-shares, explicitly assess shareholder pledge "
+            "risk, government subsidy dependence, receivables quality, inventory "
+            "quality, goodwill, related-party transactions, and cash-flow quality."
+        ),
+        "sentiment": (
+            " For mainland China A-shares, treat China market-structure signals "
+            "such as northbound flow, margin financing, and broad fund flow as "
+            "primary fast-moving sentiment inputs; overseas social platforms are "
+            "not primary sentiment sources here."
+        ),
+        "general": (
+            " This run is for mainland China A-shares; use China-specific market "
+            "structure, policy, disclosure, and liquidity context where relevant."
+        ),
+    }
+    return instructions.get(scope, instructions["general"])
 
 
 def _clean_identity_value(value: Any) -> str | None:
@@ -212,6 +250,5 @@ def create_msg_delete():
         return {"messages": removal_operations + [placeholder]}
 
     return delete_messages
-
 
 

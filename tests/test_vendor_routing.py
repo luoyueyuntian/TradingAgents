@@ -118,6 +118,17 @@ class VendorRoutingTests(unittest.TestCase):
                 self.assertRaises(ValueError):
             interface.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
 
+    def test_china_macro_vendor_registered(self):
+        self.assertIn("cn_macro", interface.VENDOR_METHODS["get_macro_indicators"])
+
+    def test_china_news_vendor_registered(self):
+        self.assertIn("cn_news", interface.VENDOR_METHODS["get_news"])
+        self.assertIn("cn_news", interface.VENDOR_METHODS["get_global_news"])
+        self.assertIn("cn_news", interface.VENDOR_METHODS["get_insider_transactions"])
+
+    def test_china_market_signals_vendor_registered(self):
+        self.assertIn("cn_market_signals", interface.VENDOR_METHODS["get_prediction_markets"])
+
 
 if __name__ == "__main__":
     unittest.main()

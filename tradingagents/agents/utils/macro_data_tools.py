@@ -19,14 +19,15 @@ def get_macro_indicators(
     ] = None,
 ) -> str:
     """
-    Retrieve a macroeconomic indicator time series from FRED (Federal Reserve
-    Economic Data): policy rates, Treasury yields, inflation, labor, and growth.
-    Returns the series title, units, frequency, the latest value, the change
-    over the window, and a recent observation table. Uses the configured
-    macro_data vendor.
+    Retrieve a macroeconomic indicator time series from the configured
+    ``macro_data`` vendor.
+
+    In the default profile this is typically FRED; in ``cn_a`` mode it resolves
+    to a China-macro adapter with aliases such as ``cpi``, ``ppi``, ``pmi``,
+    ``m2``, ``social_financing``, and ``lpr``.
 
     Args:
-        indicator (str): Friendly alias or raw FRED series ID
+        indicator (str): Friendly alias or profile-specific series key
         curr_date (str): Current date in yyyy-mm-dd format
         look_back_days (int): Trailing window length; omit for a 1-year window
 

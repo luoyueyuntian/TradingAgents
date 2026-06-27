@@ -59,3 +59,12 @@ class DataflowsConfigIsolationTests(unittest.TestCase):
         fresh = get_config()
         self.assertEqual(fresh["tool_vendors"]["get_stock_data"], "alpha_vantage")
         self.assertEqual(fresh["tool_vendors"]["get_news"], "alpha_vantage")
+
+    def test_market_profile_defaults_to_default(self):
+        fresh = get_config()
+        self.assertEqual(fresh["market_profile"], "default")
+
+    def test_market_profile_can_switch_to_cn_a(self):
+        set_config({"market_profile": "cn_a"})
+        fresh = get_config()
+        self.assertEqual(fresh["market_profile"], "cn_a")

@@ -240,6 +240,30 @@ print(decision)
 
 See `tradingagents/default_config.py` for all configuration options.
 
+### China A-Shares
+
+TradingAgents can be switched into a mainland-China market profile for A-share
+analysis:
+
+```python
+from tradingagents.graph.trading_graph import TradingAgentsGraph
+from tradingagents.default_config import DEFAULT_CONFIG
+
+config = DEFAULT_CONFIG.copy()
+config["market_profile"] = "cn_a"
+
+ta = TradingAgentsGraph(debug=True, config=config)
+_, decision = ta.propagate("600519.SS", "2026-06-27")
+print(decision)
+```
+
+In `cn_a` mode:
+
+- `news_data` defaults to China-market company and macro news adapters
+- `macro_data` defaults to China macro indicators such as `cpi`, `ppi`, `pmi`, `m2`, `social_financing`, and `lpr`
+- `prediction_markets` is repurposed into China forward-looking market-structure signals such as `northbound flow`, `margin financing`, and broad `fund flow`
+- overseas social sources like Reddit and StockTwits are intentionally deprioritized or disabled for the sentiment analyst
+
 ## Persistence and Recovery
 
 TradingAgents persists two kinds of state across runs.
