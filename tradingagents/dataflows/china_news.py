@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from importlib import import_module
+import re
 
 import pandas as pd
 
@@ -21,6 +22,32 @@ def _normalize_symbol(symbol: str) -> str:
 
 def _parse_datetime(series: pd.Series) -> pd.Series:
     return pd.to_datetime(series, errors="coerce")
+
+
+def _looks_like_multi_stock_roundup(title: str, body: str) -> bool:
+    """Heuristic to skip broad listicles that only mention the ticker incidentally."""
+    combined = f"{title} {body}"
+    codes = set(re.findall(r"\b\d{6}\b", combined))
+    if len(codes) >= 4:
+        return True
+
+    roundup_tokens = (
+        "股获",
+        "净买入",
+        "净流入",
+        "主力资金",
+        "融资资金",
+        "龙虎榜",
+        "A股",
+        "收盘",
+        "午评",
+        "早盘",
+        "尾盘",
+        "沪指",
+        "深成指",
+        "创业板",
+    )
+    return len(codes) >= 2 and any(token in title for token in roundup_tokens)
 
 
 def _format_article_block(title: str, body: str, source: str, link: str, when: str) -> str:
@@ -59,14 +86,24 @@ def get_news_china(ticker: str, start_date: str, end_date: str) -> str:
 
     parts = []
     for _, row in frame.sort_values("发布时间", ascending=False).head(20).iterrows():
+        title = str(row.get("新闻标题", "No title"))
+        body = str(row.get("新闻内容", "")).strip()
+        if _looks_like_multi_stock_roundup(title, body):
+            continue
         parts.append(
             _format_article_block(
-                str(row.get("新闻标题", "No title")),
-                str(row.get("新闻内容", "")).strip(),
+                title,
+                body,
                 str(row.get("文章来源", "Unknown")),
                 str(row.get("新闻链接", "")).strip(),
                 row["发布时间"].strftime("%Y-%m-%d %H:%M:%S") if pd.notna(row["发布时间"]) else "",
             )
+        )
+
+    if not parts:
+        return (
+            f"No China market news found for {ticker} between {start_date} and {end_date} "
+            "after filtering out broad multi-stock market roundups"
         )
 
     return f"## {ticker} China Market News, from {start_date} to {end_date}:\n\n" + "\n\n".join(parts)

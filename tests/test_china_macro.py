@@ -51,3 +51,26 @@ def test_china_macro_vendor_unavailable_is_explicit(monkeypatch):
     out = china_macro.get_china_macro_data("cpi", "2026-05-31", 90)
     assert "DATA_UNAVAILABLE" in out
     assert "akshare missing" in out
+
+
+@pytest.mark.unit
+def test_china_macro_does_not_fall_back_to_stale_rows(monkeypatch):
+    from tradingagents.dataflows import china_macro
+
+    stale_df = pd.DataFrame(
+        [
+            {"日期": "2024-01-01", "今值": 1.0, "预测值": 1.1, "前值": 0.9},
+            {"日期": "2024-02-01", "今值": 1.2, "预测值": 1.1, "前值": 1.0},
+        ]
+    )
+
+    class FakeAK:
+        @staticmethod
+        def macro_china_cpi_yearly():
+            return stale_df
+
+    monkeypatch.setattr(china_macro, "_load_akshare", lambda: FakeAK)
+    out = china_macro.get_china_macro_data("cpi", "2026-06-27", 120)
+
+    assert "DATA_UNAVAILABLE" in out
+    assert "latest available observation is 2024-02-01" in out
