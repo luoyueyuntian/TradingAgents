@@ -39,6 +39,15 @@ def _pick_date_column(df: pd.DataFrame) -> str | None:
     return None
 
 
+def _latest_available_date(frame: pd.DataFrame, date_col: str | None) -> str | None:
+    if date_col is None or date_col not in frame.columns:
+        return None
+    parsed = pd.to_datetime(frame[date_col], errors="coerce").dropna()
+    if parsed.empty:
+        return None
+    return parsed.max().strftime("%Y-%m-%d")
+
+
 def _format_markdown_table(df: pd.DataFrame) -> str:
     cols = [str(col) for col in df.columns]
     header = "| " + " | ".join(cols) + " |"
@@ -94,10 +103,16 @@ def get_china_macro_data(
         frame = frame[(frame[date_col] >= start_dt) & (frame[date_col] <= end_dt)]
         frame = frame.sort_values(date_col)
         if frame.empty:
-            frame = df.copy()
-            if date_col in frame.columns:
-                frame[date_col] = pd.to_datetime(frame[date_col], errors="coerce")
-                frame = frame.dropna(subset=[date_col]).sort_values(date_col).tail(MAX_ROWS)
+            latest = _latest_available_date(df, date_col)
+            stale_note = (
+                f" The latest available observation is {latest}."
+                if latest
+                else ""
+            )
+            return (
+                f"DATA_UNAVAILABLE: China macro data for {label} has no observations "
+                f"between {start_dt.strftime('%Y-%m-%d')} and {curr_date}.{stale_note}"
+            )
 
     if alias == "lpr":
         selected_cols = [col for col in ("TRADE_DATE", "LPR1Y", "LPR5Y", "RATE_1", "RATE_2") if col in frame.columns]

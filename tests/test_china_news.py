@@ -44,6 +44,41 @@ def test_china_stock_news_filters_by_window(monkeypatch):
 
 
 @pytest.mark.unit
+def test_china_stock_news_skips_multi_stock_roundups(monkeypatch):
+    from tradingagents.dataflows import china_news
+
+    news = pd.DataFrame(
+        [
+            {
+                "新闻标题": "103股获杠杆资金净买入超亿元",
+                "新闻内容": "000657 中钨高新 300346 南大光电 688256 寒武纪 600519 贵州茅台 601318 中国平安",
+                "发布时间": "2026-06-26 09:24:00",
+                "文章来源": "证券时报网",
+                "新闻链接": "https://example.com/roundup",
+            },
+            {
+                "新闻标题": "贵州茅台实施年度分红",
+                "新闻内容": "贵州茅台600519.SH 公布年度分红方案。",
+                "发布时间": "2026-06-26 09:17:00",
+                "文章来源": "21世纪经济报道",
+                "新闻链接": "https://example.com/dividend",
+            },
+        ]
+    )
+
+    class FakeAK:
+        @staticmethod
+        def stock_news_em(symbol: str):
+            return news
+
+    monkeypatch.setattr(china_news, "_load_akshare", lambda: FakeAK)
+    out = china_news.get_news_china("600519.SS", "2026-06-20", "2026-06-27")
+
+    assert "贵州茅台实施年度分红" in out
+    assert "103股获杠杆资金净买入超亿元" not in out
+
+
+@pytest.mark.unit
 def test_china_global_news_filters_by_window(monkeypatch):
     from tradingagents.dataflows import china_news
 

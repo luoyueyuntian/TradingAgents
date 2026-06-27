@@ -55,5 +55,7 @@ def uses_builtin_vendor_default(category: str, configured_vendor: str) -> bool:
     This lets a market profile override only untouched defaults while preserving
     explicit tool-level overrides and category-level non-default user choices.
     """
+    if configured_vendor == "default":
+        return True
     default_vendors = DEFAULT_CONFIG.get("data_vendors", {})
     return default_vendors.get(category) == configured_vendor
