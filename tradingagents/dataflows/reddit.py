@@ -30,6 +30,8 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from .market_profiles import get_market_profile, is_china_a_profile
+
 logger = logging.getLogger(__name__)
 
 _API = "https://www.reddit.com/r/{sub}/search.json?{qs}"
@@ -200,6 +202,9 @@ def fetch_reddit_posts(
     stay under Reddit's public per-IP rate limit; combined with the RSS-first
     path it makes 429s rare even when several analyses run back-to-back.
     """
+    if is_china_a_profile(get_market_profile()):
+        return "<reddit disabled for cn_a market profile>"
+
     blocks = []
     total_posts = 0
     for i, sub in enumerate(subreddits):

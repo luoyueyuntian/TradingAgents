@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Breaking changes within the 0.x line are called out explicitly.
 
+## [Unreleased]
+
+### Added
+
+- **China A-share market profile.** `market_profile="cn_a"` switches the
+  analysis stack toward mainland-China semantics, including China-market news,
+  China macro indicators, and China forward-looking market-structure signals.
+
+### Changed
+
+- **China-aware analyst prompting.** Market, news, fundamentals, and sentiment
+  analysts now inject A-share-specific reasoning cues such as policy/liquidity
+  context, disclosure sensitivity, T+1 microstructure, price limits, and
+  shareholder-pledge / subsidy / receivables risks.
+- **China sentiment inputs.** In `cn_a` mode, the sentiment analyst treats
+  China market-structure signals as primary fast-moving inputs and disables
+  Reddit / StockTwits as default sentiment channels.
+
 ## [0.3.0] — 2026-06-22
 
 Stabilization and extensibility release: a CI gate, a unified verified

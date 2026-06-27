@@ -11,6 +11,13 @@ from .alpha_vantage import (
     get_news as get_alpha_vantage_news,
     get_stock as get_alpha_vantage_stock,
 )
+from .china_macro import get_china_macro_data
+from .china_market_signals import get_china_market_signals
+from .china_news import (
+    get_global_news_china,
+    get_insider_transactions_china,
+    get_news_china,
+)
 from .config import get_config
 from .errors import (
     NoMarketDataError,
@@ -18,6 +25,7 @@ from .errors import (
     VendorRateLimitError,
 )
 from .fred import get_macro_data as get_fred_macro_data
+from .market_profiles import get_profile_data_vendors, uses_builtin_vendor_default
 from .polymarket import get_prediction_markets as get_polymarket_prediction_markets
 from .y_finance import (
     get_balance_sheet as get_yfinance_balance_sheet,
@@ -82,6 +90,9 @@ VENDOR_LIST = [
     "fred",
     "polymarket",
     "alpha_vantage",
+    "cn_news",
+    "cn_macro",
+    "cn_market_signals",
 ]
 
 # Optional enrichment categories. These add macro/event context to the news
@@ -124,22 +135,27 @@ VENDOR_METHODS = {
     "get_news": {
         "alpha_vantage": get_alpha_vantage_news,
         "yfinance": get_news_yfinance,
+        "cn_news": get_news_china,
     },
     "get_global_news": {
         "yfinance": get_global_news_yfinance,
         "alpha_vantage": get_alpha_vantage_global_news,
+        "cn_news": get_global_news_china,
     },
     "get_insider_transactions": {
         "alpha_vantage": get_alpha_vantage_insider_transactions,
         "yfinance": get_yfinance_insider_transactions,
+        "cn_news": get_insider_transactions_china,
     },
     # macro_data
     "get_macro_indicators": {
         "fred": get_fred_macro_data,
+        "cn_macro": get_china_macro_data,
     },
     # prediction_markets
     "get_prediction_markets": {
         "polymarket": get_polymarket_prediction_markets,
+        "cn_market_signals": get_china_market_signals,
     },
 }
 
@@ -163,7 +179,12 @@ def get_vendor(category: str, method: str = None) -> str:
             return tool_vendors[method]
 
     # Fall back to category-level configuration
-    return config.get("data_vendors", {}).get(category, "default")
+    configured = config.get("data_vendors", {}).get(category, "default")
+    profile_defaults = get_profile_data_vendors(config.get("market_profile"))
+    profile_vendor = profile_defaults.get(category)
+    if profile_vendor and uses_builtin_vendor_default(category, configured):
+        return profile_vendor
+    return configured
 
 def route_to_vendor(method: str, *args, **kwargs):
     """Route method calls to appropriate vendor implementation with fallback support."""

@@ -15,17 +15,19 @@ def get_prediction_markets(
     limit: Annotated[int | None, "Max markets to return; omit for a default of 6"] = None,
 ) -> str:
     """
-    Retrieve live, market-implied probabilities for forward-looking events from
-    prediction markets (Polymarket): Fed decisions, recession, elections,
-    geopolitics, crypto. Returns the most-traded open markets matching the
-    topic, each with its implied probability, traded volume, resolution date,
-    and recent move. Uses the configured prediction_markets vendor.
+    Retrieve forward-looking event or market-structure signals from the
+    configured ``prediction_markets`` vendor.
+
+    In the default profile this is typically Polymarket. In ``cn_a`` mode the
+    same tool name is retained for compatibility, but it returns China
+    market-structure signals such as northbound flow, margin financing, and
+    broad fund flow.
 
     Args:
         topic (str): Event keyword(s) to search
         limit (int): Max markets to return; omit for a default of 6
 
     Returns:
-        str: A formatted markdown report of matching prediction markets
+        str: A formatted markdown report of matching forward-looking signals
     """
     return route_to_vendor("get_prediction_markets", topic, limit)
