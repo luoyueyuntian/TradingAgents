@@ -19,6 +19,8 @@ import json
 import logging
 from urllib.request import Request, urlopen
 
+from .market_profiles import get_market_profile, is_china_a_profile
+
 logger = logging.getLogger(__name__)
 
 _API = "https://api.stocktwits.com/api/2/streams/symbol/{ticker}.json"
@@ -33,6 +35,9 @@ def fetch_stocktwits_messages(ticker: str, limit: int = 30, timeout: float = 10.
     symbol has no messages, or the response shape is unexpected — the
     caller never has to special-case None or exceptions.
     """
+    if is_china_a_profile(get_market_profile()):
+        return "<stocktwits disabled for cn_a market profile>"
+
     url = _API.format(ticker=ticker.upper())
     req = Request(url, headers={"User-Agent": _UA, "Accept": "application/json"})
     try:

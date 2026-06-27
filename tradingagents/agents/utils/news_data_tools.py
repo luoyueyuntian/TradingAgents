@@ -13,7 +13,8 @@ def get_news(
 ) -> str:
     """
     Retrieve news data for a given ticker symbol.
-    Uses the configured news_data vendor.
+    Uses the configured ``news_data`` vendor. In ``cn_a`` mode this can resolve
+    to China-market company news rather than Yahoo/Alpha Vantage headlines.
     Args:
         ticker (str): Ticker symbol
         start_date (str): Start date in yyyy-mm-dd format
@@ -30,8 +31,8 @@ def get_global_news(
     limit: Annotated[int | None, "Max articles to return; omit to use the configured default"] = None,
 ) -> str:
     """
-    Retrieve global news data.
-    Uses the configured news_data vendor. Defaults for look_back_days and
+    Retrieve broad market news data.
+    Uses the configured ``news_data`` vendor. Defaults for look_back_days and
     limit come from DEFAULT_CONFIG (global_news_lookback_days,
     global_news_article_limit); pass explicit values to override.
 
@@ -50,8 +51,8 @@ def get_insider_transactions(
     ticker: Annotated[str, "ticker symbol"],
 ) -> str:
     """
-    Retrieve insider transaction information about a company.
-    Uses the configured news_data vendor.
+    Retrieve insider/disclosure information about a company.
+    Uses the configured ``news_data`` vendor.
     Args:
         ticker (str): Ticker symbol of the company
     Returns:

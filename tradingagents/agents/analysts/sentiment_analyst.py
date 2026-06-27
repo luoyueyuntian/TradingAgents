@@ -33,13 +33,16 @@ from tradingagents.agents.schemas import SentimentReport, render_sentiment_repor
 from tradingagents.agents.utils.agent_utils import (
     get_instrument_context_from_state,
     get_language_instruction,
+    get_market_specific_instruction,
     get_news,
+    get_prediction_markets,
 )
 from tradingagents.agents.utils.structured import (
     bind_structured,
     invoke_structured_or_freetext,
 )
 from tradingagents.dataflows.reddit import fetch_reddit_posts
+from tradingagents.dataflows.market_profiles import get_market_profile, is_china_a_profile
 from tradingagents.dataflows.stocktwits import fetch_stocktwits_messages
 
 
@@ -62,6 +65,7 @@ def create_sentiment_analyst(llm):
         end_date = state["trade_date"]
         start_date = _seven_days_back(end_date)
         instrument_context = get_instrument_context_from_state(state)
+        china_mode = is_china_a_profile(get_market_profile())
 
         # Pre-fetch all three sources. Each fetcher degrades gracefully and
         # returns a string (no exceptions surface from here), so the LLM
@@ -69,6 +73,15 @@ def create_sentiment_analyst(llm):
         news_block = get_news.func(ticker, start_date, end_date)
         stocktwits_block = fetch_stocktwits_messages(ticker, limit=30)
         reddit_block = fetch_reddit_posts(ticker)
+        market_signal_block = ""
+        if china_mode:
+            market_signal_block = "\n\n".join(
+                [
+                    get_prediction_markets.func("northbound flow", 4),
+                    get_prediction_markets.func("margin financing", 4),
+                    get_prediction_markets.func("fund flow", 4),
+                ]
+            )
 
         system_message = _build_system_message(
             ticker=ticker,
@@ -77,6 +90,8 @@ def create_sentiment_analyst(llm):
             news_block=news_block,
             stocktwits_block=stocktwits_block,
             reddit_block=reddit_block,
+            market_signal_block=market_signal_block,
+            china_mode=china_mode,
         )
 
         prompt = ChatPromptTemplate.from_messages(
@@ -126,8 +141,60 @@ def _build_system_message(
     news_block: str,
     stocktwits_block: str,
     reddit_block: str,
+    market_signal_block: str = "",
+    china_mode: bool = False,
 ) -> str:
     """Assemble the sentiment-analyst system message with structured data blocks."""
+    if china_mode:
+        return f"""You are a financial market sentiment analyst. Your task is to produce a comprehensive sentiment report for {ticker} covering the period from {start_date} to {end_date}, drawing on China-relevant market information that has already been collected for you.
+
+## Data sources (pre-fetched, in this prompt)
+
+### Company and market news — China market sources
+Disclosure- and policy-sensitive signal. Use this as the primary narrative source.
+
+<start_of_news>
+{news_block}
+<end_of_news>
+
+### China market-structure signals — northbound flow, margin financing, and broad fund flow
+Fast-moving positioning and liquidity signal for mainland China A-shares.
+
+<start_of_market_signals>
+{market_signal_block}
+<end_of_market_signals>
+
+### overseas retail social platforms are secondary for A-shares
+These channels are intentionally disabled or treated as low-priority in `cn_a` mode. If they contain placeholders, treat that as expected rather than as a network failure.
+
+<start_of_stocktwits>
+{stocktwits_block}
+<end_of_stocktwits>
+
+<start_of_reddit>
+{reddit_block}
+<end_of_reddit>
+
+## How to analyze this data (best practices)
+
+1. **Prioritize policy and liquidity.** For A-shares, changes in policy tone, liquidity conditions, and northbound participation can move prices faster than overseas social chatter.
+2. **Read market-structure signals as fast sentiment.** Northbound inflows/outflows, margin-financing changes, and broad fund-flow swings are the leading short-horizon sentiment inputs in this mode.
+3. **Treat company news and disclosures as the core narrative source.** Dividend plans, earnings guidance, regulatory actions, production updates, and sector-policy headlines matter more than overseas forum discussion.
+4. **Be explicit about source limits.** If the overseas social blocks are placeholders, note that this is expected in `cn_a` mode and weigh your confidence based on the quality of China news plus market-structure signals.
+5. **Frame conclusions as sentiment evidence, not a price prediction.** This report should help the trader weigh narrative, flow, and risk, not replace technical or fundamental analysis.
+
+## Output fields
+
+Fill the following fields:
+
+- **overall_band**: Exactly one of Bullish / Mildly Bullish / Neutral / Mixed / Mildly Bearish / Bearish. Use Mixed when sources point in clearly different directions; Neutral only when all sources are genuinely silent.
+- **overall_score**: A number from 0 (maximally bearish) to 10 (maximally bullish); 5 is neutral. Keep it consistent with overall_band.
+- **confidence**: low / medium / high, based on data quality and sample size.
+- **narrative**: Full source-by-source breakdown, divergences, dominant narrative themes, catalysts and risks, and a markdown summary table of key sentiment signals (direction, source, supporting evidence).
+
+{get_market_specific_instruction("sentiment")}
+{get_language_instruction()}"""
+
     return f"""You are a financial market sentiment analyst. Your task is to produce a comprehensive sentiment report for {ticker} covering the period from {start_date} to {end_date}, drawing on three complementary data sources that have already been collected for you.
 
 ## Data sources (pre-fetched, in this prompt)
@@ -180,6 +247,7 @@ Fill the following fields:
 - **confidence**: low / medium / high, based on data quality and sample size.
 - **narrative**: Full source-by-source breakdown, divergences, dominant narrative themes, catalysts and risks, and a markdown summary table of key sentiment signals (direction, source, supporting evidence).
 
+{get_market_specific_instruction("sentiment")}
 {get_language_instruction()}"""
 
 
