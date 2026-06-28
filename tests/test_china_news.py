@@ -115,7 +115,7 @@ def test_china_global_news_filters_by_window(monkeypatch):
 @pytest.mark.unit
 def test_china_insider_placeholder_is_explicit():
     from tradingagents.dataflows.china_news import get_insider_transactions_china
+    from tradingagents.dataflows.errors import NoMarketDataError
 
-    out = get_insider_transactions_china("600519.SS")
-    assert "DATA_UNAVAILABLE" in out
-    assert "shareholder pledge" in out
+    with pytest.raises(NoMarketDataError, match="shareholder pledge"):
+        get_insider_transactions_china("600519.SS")
