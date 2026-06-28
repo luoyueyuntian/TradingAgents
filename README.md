@@ -121,18 +121,64 @@ Install the package and its dependencies:
 pip install .
 ```
 
+### Dependencies
+
+TradingAgents keeps its dependency set minimal. All LLM calls go through HTTP APIs; the dependencies below handle data fetching, agent orchestration, and data processing.
+
+#### Core Dependencies
+
+| Package | Size | When it's used |
+|---|---|---|
+| **langchain-core** | — | **Always.** Provides the `@tool` decorator for data tools, `ChatPromptTemplate` for agent prompts, and `HumanMessage`/`AIMessage` for inter-agent communication. Used in 11 files across agents and tools. |
+| **langchain-openai** | — | When `llm_provider` is `openai`, `deepseek`, `qwen`, `glm`, `minimax`, `mistral`, `kimi`, `groq`, `nvidia`, `openai_compatible`, or `openrouter`. Provides `ChatOpenAI` (and `AzureChatOpenAI` for Azure). |
+| **langchain-anthropic** | — | When `llm_provider` is `anthropic`. Provides `ChatAnthropic`. |
+| **langchain-google-genai** | — | When `llm_provider` is `google`. Provides `ChatGoogleGenerativeAI`. |
+| **langgraph** | — | **Always.** The agent orchestration framework. Builds the `StateGraph` that connects analysts → researchers → trader → risk management → portfolio manager. |
+| **langgraph-checkpoint-sqlite** | — | When `checkpoint_enabled: true`. Saves graph state to SQLite for crash recovery. |
+| **yfinance** | ~9 MB | **Always** (default data vendor). Fetches OHLCV prices, fundamentals, balance sheets, cash flow, income statements, insider transactions, and news for US/global tickers. |
+| **pandas** | ~70 MB | **Always.** DataFrame operations across all data vendor implementations (8 files). Used for data cleaning, date filtering, column mapping, and markdown table generation. |
+| **stockstats** | <1 MB | **Always.** Computes technical indicators (RSI, MACD, Bollinger Bands, etc.) on top of OHLCV data from yfinance. |
+| **requests** | <1 MB | When using FRED (macro data), Polymarket (prediction markets), or Alpha Vantage. Direct HTTP calls to these APIs. |
+
+#### Optional Dependencies
+
+Install with `pip install ".[extra]"`:
+
+| Package | Install extra | When it's used |
+|---|---|---|
+| **akshare** | — | When `market_profile` is `cn_a` (China A-shares). Fetches China macro data (CPI, PPI, PMI), market signals (margin trading, northbound flow), and news from 东方财富/财联社. **Note:** akshare pulls in `py_mini_racer` (61 MB V8 JS engine) because some Chinese financial sites encrypt data with JavaScript. |
+| **langchain-aws** | `pip install ".[bedrock]"` | When `llm_provider` is `bedrock`. Provides `ChatBedrockConverse` for AWS Bedrock Anthropic models. |
+| **fastapi** | `pip install ".[web]"` | Always, for the web UI. Provides the HTTP API framework. |
+| **uvicorn** | `pip install ".[web]"` | Always, for the web UI. ASGI server that runs the FastAPI app. |
+| **sse-starlette** | `pip install ".[web]"` | Always, for the web UI. Server-Sent Events for streaming analysis progress to the browser. |
+
+#### Dependency Footprint
+
+A minimal install (US/global markets, no China data, no Bedrock, no web) pulls ~127 packages / ~455 MB, dominated by:
+- `pandas` + `numpy`: 103 MB
+- `langchain` ecosystem (core + provider): ~50 MB
+- `yfinance` + transitive deps: ~30 MB
+
+To skip the China market dependency (~90 MB savings):
+```bash
+pip install .  # akshare is a core dep today; planned to become optional
+```
+
 ### Docker
 
 Alternatively, run with Docker:
 ```bash
-cp .env.example .env  # add your API keys
-docker compose run --rm tradingagents
+docker compose up -d              # start web UI at http://localhost:8000
+./deploy.sh                       # or use the deploy script (rebuild + restart)
 ```
 
 For local models with Ollama:
 ```bash
-docker compose --profile ollama run --rm tradingagents-ollama
+docker compose --profile ollama up -d
+./deploy.sh --ollama
 ```
+
+Configuration is managed through the web UI (Settings gear icon) and persisted to `~/.tradingagents/settings.json` via a Docker volume.
 
 ### Required APIs
 
@@ -167,14 +213,18 @@ Alternatively, copy `.env.example` to `.env` and fill in your keys:
 cp .env.example .env
 ```
 
-### CLI Usage
+### Web UI
 
-Launch the interactive CLI:
+Start the web server:
 ```bash
-tradingagents          # installed command
-python -m cli.main     # alternative: run directly from source
+uvicorn web.app:app --host 0.0.0.0 --port 8000
 ```
-You will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more.
+
+Open http://localhost:8000 to access the interface. From there you can:
+- Configure API keys and LLM provider (Settings gear icon)
+- Select ticker, date, research depth, and analysts
+- Run analysis and watch real-time progress via SSE streaming
+- View tabbed reports (Market, Sentiment, News, Fundamentals, Research, Trading, Decision)
 
 ### Markets and tickers
 
