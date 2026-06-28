@@ -11,5 +11,9 @@ build
 dist
 results
 eval_results
+tests
 Dockerfile
 docker-compose.yml
+deploy.sh
+*.md
+!README.md

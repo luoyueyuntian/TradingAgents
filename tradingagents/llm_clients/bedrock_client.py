@@ -59,7 +59,7 @@ class BedrockClient(BaseLLMClient):
             or _DEFAULT_REGION
         )
         llm_kwargs = {"model": self.model, "region_name": region}
-        for key in ("temperature", "max_tokens", "max_retries", "callbacks"):
+        for key in ("temperature", "max_tokens", "max_retries", "callbacks", "effort"):
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
         return chat_cls(**llm_kwargs)
