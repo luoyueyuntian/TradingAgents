@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingAgents Web</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>TradingAgents</h1>
+            <span class="subtitle">Multi-Agents LLM Financial Trading Framework</span>
+        </div>
+        <button id="settings-btn" class="settings-btn" title="Settings">&#9881;</button>
+    </header>
+
+    <main>
+        <!-- Configuration Panel -->
+        <section id="config-panel" class="panel">
+            <h2>Analysis Configuration</h2>
+            <form id="analysis-form">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="ticker">Ticker Symbol</label>
+                        <input type="text" id="ticker" placeholder="e.g. NVDA, 0700.HK, BTC-USD" required>
+                        <span id="asset-type-hint" class="hint"></span>
+                    </div>
+                    <div class="form-group">
+                        <label for="date">Analysis Date</label>
+                        <input type="date" id="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="provider">LLM Provider</label>
+                        <select id="provider" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="quick-model">Quick Thinking Model</label>
+                        <select id="quick-model" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="deep-model">Deep Thinking Model</label>
+                        <select id="deep-model" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label for="depth">Research Depth</label>
+                        <select id="depth">
+                            <option value="1">Shallow (1 round)</option>
+                            <option value="3" selected>Medium (3 rounds)</option>
+                            <option value="5">Deep (5 rounds)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="language">Output Language</label>
+                        <select id="language">
+                            <option value="English" selected>English</option>
+                            <option value="Chinese">Chinese</option>
+                            <option value="Japanese">Japanese</option>
+                            <option value="Korean">Korean</option>
+                            <option value="Spanish">Spanish</option>
+                            <option value="French">French</option>
+                            <option value="German">German</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group analysts-group">
+                    <label>Analysts</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" name="analyst" value="market" checked> Market Analyst</label>
+                        <label><input type="checkbox" name="analyst" value="social" checked> Sentiment Analyst</label>
+                        <label><input type="checkbox" name="analyst" value="news" checked> News Analyst</label>
+                        <label><input type="checkbox" name="analyst" value="fundamentals" checked> Fundamentals Analyst</label>
+                    </div>
+                </div>
+                <button type="submit" id="start-btn">Start Analysis</button>
+            </form>
+        </section>
+
+        <!-- Progress Panel -->
+        <section id="progress-panel" class="panel" style="display:none;">
+            <h2>Progress</h2>
+            <div id="agent-grid"></div>
+            <div id="activity-log">
+                <h3>Activity Log</h3>
+                <div id="log-entries"></div>
+            </div>
+        </section>
+
+        <!-- Results Panel -->
+        <section id="results-panel" class="panel" style="display:none;">
+            <h2>Results</h2>
+            <div id="signal-display" class="signal-box" style="display:none;"></div>
+            <div class="tabs">
+                <button class="tab active" data-tab="market_report">Market</button>
+                <button class="tab" data-tab="sentiment_report">Sentiment</button>
+                <button class="tab" data-tab="news_report">News</button>
+                <button class="tab" data-tab="fundamentals_report">Fundamentals</button>
+                <button class="tab" data-tab="investment_plan">Research</button>
+                <button class="tab" data-tab="trader_investment_plan">Trading</button>
+                <button class="tab" data-tab="final_trade_decision">Decision</button>
+            </div>
+            <div id="tab-content" class="tab-content">
+                <pre id="report-content">Waiting for analysis...</pre>
+            </div>
+        </section>
+    </main>
+
+    <!-- Settings Modal -->
+    <div id="settings-overlay" class="modal-overlay" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button id="settings-close" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- API Keys -->
+                <section class="settings-section">
+                    <h3>API Keys</h3>
+                    <div id="api-keys-grid" class="settings-grid"></div>
+                </section>
+                <!-- LLM -->
+                <section class="settings-section">
+                    <h3>LLM Configuration</h3>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label for="s-provider">Provider</label>
+                            <select id="s-provider"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-quick-model">Quick Think Model</label>
+                            <select id="s-quick-model"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-deep-model">Deep Think Model</label>
+                            <select id="s-deep-model"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-temperature">Temperature</label>
+                            <input type="number" id="s-temperature" min="0" max="2" step="0.1" placeholder="Default">
+                        </div>
+                        <div class="form-group">
+                            <label for="s-backend-url">Backend URL (optional)</label>
+                            <input type="text" id="s-backend-url" placeholder="Default">
+                        </div>
+                        <div class="form-group">
+                            <label for="s-google-thinking">Google Thinking Level</label>
+                            <select id="s-google-thinking">
+                                <option value="">Default</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                                <option value="minimal">Minimal</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-openai-effort">OpenAI Reasoning Effort</label>
+                            <select id="s-openai-effort">
+                                <option value="">Default</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-anthropic-effort">Anthropic Effort</label>
+                            <select id="s-anthropic-effort">
+                                <option value="">Default</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
+                <!-- Analysis -->
+                <section class="settings-section">
+                    <h3>Analysis</h3>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label for="s-language">Output Language</label>
+                            <select id="s-language">
+                                <option value="English">English</option>
+                                <option value="Chinese">Chinese</option>
+                                <option value="Japanese">Japanese</option>
+                                <option value="Korean">Korean</option>
+                                <option value="Spanish">Spanish</option>
+                                <option value="French">French</option>
+                                <option value="German">German</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-depth">Research Depth</label>
+                            <select id="s-depth">
+                                <option value="1">Shallow (1 round)</option>
+                                <option value="3">Medium (3 rounds)</option>
+                                <option value="5">Deep (5 rounds)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-risk-rounds">Risk Discussion Rounds</label>
+                            <select id="s-risk-rounds">
+                                <option value="1">1 round</option>
+                                <option value="2">2 rounds</option>
+                                <option value="3">3 rounds</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
+                <!-- Data Vendors -->
+                <section class="settings-section">
+                    <h3>Data Vendors</h3>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label for="s-vendor-core">Core Stock APIs</label>
+                            <select id="s-vendor-core">
+                                <option value="yfinance">yfinance</option>
+                                <option value="alpha_vantage">Alpha Vantage</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-vendor-technical">Technical Indicators</label>
+                            <select id="s-vendor-technical">
+                                <option value="yfinance">yfinance</option>
+                                <option value="alpha_vantage">Alpha Vantage</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-vendor-fundamental">Fundamental Data</label>
+                            <select id="s-vendor-fundamental">
+                                <option value="yfinance">yfinance</option>
+                                <option value="alpha_vantage">Alpha Vantage</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-vendor-news">News Data</label>
+                            <select id="s-vendor-news">
+                                <option value="yfinance">yfinance</option>
+                                <option value="alpha_vantage">Alpha Vantage</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-vendor-macro">Macro Data</label>
+                            <select id="s-vendor-macro">
+                                <option value="fred">FRED</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-vendor-prediction">Prediction Markets</label>
+                            <select id="s-vendor-prediction">
+                                <option value="polymarket">Polymarket</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            <div class="modal-footer">
+                <button id="settings-cancel" class="btn-secondary">Cancel</button>
+                <button id="settings-save" class="btn-primary">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Missing API Key Modal -->
+    <div id="apikey-modal-overlay" class="modal-overlay" style="display:none;">
+        <div class="modal modal-small">
+            <div class="modal-header">
+                <h2>API Key Required</h2>
+                <button class="modal-close apikey-cancel">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="apikey-message">Please provide an API key for this provider.</p>
+                <div class="form-group" style="margin-top:1rem;">
+                    <label for="apikey-input">API Key</label>
+                    <div class="apikey-input-row">
+                        <input type="password" id="apikey-input" placeholder="Enter API key">
+                        <button id="apikey-toggle" class="btn-icon" title="Show/Hide">&#128065;</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary apikey-cancel">Cancel</button>
+                <button id="apikey-save-run" class="btn-primary">Save & Run</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

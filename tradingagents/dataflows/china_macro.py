@@ -11,6 +11,8 @@ from importlib import import_module
 
 import pandas as pd
 
+from .errors import NoMarketDataError, VendorNotConfiguredError
+
 CHINA_MACRO_ALIASES: dict[str, tuple[str, str]] = {
     "cpi": ("CPI", "macro_china_cpi_yearly"),
     "ppi": ("PPI", "macro_china_ppi_yearly"),
@@ -79,18 +81,23 @@ def get_china_macro_data(
     try:
         ak = _load_akshare()
     except Exception as exc:  # noqa: BLE001
-        return f"DATA_UNAVAILABLE: China macro vendor could not be loaded ({exc})."
+        raise VendorNotConfiguredError(
+            f"China macro vendor could not be loaded: {exc}"
+        ) from exc
 
     try:
         df = getattr(ak, function_name)()
     except Exception as exc:  # noqa: BLE001
-        return (
-            f"DATA_UNAVAILABLE: China macro data for {label} is currently unavailable "
-            f"({exc})."
-        )
+        raise NoMarketDataError(
+            symbol=indicator,
+            detail=f"China macro data for {label} is currently unavailable ({exc})",
+        ) from exc
 
     if not isinstance(df, pd.DataFrame) or df.empty:
-        return f"DATA_UNAVAILABLE: China macro data for {label} returned no rows."
+        raise NoMarketDataError(
+            symbol=indicator,
+            detail=f"China macro data for {label} returned no rows",
+        )
 
     frame = df.copy()
     date_col = _pick_date_column(frame)
@@ -109,9 +116,12 @@ def get_china_macro_data(
                 if latest
                 else ""
             )
-            return (
-                f"DATA_UNAVAILABLE: China macro data for {label} has no observations "
-                f"between {start_dt.strftime('%Y-%m-%d')} and {curr_date}.{stale_note}"
+            raise NoMarketDataError(
+                symbol=indicator,
+                detail=(
+                    f"China macro data for {label} has no observations "
+                    f"between {start_dt.strftime('%Y-%m-%d')} and {curr_date}.{stale_note}"
+                ),
             )
 
     if alias == "lpr":

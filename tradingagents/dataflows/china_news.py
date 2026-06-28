@@ -8,6 +8,8 @@ import re
 
 import pandas as pd
 
+from .errors import NoMarketDataError, VendorNotConfiguredError
+
 
 def _load_akshare():
     return import_module("akshare")
@@ -66,13 +68,18 @@ def get_news_china(ticker: str, start_date: str, end_date: str) -> str:
     try:
         ak = _load_akshare()
     except Exception as exc:  # noqa: BLE001
-        return f"DATA_UNAVAILABLE: China news vendor could not be loaded ({exc})."
+        raise VendorNotConfiguredError(
+            f"China news vendor could not be loaded: {exc}"
+        ) from exc
 
     symbol = _normalize_symbol(ticker)
     try:
         frame = ak.stock_news_em(symbol=symbol).copy()
     except Exception as exc:  # noqa: BLE001
-        return f"DATA_UNAVAILABLE: China market news for {ticker} is currently unavailable ({exc})."
+        raise NoMarketDataError(
+            symbol=ticker, canonical=symbol,
+            detail=f"China market news is currently unavailable ({exc})",
+        ) from exc
 
     if frame.empty:
         return f"No China market news found for {ticker}"
@@ -114,12 +121,16 @@ def get_global_news_china(curr_date: str, look_back_days: int = 7, limit: int = 
     try:
         ak = _load_akshare()
     except Exception as exc:  # noqa: BLE001
-        return f"DATA_UNAVAILABLE: China macro/news vendor could not be loaded ({exc})."
+        raise VendorNotConfiguredError(
+            f"China macro/news vendor could not be loaded: {exc}"
+        ) from exc
 
     try:
         frame = ak.stock_news_main_cx().copy()
     except Exception as exc:  # noqa: BLE001
-        return f"DATA_UNAVAILABLE: China policy and macro news is currently unavailable ({exc})."
+        raise NoMarketDataError(
+            symbol="global", detail=f"China policy and macro news is currently unavailable ({exc})"
+        ) from exc
 
     if frame.empty:
         return f"No China policy and macro news found for {curr_date}"
@@ -158,10 +169,13 @@ def get_global_news_china(curr_date: str, look_back_days: int = 7, limit: int = 
 
 
 def get_insider_transactions_china(ticker: str) -> str:
-    """Return an explicit placeholder for unsupported insider/disclosure detail."""
-    return (
-        "DATA_UNAVAILABLE: China mainland insider/disclosure detail is not yet "
-        "mapped to a structured adapter here. Use company announcements, major "
-        "shareholder pledge disclosures, and shareholder increase/decrease "
-        "announcements as the primary substitute signal for now."
+    """Raise NoMarketDataError — insider/disclosure detail is not mapped."""
+    raise NoMarketDataError(
+        symbol=ticker,
+        detail=(
+            "China mainland insider/disclosure detail is not yet "
+            "mapped to a structured adapter here. Use company announcements, major "
+            "shareholder pledge disclosures, and shareholder increase/decrease "
+            "announcements as the primary substitute signal for now."
+        ),
     )
