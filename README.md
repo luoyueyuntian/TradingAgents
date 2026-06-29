@@ -172,10 +172,26 @@ docker compose up -d              # start web UI at http://localhost:8000
 ./deploy.sh                       # or use the deploy script (rebuild + restart)
 ```
 
+To split the API and worker into separate processes:
+```bash
+docker compose --profile external-worker up -d
+./deploy.sh --external-worker
+```
+
+In this mode, the API only accepts and persists runs; the worker executes them asynchronously from the shared volume-backed queue state.
+By default this split mode uses `TRADINGAGENTS_WEB_STATE_BACKEND=sqlite` with the database at `~/.tradingagents/web/state.db`.
+Use `TRADINGAGENTS_WEB_STATE_DIR` or `TRADINGAGENTS_WEB_SQLITE_PATH` to relocate the shared state root or SQLite database path.
+
 For local models with Ollama:
 ```bash
 docker compose --profile ollama up -d
 ./deploy.sh --ollama
+```
+
+You can combine both profiles to run Ollama plus a separate API and worker:
+```bash
+docker compose --profile ollama --profile external-worker up -d
+./deploy.sh --ollama --external-worker
 ```
 
 Configuration is managed through the web UI (Settings gear icon) and persisted to `~/.tradingagents/settings.json` via a Docker volume.
@@ -220,11 +236,18 @@ Start the web server:
 uvicorn web.app:app --host 0.0.0.0 --port 8000
 ```
 
+To run the API without executing analyses in-process, start it with:
+```bash
+TRADINGAGENTS_WEB_RUN_MODE=external_worker uvicorn web.app:app --host 0.0.0.0 --port 8000
+python -m web.worker
+```
+
 Open http://localhost:8000 to access the interface. From there you can:
 - Configure API keys and LLM provider (Settings gear icon)
 - Select ticker, date, research depth, and analysts
 - Run analysis and watch real-time progress via SSE streaming
 - View tabbed reports (Market, Sentiment, News, Fundamentals, Research, Trading, Decision)
+- Inspect queue position, run history, configuration summaries, timelines, and saved artifacts for past runs
 
 ### Markets and tickers
 

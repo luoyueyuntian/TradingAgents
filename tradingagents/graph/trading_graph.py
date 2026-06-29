@@ -30,7 +30,7 @@ from tradingagents.agents.utils.agent_utils import (
 from tradingagents.agents.utils.memory import TradingMemoryLog
 from tradingagents.dataflows.config import set_config
 from tradingagents.dataflows.utils import safe_ticker_component
-from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.default_config import build_default_config
 from tradingagents.llm_clients import create_llm_client
 from tradingagents.reporting import write_report_tree
 
@@ -63,7 +63,7 @@ class TradingAgentsGraph:
             callbacks: Optional list of callback handlers (e.g., for tracking LLM/tool stats)
         """
         self.debug = debug
-        self.config = config or DEFAULT_CONFIG
+        self.config = config or build_default_config()
         self.callbacks = callbacks or []
 
         # Update the interface's config
@@ -122,6 +122,9 @@ class TradingAgentsGraph:
         # State tracking
         self.curr_state = None
         self.ticker = None
+        self.last_signal = None
+        self.last_state_log_path: Path | None = None
+        self.last_report_path: Path | None = None
         self.log_states_dict = {}  # date to full state dict
 
         # Set up the graph: keep the workflow for recompilation with a checkpointer.
@@ -318,16 +321,13 @@ class TradingAgentsGraph:
         identity = resolve_instrument_identity(ticker)
         return build_instrument_context(ticker, asset_type, identity)
 
-    def propagate(self, company_name, trade_date, asset_type: str = "stock"):
-        """Run the trading agents graph for a company on a specific date.
-
-        ``asset_type`` selects between the stock pipeline (default) and the
-        crypto pipeline (``"crypto"``) shipped in #567 — the CLI auto-detects
-        from the ticker; programmatic callers pass it explicitly. When
-        ``checkpoint_enabled`` is set in config, the graph is recompiled with
-        a per-ticker SqliteSaver so a crashed run can resume from the last
-        successful node on a subsequent invocation with the same ticker+date.
-        """
+    def _prepare_run(
+        self,
+        company_name: str,
+        trade_date: str,
+        asset_type: str = "stock",
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Prepare graph execution state for both invoked and streamed runs."""
         self.ticker = company_name
 
         # Resolve any pending memory-log entries for this ticker before the pipeline runs.
@@ -351,31 +351,6 @@ class TradingAgentsGraph:
             else:
                 logger.info("Starting fresh for %s on %s", company_name, trade_date)
 
-        try:
-            return self._run_graph(company_name, trade_date, asset_type=asset_type)
-        finally:
-            if self._checkpointer_ctx is not None:
-                self._checkpointer_ctx.__exit__(None, None, None)
-                self._checkpointer_ctx = None
-                self.graph = self.workflow.compile()
-
-    def save_reports(self, final_state, ticker, save_path=None) -> Path:
-        """Write the markdown report tree for a completed run, like the CLI does.
-
-        Programmatic callers get the same on-disk reports the CLI produces. Pass
-        an explicit ``save_path`` or let it default under ``results_dir``.
-        """
-        if save_path is None:
-            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            save_path = (
-                Path(self.config["results_dir"])
-                / "reports"
-                / f"{safe_ticker_component(ticker)}_{stamp}"
-            )
-        return write_report_tree(final_state, ticker, save_path)
-
-    def _run_graph(self, company_name, trade_date, asset_type: str = "stock"):
-        """Execute the graph and write the resulting state to disk and memory log."""
         # Initialize state — inject memory log context for PM and the
         # deterministically resolved instrument identity for all agents.
         past_context = self.memory_log.get_past_context(company_name)
@@ -394,28 +369,22 @@ class TradingAgentsGraph:
             tid = thread_id(company_name, str(trade_date))
             args.setdefault("config", {}).setdefault("configurable", {})["thread_id"] = tid
 
-        if self.debug:
-            trace = []
-            last_printed = None
-            for chunk in self.graph.stream(init_agent_state, **args):
-                if chunk["messages"]:
-                    msg = chunk["messages"][-1]
-                    # Nodes after the trader don't append to messages, so the
-                    # same trailing message repeats across chunks. Print it only
-                    # when it changes (#1027); the trace/state merge is unchanged.
-                    signature = (type(msg).__name__, getattr(msg, "content", None))
-                    if signature != last_printed:
-                        msg.pretty_print()
-                        last_printed = signature
-                    trace.append(chunk)
-            # Streamed chunks are per-node deltas. Merge them so the returned
-            # state matches what graph.invoke() yields in the non-debug path.
-            final_state = {}
-            for chunk in trace:
-                final_state.update(chunk)
-        else:
-            final_state = self.graph.invoke(init_agent_state, **args)
+        return init_agent_state, args
 
+    def _cleanup_after_run(self) -> None:
+        """Restore the default compiled graph after a checkpointed run."""
+        if self._checkpointer_ctx is not None:
+            self._checkpointer_ctx.__exit__(None, None, None)
+            self._checkpointer_ctx = None
+            self.graph = self.workflow.compile()
+
+    def _finalize_run(
+        self,
+        company_name: str,
+        trade_date: str,
+        final_state: dict[str, Any],
+    ) -> tuple[dict[str, Any], str]:
+        """Persist and summarize a completed run."""
         # Store current state for reflection.
         self.curr_state = final_state
 
@@ -436,7 +405,135 @@ class TradingAgentsGraph:
                 self.config["data_cache_dir"], company_name, str(trade_date)
             )
 
-        return final_state, self.process_signal(decision)
+        self.last_signal = self.process_signal(decision)
+        return final_state, self.last_signal
+
+    def stream_propagate(
+        self,
+        company_name: str,
+        trade_date: str,
+        asset_type: str = "stock",
+    ):
+        """Stream graph chunks while preserving the same completion side effects as propagate()."""
+        init_agent_state, args = self._prepare_run(
+            company_name,
+            trade_date,
+            asset_type=asset_type,
+        )
+
+        trace: list[dict[str, Any]] = []
+        try:
+            for chunk in self.graph.stream(init_agent_state, **args):
+                trace.append(chunk)
+                yield chunk
+
+            final_state: dict[str, Any] = {}
+            for chunk in trace:
+                final_state.update(chunk)
+            self._finalize_run(company_name, trade_date, final_state)
+        finally:
+            self._cleanup_after_run()
+
+    def propagate(self, company_name, trade_date, asset_type: str = "stock"):
+        """Run the trading agents graph for a company on a specific date.
+
+        ``asset_type`` selects between the stock pipeline (default) and the
+        crypto pipeline (``"crypto"``) shipped in #567 — the CLI auto-detects
+        from the ticker; programmatic callers pass it explicitly. When
+        ``checkpoint_enabled`` is set in config, the graph is recompiled with
+        a per-ticker SqliteSaver so a crashed run can resume from the last
+        successful node on a subsequent invocation with the same ticker+date.
+        """
+        return self._run_graph(company_name, trade_date, asset_type=asset_type)
+
+    def _run_graph(self, company_name, trade_date, asset_type: str = "stock"):
+        """Execute the graph and write the resulting state to disk and memory log."""
+        try:
+            init_agent_state, args = self._prepare_run(
+                company_name,
+                trade_date,
+                asset_type=asset_type,
+            )
+        except (AttributeError, TypeError, ValueError):
+            # Compatibility path for legacy tests and light-weight mocks that
+            # bind ``_run_graph`` directly without the newer preparation helpers.
+            self.ticker = company_name
+            past_context = self.memory_log.get_past_context(company_name)
+            instrument_context = self.resolve_instrument_context(company_name, asset_type)
+            init_agent_state = self.propagator.create_initial_state(
+                company_name,
+                trade_date,
+                asset_type=asset_type,
+                past_context=past_context,
+                instrument_context=instrument_context,
+            )
+            args = self.propagator.get_graph_args()
+
+        try:
+            if self.debug:
+                trace = []
+                last_printed = None
+                for chunk in self.graph.stream(init_agent_state, **args):
+                    if chunk["messages"]:
+                        msg = chunk["messages"][-1]
+                        # Nodes after the trader don't append to messages, so the
+                        # same trailing message repeats across chunks. Print it only
+                        # when it changes (#1027); the trace/state merge is unchanged.
+                        signature = (type(msg).__name__, getattr(msg, "content", None))
+                        if signature != last_printed:
+                            msg.pretty_print()
+                            last_printed = signature
+                    trace.append(chunk)
+                # Streamed chunks are per-node deltas. Merge them so the returned
+                # state matches what graph.invoke() yields in the non-debug path.
+                final_state = {}
+                for chunk in trace:
+                    final_state.update(chunk)
+            else:
+                final_state = self.graph.invoke(init_agent_state, **args)
+
+            # Store current state for reflection.
+            self.curr_state = final_state
+
+            # Log state to disk.
+            TradingAgentsGraph._log_state(self, trade_date, final_state)
+
+            # Store decision for deferred reflection on the next same-ticker run.
+            decision = final_state.get("final_trade_decision", "Hold")
+            self.memory_log.store_decision(
+                ticker=company_name,
+                trade_date=trade_date,
+                final_trade_decision=decision,
+            )
+
+            # Clear checkpoint on successful completion to avoid stale state.
+            if self.config.get("checkpoint_enabled"):
+                clear_checkpoint(
+                    self.config["data_cache_dir"], company_name, str(trade_date)
+                )
+
+            self.last_signal = self.process_signal(decision)
+            return final_state, self.last_signal
+        finally:
+            self._cleanup_after_run()
+
+    def save_reports(self, final_state, ticker, save_path=None) -> Path:
+        """Write the markdown report tree for a completed run, like the CLI does.
+
+        Programmatic callers get the same on-disk reports the CLI produces. Pass
+        an explicit ``save_path`` or let it default under ``results_dir``.
+        """
+        if save_path is None:
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            save_path = (
+                Path(self.config["results_dir"])
+                / "reports"
+                / f"{safe_ticker_component(ticker)}_{stamp}"
+            )
+        report_path = write_report_tree(final_state, ticker, save_path)
+        if self is not None:
+            self.last_report_path = report_path
+        return report_path
 
     def _log_state(self, trade_date, final_state):
         """Log the final state to a JSON file."""
@@ -479,6 +576,7 @@ class TradingAgentsGraph:
         log_path = directory / f"full_states_log_{trade_date}.json"
         with open(log_path, "w", encoding="utf-8") as f:
             json.dump(self.log_states_dict[str(trade_date)], f, indent=4)
+        self.last_state_log_path = log_path
 
     def process_signal(self, full_signal):
         """Process a signal to extract the core decision."""

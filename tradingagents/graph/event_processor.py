@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.default_config import build_default_config
 
 # ── Analyst identity constants ──────────────────────────────────────────────
 
@@ -157,9 +157,15 @@ def build_run_config(overrides: dict[str, Any]) -> dict[str, Any]:
     layer.  Callers pass only the keys they want to override; missing keys
     fall through to DEFAULT_CONFIG defaults.
     """
-    config = DEFAULT_CONFIG.copy()
+    config = build_default_config()
     for key, value in overrides.items():
-        if value is not None and key in config:
+        if key not in config:
+            continue
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        if key in config:
             config[key] = value
     return config
 
