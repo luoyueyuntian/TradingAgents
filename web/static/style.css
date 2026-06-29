@@ -32,6 +32,7 @@ header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 1rem;
 }
 
 .header-content h1 {
@@ -42,6 +43,52 @@ header {
 .header-content .subtitle {
     font-size: 0.85rem;
     color: var(--text-dim);
+}
+
+.system-status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.system-pill {
+    padding: 0.25rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.system-location {
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tenant-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tenant-label {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+}
+
+.tenant-input {
+    width: 150px;
+    padding: 0.35rem 0.5rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 0.82rem;
 }
 
 main {
@@ -66,6 +113,19 @@ main {
     color: var(--accent);
     border-bottom: 1px solid var(--border);
     padding-bottom: 0.5rem;
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.panel-header h2 {
+    margin-bottom: 0;
+    flex: 1;
 }
 
 /* Form */
@@ -105,6 +165,10 @@ main {
     color: var(--text-dim);
     margin-top: 0.2rem;
     display: block;
+}
+
+.custom-model-input {
+    margin-top: 0.5rem;
 }
 
 .analysts-group {
@@ -180,8 +244,13 @@ button[type="submit"]:disabled {
 
 .status-pending { background: #422006; color: var(--yellow); }
 .status-in_progress { background: #1e3a5f; color: var(--blue); }
+.status-queued { background: #1e3a5f; color: var(--blue); }
+.status-running { background: #1e3a5f; color: var(--blue); }
+.status-cancelling { background: #1e3a5f; color: var(--blue); }
+.status-cancelled { background: #3b2b0c; color: var(--yellow); }
 .status-completed { background: var(--accent-dim); color: var(--accent); }
 .status-error { background: #450a0a; color: var(--red); }
+.status-failed { background: #450a0a; color: var(--red); }
 
 .spinner {
     display: inline-block;
@@ -225,6 +294,64 @@ button[type="submit"]:disabled {
     border-bottom: none;
 }
 
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.history-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.9rem 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.history-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.history-title {
+    font-weight: 600;
+}
+
+.history-subtitle,
+.history-signal {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+}
+
+.history-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.history-status {
+    font-size: 0.72rem;
+    padding: 0.18rem 0.55rem;
+    border-radius: 999px;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.history-status.status-cancelled {
+    background: #3b2b0c;
+    color: var(--yellow);
+}
+
+.history-open {
+    white-space: nowrap;
+}
+
 /* Signal Display */
 .signal-box {
     text-align: center;
@@ -238,6 +365,52 @@ button[type="submit"]:disabled {
 .signal-buy { background: var(--accent-dim); color: var(--accent); }
 .signal-sell { background: #450a0a; color: var(--red); }
 .signal-hold { background: #422006; color: var(--yellow); }
+
+.run-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.summary-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem 0.85rem;
+}
+
+.summary-label {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 0.25rem;
+}
+
+.summary-value {
+    font-size: 0.88rem;
+    word-break: break-word;
+}
+
+.result-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+.artifact-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+}
+
+.artifact-link {
+    font-size: 0.82rem;
+    text-decoration: none;
+}
 
 /* Tabs */
 .tabs {
@@ -398,6 +571,20 @@ button[type="submit"]:disabled {
     gap: 0.75rem;
 }
 
+.checkbox-field label {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-height: 42px;
+    margin-bottom: 0;
+    color: var(--text);
+}
+
+.checkbox-field input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
 /* API Key inputs */
 .apikey-row {
     display: flex;
@@ -481,4 +668,16 @@ button[type="submit"]:disabled {
 
 .btn-secondary:hover {
     border-color: var(--text-dim);
+}
+
+.link-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+
+.link-btn.disabled {
+    opacity: 0.5;
+    pointer-events: none;
 }

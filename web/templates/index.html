@@ -12,6 +12,13 @@
             <h1>TradingAgents</h1>
             <span class="subtitle">Multi-Agents LLM Financial Trading Framework</span>
         </div>
+        <div class="tenant-bar">
+            <label for="tenant-id" class="tenant-label">Tenant</label>
+            <input type="text" id="tenant-id" class="tenant-input" placeholder="default">
+            <label for="api-token" class="tenant-label">API Token</label>
+            <input type="password" id="api-token" class="tenant-input" placeholder="optional">
+        </div>
+        <div id="system-status" class="system-status"></div>
         <button id="settings-btn" class="settings-btn" title="Settings">&#9881;</button>
     </header>
 
@@ -37,10 +44,12 @@
                     <div class="form-group">
                         <label for="quick-model">Quick Thinking Model</label>
                         <select id="quick-model" required></select>
+                        <input type="text" id="quick-model-custom" class="custom-model-input" placeholder="Enter custom model ID" style="display:none;">
                     </div>
                     <div class="form-group">
                         <label for="deep-model">Deep Thinking Model</label>
                         <select id="deep-model" required></select>
+                        <input type="text" id="deep-model-custom" class="custom-model-input" placeholder="Enter custom model ID" style="display:none;">
                     </div>
                     <div class="form-group">
                         <label for="depth">Research Depth</label>
@@ -76,9 +85,21 @@
             </form>
         </section>
 
+        <section id="history-panel" class="panel">
+            <div class="panel-header">
+                <h2>Recent Runs</h2>
+                <button id="refresh-history" class="btn-secondary" type="button">Refresh</button>
+            </div>
+            <div id="history-empty" class="hint">No runs yet.</div>
+            <div id="history-list" class="history-list"></div>
+        </section>
+
         <!-- Progress Panel -->
         <section id="progress-panel" class="panel" style="display:none;">
-            <h2>Progress</h2>
+            <div class="panel-header">
+                <h2>Progress</h2>
+                <button id="cancel-run" class="btn-secondary" type="button" style="display:none;">Cancel Run</button>
+            </div>
             <div id="agent-grid"></div>
             <div id="activity-log">
                 <h3>Activity Log</h3>
@@ -89,7 +110,13 @@
         <!-- Results Panel -->
         <section id="results-panel" class="panel" style="display:none;">
             <h2>Results</h2>
+            <div id="run-summary" class="run-summary" style="display:none;"></div>
             <div id="signal-display" class="signal-box" style="display:none;"></div>
+            <div class="result-actions">
+                <a id="download-report" class="btn-secondary link-btn disabled" aria-disabled="true">Download Report</a>
+                <a id="download-state" class="btn-secondary link-btn disabled" aria-disabled="true">Download Full State</a>
+            </div>
+            <div id="artifact-links" class="artifact-links"></div>
             <div class="tabs">
                 <button class="tab active" data-tab="market_report">Market</button>
                 <button class="tab" data-tab="sentiment_report">Sentiment</button>
@@ -118,6 +145,18 @@
                     <h3>API Keys</h3>
                     <div id="api-keys-grid" class="settings-grid"></div>
                 </section>
+                <section class="settings-section">
+                    <h3>Security</h3>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label for="s-web-api-token">Tenant API Token (optional)</label>
+                            <div class="apikey-row">
+                                <input type="password" id="s-web-api-token" placeholder="Not set">
+                                <button id="s-web-api-token-toggle" class="btn-icon" title="Show/Hide">&#128065;</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
                 <!-- LLM -->
                 <section class="settings-section">
                     <h3>LLM Configuration</h3>
@@ -129,10 +168,12 @@
                         <div class="form-group">
                             <label for="s-quick-model">Quick Think Model</label>
                             <select id="s-quick-model"></select>
+                            <input type="text" id="s-quick-model-custom" class="custom-model-input" placeholder="Enter custom model ID" style="display:none;">
                         </div>
                         <div class="form-group">
                             <label for="s-deep-model">Deep Think Model</label>
                             <select id="s-deep-model"></select>
+                            <input type="text" id="s-deep-model-custom" class="custom-model-input" placeholder="Enter custom model ID" style="display:none;">
                         </div>
                         <div class="form-group">
                             <label for="s-temperature">Temperature</label>
@@ -189,6 +230,13 @@
                             </select>
                         </div>
                         <div class="form-group">
+                            <label for="s-market-profile">Market Profile</label>
+                            <select id="s-market-profile">
+                                <option value="default">Default</option>
+                                <option value="cn_a">China A-Shares</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label for="s-depth">Research Depth</label>
                             <select id="s-depth">
                                 <option value="1">Shallow (1 round)</option>
@@ -203,6 +251,16 @@
                                 <option value="2">2 rounds</option>
                                 <option value="3">3 rounds</option>
                             </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="s-max-recur">Recursion Limit</label>
+                            <input type="number" id="s-max-recur" min="1" step="1" placeholder="100">
+                        </div>
+                        <div class="form-group checkbox-field">
+                            <label for="s-checkpoint-enabled">
+                                <input type="checkbox" id="s-checkpoint-enabled">
+                                Enable checkpoint resume
+                            </label>
                         </div>
                     </div>
                 </section>
@@ -236,19 +294,39 @@
                             <select id="s-vendor-news">
                                 <option value="yfinance">yfinance</option>
                                 <option value="alpha_vantage">Alpha Vantage</option>
+                                <option value="cn_news">China News</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label for="s-vendor-macro">Macro Data</label>
                             <select id="s-vendor-macro">
                                 <option value="fred">FRED</option>
+                                <option value="cn_macro">China Macro</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label for="s-vendor-prediction">Prediction Markets</label>
                             <select id="s-vendor-prediction">
                                 <option value="polymarket">Polymarket</option>
+                                <option value="cn_market_signals">China Market Signals</option>
                             </select>
+                        </div>
+                    </div>
+                </section>
+                <section class="settings-section">
+                    <h3>Data Controls</h3>
+                    <div class="settings-grid">
+                        <div class="form-group">
+                            <label for="s-news-limit">Ticker News Limit</label>
+                            <input type="number" id="s-news-limit" min="1" step="1" placeholder="20">
+                        </div>
+                        <div class="form-group">
+                            <label for="s-global-news-limit">Global News Limit</label>
+                            <input type="number" id="s-global-news-limit" min="1" step="1" placeholder="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="s-global-news-lookback">Global News Lookback (days)</label>
+                            <input type="number" id="s-global-news-lookback" min="1" step="1" placeholder="7">
                         </div>
                     </div>
                 </section>

@@ -1,4 +1,5 @@
 import os
+from copy import deepcopy
 
 _TRADINGAGENTS_HOME = os.path.join(os.path.expanduser("~"), ".tradingagents")
 
@@ -99,6 +100,14 @@ def _apply_settings_file(config: dict) -> dict:
     # Push API keys into os.environ (only if not already set)
     _get_settings().export_api_keys_to_env()
 
+    return apply_settings_payload(config, settings)
+
+
+def apply_settings_payload(config: dict, settings: dict) -> dict:
+    """Merge a settings payload into an existing config dict in-place."""
+    if not settings:
+        return config
+
     # LLM settings
     llm = settings.get("llm", {})
     _SETTINGS_TO_CONFIG = {
@@ -120,6 +129,7 @@ def _apply_settings_file(config: dict) -> dict:
     analysis = settings.get("analysis", {})
     _ANALYSIS_TO_CONFIG = {
         "output_language": "output_language",
+        "market_profile": "market_profile",
         "max_risk_discuss_rounds": "max_risk_discuss_rounds",
         "max_recur_limit": "max_recur_limit",
         "checkpoint_enabled": "checkpoint_enabled",
@@ -149,7 +159,7 @@ def _apply_settings_file(config: dict) -> dict:
 
 
 # Build DEFAULT_CONFIG: base values → settings file → env overrides
-_base_config = {
+_BASE_CONFIG_TEMPLATE = {
     "project_dir": os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
     "results_dir": os.getenv("TRADINGAGENTS_RESULTS_DIR", os.path.join(_TRADINGAGENTS_HOME, "logs")),
     "data_cache_dir": os.getenv("TRADINGAGENTS_CACHE_DIR", os.path.join(_TRADINGAGENTS_HOME, "cache")),
@@ -244,6 +254,11 @@ _base_config = {
     },
 }
 
+def build_default_config() -> dict:
+    """Build the current runtime config from defaults, settings.json, and env vars."""
+    return _apply_env_overrides(_apply_settings_file(deepcopy(_BASE_CONFIG_TEMPLATE)))
+
+
 # Build final DEFAULT_CONFIG: base → settings file → env overrides
 # Settings file sits between defaults and env vars so env vars always win.
-DEFAULT_CONFIG = _apply_env_overrides(_apply_settings_file(_base_config))
+DEFAULT_CONFIG = build_default_config()

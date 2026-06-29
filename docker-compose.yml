@@ -1,33 +1,39 @@
 services:
   tradingagents:
     build: .
+    environment:
+      - TRADINGAGENTS_WEB_RUN_MODE=${TRADINGAGENTS_WEB_RUN_MODE:-local_thread}
+      - TRADINGAGENTS_WEB_STATE_BACKEND=${TRADINGAGENTS_WEB_STATE_BACKEND:-file}
+      - TRADINGAGENTS_WEB_SQLITE_PATH=${TRADINGAGENTS_WEB_SQLITE_PATH:-/home/appuser/.tradingagents/web/state.db}
+      - TRADINGAGENTS_LLM_PROVIDER=${TRADINGAGENTS_LLM_PROVIDER:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
     volumes:
       - tradingagents_data:/home/appuser/.tradingagents
     ports:
       - "8000:8000"
     tty: true
     stdin_open: true
+
+  tradingagents-worker:
+    build: .
+    environment:
+      - TRADINGAGENTS_WEB_RUN_MODE=external_worker
+      - TRADINGAGENTS_WEB_STATE_BACKEND=${TRADINGAGENTS_WEB_STATE_BACKEND:-sqlite}
+      - TRADINGAGENTS_WEB_SQLITE_PATH=${TRADINGAGENTS_WEB_SQLITE_PATH:-/home/appuser/.tradingagents/web/state.db}
+      - TRADINGAGENTS_LLM_PROVIDER=${TRADINGAGENTS_LLM_PROVIDER:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+    volumes:
+      - tradingagents_data:/home/appuser/.tradingagents
+    command: ["python", "-m", "web.worker"]
+    tty: true
+    stdin_open: true
+    profiles:
+      - external-worker
 
   ollama:
     image: ollama/ollama:latest
     volumes:
       - ollama_data:/root/.ollama
-    profiles:
-      - ollama
-
-  tradingagents-ollama:
-    build: .
-    environment:
-      - TRADINGAGENTS_LLM_PROVIDER=ollama
-      - OLLAMA_BASE_URL=http://ollama:11434/v1
-    volumes:
-      - tradingagents_data:/home/appuser/.tradingagents
-    ports:
-      - "8000:8000"
-    depends_on:
-      - ollama
-    tty: true
-    stdin_open: true
     profiles:
       - ollama
 
