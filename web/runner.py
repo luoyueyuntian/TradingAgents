@@ -1,274 +1,179 @@
-"""Analysis execution bridge: background thread + asyncio.Queue for SSE."""
+"""Analysis execution bridge: tenant-scoped RunService registry for the Web layer."""
 
 from __future__ import annotations
 
-import asyncio
-import datetime
-import logging
+import os
 import threading
-import uuid
-from dataclasses import dataclass, field
-from typing import Any
 
-from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.graph.event_processor import (
-    ANALYST_AGENT_NAMES,
-    ANALYST_ORDER,
-    ANALYST_REPORT_MAP,
-    ChunkProcessor,
-    build_agent_status_map,
-    build_run_config,
+from tradingagents.service.models import RunState, TERMINAL_RUN_STATUSES
+from tradingagents.service.run_service import RunService
+from tradingagents.service.state_backend import get_state_backend_adapter
+from tradingagents.service.web_state import (
+    get_web_claims_dir,
+    get_web_events_dir,
+    get_web_runs_index_path,
+    get_web_runs_root,
+    get_web_settings_path,
+    get_web_sqlite_path,
+    get_web_state_dir,
+    get_web_worker_status_path,
+    get_web_tenant_id,
 )
-from tradingagents.graph.trading_graph import TradingAgentsGraph
 
 from .schemas import AnalysisRequest
+from tradingagents.settings import load_settings
 
-logger = logging.getLogger(__name__)
-
-# Conservative concurrency guard.  Config is now thread-local (ContextVar),
-# but other shared state (LLM clients, data vendor caches) may not be.
-# Safe to relax to a higher count once all shared state is audited.
-_run_lock = threading.Semaphore(1)
+_service_lock = threading.Lock()
+_services: dict[str, RunService] = {}
+_service: RunService | None = None
 
 
-@dataclass
-class RunState:
-    """In-memory state for a single analysis run."""
-
-    run_id: str
-    ticker: str
-    date: str
-    asset_type: str
-    config: dict[str, Any]
-    selected_analysts: list[str]
-    status: str = "pending"
-    agents: dict[str, str] = field(default_factory=dict)
-    report_sections: dict[str, str | None] = field(default_factory=dict)
-    current_report: str | None = None
-    final_report: str | None = None
-    final_state: dict | None = None
-    signal: str | None = None
-    error: str | None = None
-    created_at: str = ""
-    started_at: str | None = None
-    completed_at: str | None = None
-    events: asyncio.Queue = field(default_factory=asyncio.Queue)
-    _chunk_processor: ChunkProcessor | None = field(default=None, repr=False)
-
-    def __post_init__(self):
-        if not self.created_at:
-            self.created_at = datetime.datetime.now().isoformat()
-        # Build agent status map and report sections from shared helpers
-        self.agents = build_agent_status_map(self.selected_analysts)
-        from tradingagents.graph.event_processor import build_report_sections
-        self.report_sections = build_report_sections(self.selected_analysts)
-        # Create chunk processor for this run
-        self._chunk_processor = ChunkProcessor(self.selected_analysts)
+def get_tenant_id(tenant_id: str | None = None) -> str | None:
+    """Resolve the effective tenant id for this request/session."""
+    return get_web_tenant_id(tenant_id)
 
 
-# In-memory run storage
-_runs: dict[str, RunState] = {}
-
-# How long to keep completed runs before pruning (seconds).
-_RUN_TTL = 3600  # 1 hour
-
-
-def _prune_old_runs() -> None:
-    """Remove completed runs older than _RUN_TTL to avoid unbounded memory growth."""
-    now = datetime.datetime.now()
-    stale = []
-    for run_id, run in _runs.items():
-        if run.status in ("completed", "failed") and run.completed_at:
-            try:
-                completed = datetime.datetime.fromisoformat(run.completed_at)
-                if (now - completed).total_seconds() > _RUN_TTL:
-                    stale.append(run_id)
-            except (ValueError, TypeError):
-                pass
-    for run_id in stale:
-        del _runs[run_id]
-
-
-def get_run(run_id: str) -> RunState | None:
-    return _runs.get(run_id)
-
-
-def _put_event(run: RunState, event: dict, loop: asyncio.AbstractEventLoop):
-    """Thread-safe event push to the run's asyncio.Queue."""
-    try:
-        if loop.is_closed():
-            return
-        asyncio.run_coroutine_threadsafe(run.events.put(event), loop)
-    except RuntimeError:
-        pass  # loop closed between check and call
-
-
-def _emit_agent_status(run: RunState, agent: str, status: str, loop: asyncio.AbstractEventLoop):
-    """Update agent status and emit SSE event."""
-    if agent in run.agents:
-        run.agents[agent] = status
-        _put_event(run, {"event": "agent_status", "data": {"agent": agent, "status": status}}, loop)
-
-
-def _emit_report(run: RunState, section: str, content: str, loop: asyncio.AbstractEventLoop):
-    """Update report section and emit SSE event."""
-    if section in run.report_sections:
-        run.report_sections[section] = content
-        _put_event(run, {"event": "report_update", "data": {"section": section, "content": content}}, loop)
-        _update_current_report(run)
-
-
-def _update_current_report(run: RunState):
-    """Update the current_report summary from report_sections."""
-    from tradingagents.graph.event_processor import build_current_report
-    run.current_report = build_current_report(run.report_sections)
-
-
-def _update_final_report(run: RunState):
-    """Build the complete final report from all sections."""
-    from tradingagents.graph.event_processor import build_final_report
-    run.final_report = build_final_report(run.report_sections)
-
-
-def _process_chunk(
-    run: RunState,
-    chunk: dict[str, Any],
-    loop: asyncio.AbstractEventLoop,
-):
-    """Process a single streamed chunk using shared ChunkProcessor."""
-    cp = run._chunk_processor
-
-    # Extract messages and tool calls for progress events
-    messages, tools = cp.get_messages_and_tools(chunk)
-    for msg in messages:
-        _put_event(run, {"event": "progress", "data": {"message": msg}}, loop)
-    for tool_name in tools:
-        _put_event(run, {"event": "progress", "data": {"tool_call": tool_name}}, loop)
-
-    # Process chunk through shared state machine
-    old_status = dict(run.agents)
-    old_reports = dict(run.report_sections)
-
-    cp.process_chunk(chunk)
-
-    # Sync state from ChunkProcessor to RunState and emit SSE events
-    for agent, status in cp.agent_status.items():
-        if run.agents.get(agent) != status:
-            _emit_agent_status(run, agent, status, loop)
-
-    for section, content in cp.report_sections.items():
-        if content and run.report_sections.get(section) != content:
-            _emit_report(run, section, content, loop)
-
-    run.current_report = cp.current_report
-
-
-def _run_analysis_thread(run: RunState, loop: asyncio.AbstractEventLoop):
-    """Execute the analysis in a background thread."""
-    try:
-        run.status = "running"
-        run.started_at = datetime.datetime.now().isoformat()
-        _put_event(run, {"event": "progress", "data": {"message": f"Starting analysis for {run.ticker} on {run.date}"}}, loop)
-
-        graph = TradingAgentsGraph(
-            run.selected_analysts,
-            config=run.config,
-            debug=False,
-        )
-
-        instrument_context = graph.resolve_instrument_context(run.ticker, run.asset_type)
-        init_state = graph.propagator.create_initial_state(
-            run.ticker,
-            run.date,
-            asset_type=run.asset_type,
-            instrument_context=instrument_context,
-        )
-        args = graph.propagator.get_graph_args()
-
-        trace = []
-        for chunk in graph.graph.stream(init_state, **args):
-            _process_chunk(run, chunk, loop)
-            trace.append(chunk)
-
-        # Merge final state
-        final_state: dict[str, Any] = {}
-        for chunk in trace:
-            final_state.update(chunk)
-        run.final_state = final_state
-
-        # Extract signal
-        run.signal = graph.process_signal(final_state.get("final_trade_decision", ""))
-
-        # Build final report from final state
-        for section in run.report_sections:
-            if section in final_state and final_state[section]:
-                run.report_sections[section] = final_state[section]
-        _update_final_report(run)
-
-        # Finalize: mark all agents completed
-        run._chunk_processor.finalize()
-        for agent in run.agents:
-            run.agents[agent] = "completed"
-
-        run.status = "completed"
-        run.completed_at = datetime.datetime.now().isoformat()
-        _put_event(run, {
-            "event": "complete",
-            "data": {
-                "signal": run.signal,
-                "report": run.final_report or "",
-            },
-        }, loop)
-
-    except Exception as e:
-        logger.exception("Analysis failed for run %s", run.run_id)
-        run.status = "failed"
-        run.error = str(e)
-        run.completed_at = datetime.datetime.now().isoformat()
-        _put_event(run, {"event": "error", "data": {"message": str(e)}}, loop)
-    finally:
-        _run_lock.release()
-
-
-def create_run(req: AnalysisRequest, loop: asyncio.AbstractEventLoop) -> RunState | str:
-    """Create a new analysis run and start it in a background thread.
-
-    Returns the RunState on success, or an error string if the system is busy.
-    """
-    _prune_old_runs()
-
-    if not _run_lock.acquire(blocking=False):
-        return "busy"
-
-    config = build_run_config({
-        "llm_provider": req.llm_provider.lower() if req.llm_provider else None,
-        "quick_think_llm": req.quick_think_model,
-        "deep_think_llm": req.deep_think_model,
-        "output_language": req.output_language,
-        "backend_url": req.backend_url,
-        "temperature": req.temperature,
-        "max_debate_rounds": req.research_depth,
-        "max_risk_discuss_rounds": req.research_depth,
-        "google_thinking_level": req.google_thinking_level,
-        "openai_reasoning_effort": req.openai_reasoning_effort,
-        "anthropic_effort": req.anthropic_effort,
-    })
-
-    run_id = str(uuid.uuid4())
-    run = RunState(
-        run_id=run_id,
-        ticker=req.ticker.upper(),
-        date=req.date,
-        asset_type=req.asset_type,
-        config=config,
-        selected_analysts=req.analysts,
+def _build_service(tenant_id: str | None = None) -> RunService:
+    resolved = get_tenant_id(tenant_id)
+    return RunService(
+        tenant_id=resolved,
+        runs_index_path=get_web_runs_index_path(resolved),
+        run_events_dir=get_web_events_dir(resolved),
+        runs_root_dir=get_web_runs_root(resolved),
+        worker_status_path=get_web_worker_status_path(resolved),
+        claims_dir=get_web_claims_dir(resolved),
     )
-    _runs[run_id] = run
 
-    thread = threading.Thread(
-        target=_run_analysis_thread,
-        args=(run, loop),
-        daemon=True,
+
+_service = _build_service(None)
+
+
+def get_service(tenant_id: str | None = None) -> RunService:
+    """Return the RunService for the resolved tenant namespace."""
+    global _service
+    resolved = get_tenant_id(tenant_id)
+    key = resolved or "__default__"
+
+    if resolved is None:
+        with _service_lock:
+            return _service
+
+    with _service_lock:
+        service = _services.get(key)
+        if service is None:
+            service = _build_service(resolved)
+            _services[key] = service
+        return service
+
+
+def get_execution_mode() -> str:
+    """Return the web run execution mode."""
+    mode = os.environ.get("TRADINGAGENTS_WEB_RUN_MODE", "local_thread").strip().lower()
+    return mode or "local_thread"
+
+
+def get_state_backend() -> str:
+    """Return the configured web state backend."""
+    return get_state_backend_adapter().kind
+
+
+def get_state_location(tenant_id: str | None = None) -> str:
+    """Return the primary storage location for the current backend."""
+    adapter = get_state_backend_adapter()
+    if adapter.kind == "sqlite":
+        return str(get_web_sqlite_path(get_tenant_id(tenant_id)))
+    return str(get_web_state_dir(get_tenant_id(tenant_id)))
+
+
+def refresh_from_storage_if_needed(tenant_id: str | None = None) -> None:
+    """Reload persisted state when running in external-worker mode."""
+    if get_execution_mode() == "external_worker":
+        get_service(tenant_id).load_runs_index()
+
+
+def save_runs_index(tenant_id: str | None = None) -> None:
+    get_service(tenant_id).save_runs_index()
+
+
+def load_runs_index(tenant_id: str | None = None) -> None:
+    get_service(tenant_id).load_runs_index()
+
+
+def resume_incomplete_runs(tenant_id: str | None = None) -> None:
+    get_service(tenant_id).resume_incomplete_runs()
+
+
+def load_run_event_history(run: RunState, tenant_id: str | None = None) -> None:
+    get_service(tenant_id).load_run_event_history(run)
+
+
+def get_run(run_id: str, tenant_id: str | None = None) -> RunState | None:
+    refresh_from_storage_if_needed(tenant_id)
+    return get_service(tenant_id).get_run(run_id)
+
+
+def list_runs(tenant_id: str | None = None) -> list[RunState]:
+    refresh_from_storage_if_needed(tenant_id)
+    return get_service(tenant_id).list_runs()
+
+
+def get_queue_position(run_id: str, tenant_id: str | None = None) -> int | None:
+    refresh_from_storage_if_needed(tenant_id)
+    return get_service(tenant_id).get_queue_position(run_id)
+
+
+def get_service_status(tenant_id: str | None = None) -> dict[str, object]:
+    refresh_from_storage_if_needed(tenant_id)
+    return get_service(tenant_id).get_status_snapshot()
+
+
+def subscribe_run_events(run: RunState, tenant_id: str | None = None):
+    return get_service(tenant_id).subscribe_run_events(run)
+
+
+def unsubscribe_run_events(run: RunState, subscriber_id: str, tenant_id: str | None = None) -> None:
+    get_service(tenant_id).unsubscribe_run_events(run, subscriber_id)
+
+
+def build_terminal_event(run: RunState, tenant_id: str | None = None):
+    return get_service(tenant_id).build_terminal_event(run)
+
+
+def prune_terminal_runs(max_completed: int = 100, tenant_id: str | None = None) -> None:
+    get_service(tenant_id).prune_terminal_runs(max_completed=max_completed)
+
+
+def _put_event(run: RunState, event: dict, tenant_id: str | None = None) -> None:
+    get_service(tenant_id)._put_event(run, event)
+
+
+def cancel_run(run_id: str, tenant_id: str | None = None) -> RunState | None:
+    refresh_from_storage_if_needed(tenant_id)
+    return get_service(tenant_id).cancel_run(run_id)
+
+
+def delete_run(run_id: str, tenant_id: str | None = None) -> RunState | None:
+    refresh_from_storage_if_needed(tenant_id)
+    return get_service(tenant_id).delete_run(run_id)
+
+
+def retry_run(run_id: str, tenant_id: str | None = None) -> RunState | None:
+    refresh_from_storage_if_needed(tenant_id)
+    return get_service(tenant_id).retry_run(run_id, start_worker=get_execution_mode() != "external_worker")
+
+
+def ensure_worker_started(tenant_id: str | None = None) -> None:
+    get_service(tenant_id).ensure_worker_started()
+
+
+def create_run(req: AnalysisRequest, _loop=None, tenant_id: str | None = None) -> RunState:
+    settings = load_settings(path=get_web_settings_path(get_tenant_id(tenant_id)))
+    return get_service(tenant_id).create_run(
+        req,
+        start_worker=get_execution_mode() != "external_worker",
+        settings=settings,
     )
-    thread.start()
-    return run
+
+
+def build_run_request_config(req: AnalysisRequest, *, runtime_context=None, tenant_id: str | None = None, settings: dict | None = None) -> dict:
+    return get_service(tenant_id).build_run_request_config(req, runtime_context=runtime_context, settings=settings)

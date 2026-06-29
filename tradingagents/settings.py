@@ -54,40 +54,47 @@ ALL_API_KEY_ENV_VARS: list[str] = [
 ]
 
 
-def ensure_settings_dir() -> None:
+def _resolve_settings_path(path: str | Path | None = None) -> Path:
+    """Return the concrete settings file path."""
+    return Path(path).expanduser() if path is not None else SETTINGS_PATH
+
+
+def ensure_settings_dir(path: str | Path | None = None) -> None:
     """Ensure the ``~/.tradingagents/`` directory exists."""
-    SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+    _resolve_settings_path(path).parent.mkdir(parents=True, exist_ok=True)
 
 
-def load_settings() -> dict[str, Any]:
+def load_settings(path: str | Path | None = None) -> dict[str, Any]:
     """Read settings.json and return its contents.
 
     Returns an empty dict if the file does not exist or is invalid JSON.
     """
-    if not SETTINGS_PATH.exists():
+    settings_path = _resolve_settings_path(path)
+    if not settings_path.exists():
         return {}
     try:
-        return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        return json.loads(settings_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("Failed to read settings file %s: %s", SETTINGS_PATH, exc)
+        logger.warning("Failed to read settings file %s: %s", settings_path, exc)
         return {}
 
 
-def save_settings(settings: dict[str, Any]) -> None:
+def save_settings(settings: dict[str, Any], path: str | Path | None = None) -> None:
     """Atomically write settings to disk.
 
     Writes to a temporary file first, then renames — avoids partial writes
     if the process is killed mid-save.
     """
-    ensure_settings_dir()
+    settings_path = _resolve_settings_path(path)
+    ensure_settings_dir(settings_path)
     try:
         fd, tmp_path = tempfile.mkstemp(
-            dir=str(SETTINGS_DIR), suffix=".tmp", prefix="settings_"
+            dir=str(settings_path.parent), suffix=".tmp", prefix="settings_"
         )
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=2, ensure_ascii=False)
             f.write("\n")
-        os.replace(tmp_path, str(SETTINGS_PATH))
+        os.replace(tmp_path, str(settings_path))
     except OSError:
         # Clean up temp file on failure
         try:
@@ -97,14 +104,14 @@ def save_settings(settings: dict[str, Any]) -> None:
         raise
 
 
-def get_setting(key_path: str, default: Any = None) -> Any:
+def get_setting(key_path: str, default: Any = None, path: str | Path | None = None) -> Any:
     """Read a nested value using a dot-separated path.
 
     Example::
 
         get_setting("llm.provider", "openai")
     """
-    settings = load_settings()
+    settings = load_settings(path)
     keys = key_path.split(".")
     node = settings
     for key in keys:
@@ -116,12 +123,12 @@ def get_setting(key_path: str, default: Any = None) -> Any:
     return node
 
 
-def set_setting(key_path: str, value: Any) -> None:
+def set_setting(key_path: str, value: Any, path: str | Path | None = None) -> None:
     """Write a nested value using a dot-separated path.
 
     Creates intermediate dicts as needed.
     """
-    settings = load_settings()
+    settings = load_settings(path)
     keys = key_path.split(".")
     node = settings
     for key in keys[:-1]:
@@ -129,41 +136,57 @@ def set_setting(key_path: str, value: Any) -> None:
             node[key] = {}
         node = node[key]
     node[keys[-1]] = value
-    save_settings(settings)
+    save_settings(settings, path)
 
 
-def update_settings(patch: dict[str, Any]) -> dict[str, Any]:
+def update_settings(patch: dict[str, Any], path: str | Path | None = None) -> dict[str, Any]:
     """Merge *patch* into the existing settings and save.
 
     Performs a one-level-deep merge for dict-valued keys (same semantics as
     ``set_config`` in dataflows/config.py).  Returns the merged settings.
     """
-    existing = load_settings()
+    existing = load_settings(path)
     for key, value in patch.items():
         if isinstance(value, dict) and isinstance(existing.get(key), dict):
             existing[key].update(value)
         else:
             existing[key] = value
-    save_settings(existing)
+    save_settings(existing, path)
     return existing
 
 
-def export_api_keys_to_env() -> None:
+def export_api_keys_to_env(
+    settings: dict[str, Any] | None = None,
+    *,
+    overwrite: bool = False,
+    path: str | Path | None = None,
+) -> None:
     """Push API keys from settings.json into ``os.environ``.
 
-    Only sets env vars that are **not already set** — explicit environment
-    variables (and ``.env`` files loaded earlier) take precedence.
+    By default only sets env vars that are **not already set** — explicit
+    environment variables (and ``.env`` files loaded earlier) take precedence.
+    Pass ``overwrite=True`` when a settings save should update the current
+    process immediately.
     """
-    settings = load_settings()
+    settings = settings or load_settings(path)
     api_keys: dict[str, str] = settings.get("api_keys", {})
     for provider, key_name in PROVIDER_API_KEY_MAP.items():
-        if key_name and api_keys.get(provider) and not os.environ.get(key_name):
-            os.environ[key_name] = api_keys[provider]
+        if not key_name:
+            continue
+        value = api_keys.get(provider, "")
+        if value:
+            if overwrite or not os.environ.get(key_name):
+                os.environ[key_name] = value
+        elif overwrite:
+            os.environ.pop(key_name, None)
     # Extra service keys
     for key_name in ("FRED_API_KEY", "AWS_DEFAULT_REGION", "AWS_PROFILE", "OLLAMA_BASE_URL"):
-        val = api_keys.get(key_name.lower(), "")
-        if val and not os.environ.get(key_name):
-            os.environ[key_name] = val
+        val = api_keys.get(key_name) or api_keys.get(key_name.lower(), "")
+        if val:
+            if overwrite or not os.environ.get(key_name):
+                os.environ[key_name] = val
+        elif overwrite:
+            os.environ.pop(key_name, None)
 
 
 def mask_api_keys(api_keys: dict[str, str]) -> dict[str, str]:
