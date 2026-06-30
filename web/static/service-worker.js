@@ -1,8 +1,9 @@
-const CACHE_NAME = 'tradingagents-shell-v1';
+const CACHE_NAME = 'tradingagents-spa-v1';
 const APP_SHELL_ASSETS = [
     '/',
-    '/static/style.css',
-    '/static/app.js',
+    '/static/spa/index.html',
+    '/static/spa/assets/app.js',
+    '/static/spa/assets/index.css',
     '/static/app.webmanifest',
     '/static/icons/app-icon.svg',
 ];
@@ -22,6 +23,19 @@ self.addEventListener('activate', (event) => {
         )).then(() => self.clients.claim())
     );
 });
+
+function fetchAndCache(request) {
+    return fetch(request).then((response) => {
+        if (!response || response.status !== 200 || response.type === 'opaque') {
+            return response;
+        }
+        const responseToCache = response.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseToCache);
+        });
+        return response;
+    });
+}
 
 self.addEventListener('fetch', (event) => {
     const { request } = event;
@@ -44,21 +58,22 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    if (url.pathname.startsWith('/static/spa/')) {
+        event.respondWith(
+            fetchAndCache(request).catch(async () => {
+                const cache = await caches.open(CACHE_NAME);
+                return cache.match(request) || Response.error();
+            })
+        );
+        return;
+    }
+
     event.respondWith(
         caches.match(request).then((cached) => {
             if (cached) {
                 return cached;
             }
-            return fetch(request).then((response) => {
-                if (!response || response.status !== 200 || response.type === 'opaque') {
-                    return response;
-                }
-                const responseToCache = response.clone();
-                caches.open(CACHE_NAME).then((cache) => {
-                    cache.put(request, responseToCache);
-                });
-                return response;
-            });
+            return fetchAndCache(request);
         })
     );
 });

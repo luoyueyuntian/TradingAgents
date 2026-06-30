@@ -5681,8 +5681,30 @@ async def get_public_run_share_page(share_id: str):
     return HTMLResponse(content=_build_public_run_share_html(snapshot))
 
 
+def _spa_index_path() -> Path:
+    return Path(__file__).parent / "static" / "spa" / "index.html"
+
+
+def _serve_spa_index() -> HTMLResponse:
+    index_path = _spa_index_path()
+    if not index_path.exists():
+        raise HTTPException(
+            status_code=503,
+            detail="Vue SPA assets are not built. Run `npm --prefix frontend run build`.",
+        )
+    return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+
+
 @router.get("/", response_class=HTMLResponse)
 async def serve_ui():
-    """Serve the web UI."""
-    template_path = Path(__file__).parent / "templates" / "index.html"
-    return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
+    """Serve the Vue SPA shell."""
+    return _serve_spa_index()
+
+
+@router.get("/{spa_path:path}", response_class=HTMLResponse, include_in_schema=False)
+async def serve_spa_route(spa_path: str):
+    """Serve the Vue SPA shell for client-side routes."""
+    first_segment = spa_path.split("/", 1)[0]
+    if first_segment in {"api", "static", "shared"} or spa_path == "service-worker.js":
+        raise HTTPException(status_code=404, detail="Not found")
+    return _serve_spa_index()
