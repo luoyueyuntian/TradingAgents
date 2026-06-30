@@ -19,9 +19,39 @@
         <template #content>
           <div class="form-grid">
             <label class="field">
-              <span class="field-label">{{ t('common.ticker') }}</span>
-              <InputText v-model="form.ticker" placeholder="NVDA, 0700.HK, BTC-USD" />
+              <span class="field-label">{{ t('analysis.stockMarket') }}</span>
+              <Select
+                v-model="form.stock_market"
+                :options="stockMarketOptions"
+                option-label="label"
+                option-value="value"
+                @change="handleStockMarketChange"
+              />
             </label>
+            <label class="field">
+              <span class="field-label">{{ t('common.ticker') }}</span>
+              <Select
+                v-model="form.ticker"
+                :options="stockOptions"
+                option-label="label"
+                option-value="symbol"
+                :placeholder="t('analysis.stockPlaceholder')"
+                :loading="stockLoading"
+                filter
+                show-clear
+                @filter="onStockFilter"
+              />
+            </label>
+            <div class="field">
+              <span class="field-label">{{ t('analysis.stockCatalog') }}</span>
+              <Button
+                icon="pi pi-sync"
+                :label="t('analysis.refreshStocks')"
+                severity="secondary"
+                :loading="refreshingStocks"
+                @click="refreshStockCatalog"
+              />
+            </div>
             <label class="field">
               <span class="field-label">{{ t('analysis.analysisDate') }}</span>
               <InputText v-model="form.date" type="date" />
@@ -55,7 +85,13 @@
             </label>
             <label class="field">
               <span class="field-label">{{ t('analysis.marketProfile') }}</span>
-              <Select v-model="form.market_profile" :options="marketProfileOptions" option-label="label" option-value="value" />
+              <Select
+                v-model="form.market_profile"
+                :options="marketProfileOptions"
+                option-label="label"
+                option-value="value"
+                disabled
+              />
             </label>
           </div>
 
@@ -84,7 +120,26 @@
             <Tag v-if="currentRun" :value="currentRun.status" :severity="signalSeverity(currentRun.status)" />
             <Button v-if="currentRun?.run_id" icon="pi pi-times" :label="t('common.cancel')" severity="danger" outlined @click="cancelRun" />
           </div>
-          <pre class="log-box">{{ logText || t('analysis.noActiveRun') }}</pre>
+
+          <div v-if="agentProgress.length" class="agent-progress-grid">
+            <div v-for="agent in agentProgress" :key="agent.name" class="agent-progress-item">
+              <span>{{ agent.name }}</span>
+              <Tag :value="agent.status" :severity="signalSeverity(agent.status)" />
+            </div>
+          </div>
+
+          <div v-if="liveReportText" class="live-report-panel">
+            <div class="live-report-header">
+              <span class="field-label">{{ t('analysis.liveReport') }}</span>
+              <Tag v-if="liveState.latestReportSection" :value="sectionLabel(liveState.latestReportSection)" severity="info" />
+            </div>
+            <ReportMarkdown :content="liveReportText" :empty-text="t('runs.noReport')" />
+          </div>
+
+          <details class="event-log-panel" :open="!liveReportText && !agentProgress.length">
+            <summary>{{ t('analysis.eventLog') }}</summary>
+            <pre class="log-box">{{ logText || t('analysis.noActiveRun') }}</pre>
+          </details>
         </template>
       </Card>
     </div>
@@ -102,23 +157,38 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 
 import MetricGrid from '../components/MetricGrid.vue';
 import PageHeader from '../components/PageHeader.vue';
+import ReportMarkdown from '../components/ReportMarkdown.vue';
 import { useI18n } from '../i18n';
 import { apiGet, apiPost, buildApiUrl } from '../services/api';
 import { useSession } from '../stores/session';
 import { signalSeverity, type JsonRecord } from '../utils/format';
+import { applyRunStreamEvent, createLiveRunViewState, type LiveRunViewState } from '../utils/runDisplay';
+import {
+  buildAnalysisRequestPayload,
+  buildStockSearchPath,
+  marketProfileForStockMarket,
+  normalizeStockOptions,
+  type StockCatalogOption,
+  type StockMarketOption,
+} from './analyzeStockSelection';
 
 const session = useSession();
 const providers = ref<JsonRecord[]>([]);
+const stockMarkets = ref<StockMarketOption[]>([]);
+const stocks = ref<Required<StockCatalogOption>[]>([]);
 const currentRun = ref<JsonRecord | null>(null);
 const error = ref('');
 const notice = ref('');
 const submitting = ref(false);
-const logLines = ref<string[]>([]);
+const stockLoading = ref(false);
+const refreshingStocks = ref(false);
+const liveState = ref<LiveRunViewState>(createLiveRunViewState());
 let eventSource: EventSource | null = null;
 const { t } = useI18n();
 
 const today = new Date().toISOString().slice(0, 10);
 const form = reactive({
+  stock_market: 'us',
   ticker: '',
   date: today,
   llm_provider: 'openai',
@@ -154,6 +224,18 @@ const marketProfileOptions = computed(() => [
   { label: t('analysis.marketDefault'), value: 'default' },
   { label: t('analysis.marketChinaA'), value: 'cn_a' },
 ]);
+const fallbackStockMarketOptions = computed(() => [
+  { label: t('analysis.usStocks'), value: 'us' },
+  { label: t('analysis.hkStocks'), value: 'hk' },
+  { label: t('analysis.cnAStocks'), value: 'cn_a' },
+]);
+const stockMarketOptions = computed(() => (
+  stockMarkets.value.length ? stockMarkets.value : fallbackStockMarketOptions.value
+).map((option) => ({
+  ...option,
+  label: stockMarketLabel(option.value, option.label),
+})));
+const stockOptions = computed(() => stocks.value);
 
 const providerOptions = computed(() => providers.value.map((provider) => ({
   label: provider.display_name || provider.provider,
@@ -162,12 +244,14 @@ const providerOptions = computed(() => providers.value.map((provider) => ({
 const selectedProvider = computed(() => providers.value.find((provider) => provider.provider === form.llm_provider));
 const quickModelOptions = computed(() => selectedProvider.value?.quick_models || []);
 const deepModelOptions = computed(() => selectedProvider.value?.deep_models || []);
-const logText = computed(() => logLines.value.join('\n'));
+const logText = computed(() => liveState.value.logLines.join('\n'));
+const liveReportText = computed(() => liveState.value.terminalReport || liveState.value.currentReport);
+const agentProgress = computed(() => Object.entries(liveState.value.agents).map(([name, status]) => ({ name, status })));
 const runMetrics = computed(() => [
   { label: t('common.runId'), value: currentRun.value?.run_id || t('common.na') },
   { label: t('common.ticker'), value: currentRun.value?.ticker || form.ticker || t('common.na') },
-  { label: t('common.status'), value: currentRun.value?.status || t('common.idle') },
-  { label: t('common.signal'), value: currentRun.value?.signal || t('common.pending') },
+  { label: t('common.status'), value: liveState.value.status || currentRun.value?.status || t('common.idle') },
+  { label: t('common.signal'), value: liveState.value.signal || currentRun.value?.signal || t('common.pending') },
 ]);
 
 function syncProviderModels() {
@@ -189,18 +273,61 @@ async function loadProviders() {
   }
 }
 
+async function loadStockMarkets() {
+  try {
+    stockMarkets.value = await apiGet<StockMarketOption[]>('/api/stocks/markets', session.apiContext.value);
+    if (!stockMarketOptions.value.some((option) => option.value === form.stock_market)) {
+      form.stock_market = stockMarketOptions.value[0]?.value || 'us';
+      form.market_profile = marketProfileForStockMarket(form.stock_market);
+    }
+  } catch (exc) {
+    error.value = exc instanceof Error ? exc.message : t('analysis.stocksLoadError');
+  }
+}
+
+async function loadStocks(query = '') {
+  stockLoading.value = true;
+  try {
+    const rows = await apiGet<StockCatalogOption[]>(
+      buildStockSearchPath(form.stock_market, query, 100),
+      session.apiContext.value,
+    );
+    stocks.value = normalizeStockOptions(rows);
+  } catch (exc) {
+    error.value = exc instanceof Error ? exc.message : t('analysis.stocksLoadError');
+  } finally {
+    stockLoading.value = false;
+  }
+}
+
+async function handleStockMarketChange() {
+  form.ticker = '';
+  form.market_profile = marketProfileForStockMarket(form.stock_market);
+  stocks.value = [];
+  await loadStocks();
+}
+
+async function onStockFilter(event: { value?: string }) {
+  await loadStocks(event.value || '');
+}
+
+async function refreshStockCatalog() {
+  error.value = '';
+  notice.value = '';
+  refreshingStocks.value = true;
+  try {
+    await apiPost<JsonRecord>('/api/stocks/refresh', { force: true }, session.apiContext.value);
+    notice.value = t('analysis.stocksRefreshed');
+    await loadStocks();
+  } catch (exc) {
+    error.value = exc instanceof Error ? exc.message : t('analysis.stocksLoadError');
+  } finally {
+    refreshingStocks.value = false;
+  }
+}
+
 function buildRequest() {
-  return {
-    ticker: form.ticker.trim().toUpperCase(),
-    date: form.date,
-    analysts: form.analysts,
-    llm_provider: form.llm_provider,
-    quick_think_model: form.quick_think_model,
-    deep_think_model: form.deep_think_model,
-    research_depth: form.research_depth,
-    output_language: form.output_language,
-    market_profile: form.market_profile,
-  };
+  return buildAnalysisRequestPayload(form);
 }
 
 async function startRun() {
@@ -214,7 +341,11 @@ async function startRun() {
   try {
     currentRun.value = await apiPost<JsonRecord>('/api/runs', buildRequest(), session.apiContext.value);
     notice.value = t('analysis.queuedNotice', { ticker: String(currentRun.value.ticker) });
-    logLines.value = [t('analysis.runCreated', { runId: String(currentRun.value.run_id) })];
+    liveState.value = {
+      ...createLiveRunViewState(),
+      status: String(currentRun.value.status || 'queued'),
+      logLines: [t('analysis.runCreated', { runId: String(currentRun.value.run_id) })],
+    };
     startEvents(String(currentRun.value.run_id));
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('analysis.startError');
@@ -230,7 +361,19 @@ function startEvents(runId: string) {
   for (const name of ['queued', 'progress', 'agent_status', 'report_update', 'complete', 'cancelled', 'error']) {
     eventSource.addEventListener(name, (event) => {
       const payload = 'data' in event ? String((event as MessageEvent).data || '') : '';
-      logLines.value.push(`${new Date().toLocaleTimeString()} ${name}: ${payload}`);
+      liveState.value = applyRunStreamEvent(
+        liveState.value,
+        name,
+        payload,
+        new Date().toLocaleTimeString(),
+      );
+      if (currentRun.value && liveState.value.status) {
+        currentRun.value = {
+          ...currentRun.value,
+          status: liveState.value.status,
+          signal: liveState.value.signal || currentRun.value.signal,
+        };
+      }
       if (name === 'complete' || name === 'cancelled' || name === 'error') {
         eventSource?.close();
       }
@@ -247,9 +390,52 @@ async function cancelRun() {
     {},
     session.apiContext.value,
   );
-  logLines.value.push(t('analysis.cancelRequested'));
+  liveState.value = {
+    ...liveState.value,
+    status: String(currentRun.value.status || liveState.value.status),
+    logLines: [...liveState.value.logLines, t('analysis.cancelRequested')],
+  };
 }
 
-onMounted(loadProviders);
+async function loadInitialData() {
+  await Promise.all([loadProviders(), loadStockMarkets()]);
+  await loadStocks();
+}
+
+onMounted(loadInitialData);
 onBeforeUnmount(() => eventSource?.close());
+
+function stockMarketLabel(value: string, fallback: string): string {
+  switch (value) {
+    case 'us':
+      return t('analysis.usStocks');
+    case 'hk':
+      return t('analysis.hkStocks');
+    case 'cn_a':
+      return t('analysis.cnAStocks');
+    default:
+      return fallback;
+  }
+}
+
+function sectionLabel(key: string): string {
+  switch (key) {
+    case 'market_report':
+      return t('runs.section.market');
+    case 'sentiment_report':
+      return t('runs.section.sentiment');
+    case 'news_report':
+      return t('runs.section.news');
+    case 'fundamentals_report':
+      return t('runs.section.fundamentals');
+    case 'investment_plan':
+      return t('runs.section.research');
+    case 'trader_investment_plan':
+      return t('runs.section.trading');
+    case 'final_trade_decision':
+      return t('runs.section.decision');
+    default:
+      return key.replaceAll('_', ' ');
+  }
+}
 </script>

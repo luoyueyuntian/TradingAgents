@@ -116,6 +116,38 @@ class AnalysisResponse(BaseModel):
     date: str
 
 
+class StockMarketInfo(BaseModel):
+    """One supported stock market for the analysis selector."""
+
+    value: str
+    label: str
+
+
+class StockCatalogItemResponse(BaseModel):
+    """One stock catalog row returned to the frontend selector."""
+
+    market: str
+    symbol: str
+    name: str
+    exchange: str
+    label: str
+
+
+class StockCatalogRefreshRequest(BaseModel):
+    """Request body for refreshing the stock catalog cache."""
+
+    force: bool = True
+
+
+class StockCatalogRefreshResponse(BaseModel):
+    """Refresh status for the persisted stock catalog."""
+
+    updated_on: str | None = None
+    refreshed: bool = False
+    counts: dict[str, int] = Field(default_factory=dict)
+    errors: dict[str, str] = Field(default_factory=dict)
+
+
 class BatchAnalysisRequest(BaseModel):
     """Request body for creating multiple queued analysis runs."""
 
