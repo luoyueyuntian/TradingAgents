@@ -133,6 +133,8 @@ def apply_settings_payload(config: dict, settings: dict) -> dict:
         "max_risk_discuss_rounds": "max_risk_discuss_rounds",
         "max_recur_limit": "max_recur_limit",
         "checkpoint_enabled": "checkpoint_enabled",
+        "benchmark_ticker": "benchmark_ticker",
+        "memory_log_max_entries": "memory_log_max_entries",
     }
     for settings_key, config_key in _ANALYSIS_TO_CONFIG.items():
         val = analysis.get(settings_key)
@@ -150,7 +152,12 @@ def apply_settings_payload(config: dict, settings: dict) -> dict:
         config["data_vendors"].update(data["data_vendors"])
     if "tool_vendors" in data and isinstance(config.get("tool_vendors"), dict):
         config["tool_vendors"].update(data["tool_vendors"])
-    for key in ("news_article_limit", "global_news_article_limit", "global_news_lookback_days"):
+    for key in (
+        "news_article_limit",
+        "global_news_article_limit",
+        "global_news_lookback_days",
+        "global_news_queries",
+    ):
         val = data.get(key)
         if val is not None:
             config[key] = val

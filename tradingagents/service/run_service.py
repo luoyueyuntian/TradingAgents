@@ -15,6 +15,7 @@ from typing import Any
 from tradingagents.default_config import apply_settings_payload
 from tradingagents.graph.event_processor import build_run_config
 from tradingagents.graph.trading_graph import TradingAgentsGraph
+from tradingagents.service.execution_lock import PROCESS_EXECUTION_LOCK
 from tradingagents.service.models import RunCancelledError, RunState, TERMINAL_RUN_STATUSES
 from tradingagents.service.state_backend import StateBackendAdapter, get_state_backend_adapter
 from tradingagents.service.runtime_context import RuntimeContext, build_runtime_context
@@ -22,7 +23,6 @@ from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import export_api_keys_to_env, load_settings
 
 logger = logging.getLogger(__name__)
-
 
 class RunService:
     """Owns run state, local queue/worker execution, and persistence."""
@@ -402,62 +402,63 @@ class RunService:
     def _run_analysis_thread(self, run: RunState) -> None:
         """Execute the analysis in a background thread."""
         try:
-            self.apply_tenant_api_keys()
-            run.status = "running"
-            run.started_at = datetime.datetime.now().isoformat()
-            run.queue_sequence = None
-            self._put_event(run, {"event": "progress", "data": {"message": f"Starting analysis for {run.ticker} on {run.date}"}})
-            self.save_runs_index()
-            if run.cancel_requested.is_set():
-                raise RunCancelledError()
+            with PROCESS_EXECUTION_LOCK:
+                self.apply_tenant_api_keys()
+                run.status = "running"
+                run.started_at = datetime.datetime.now().isoformat()
+                run.queue_sequence = None
+                self._put_event(run, {"event": "progress", "data": {"message": f"Starting analysis for {run.ticker} on {run.date}"}})
+                self.save_runs_index()
+                if run.cancel_requested.is_set():
+                    raise RunCancelledError()
 
-            graph = self._graph_factory(
-                run.selected_analysts,
-                config=run.config,
-                debug=False,
-            )
+                graph = self._graph_factory(
+                    run.selected_analysts,
+                    config=run.config,
+                    debug=False,
+                )
 
-            stream = graph.stream_propagate(
-                run.ticker,
-                run.date,
-                asset_type=run.asset_type,
-            )
-            try:
-                for chunk in stream:
-                    self._process_chunk(run, chunk)
-                    if run.cancel_requested.is_set():
-                        raise RunCancelledError()
-            finally:
-                close = getattr(stream, "close", None)
-                if callable(close):
-                    close()
+                stream = graph.stream_propagate(
+                    run.ticker,
+                    run.date,
+                    asset_type=run.asset_type,
+                )
+                try:
+                    for chunk in stream:
+                        self._process_chunk(run, chunk)
+                        if run.cancel_requested.is_set():
+                            raise RunCancelledError()
+                finally:
+                    close = getattr(stream, "close", None)
+                    if callable(close):
+                        close()
 
-            final_state = graph.curr_state or {}
-            run.final_state = final_state
-            run.signal = graph.last_signal or graph.process_signal(
-                final_state.get("final_trade_decision", "")
-            )
-            if graph.last_state_log_path is not None:
-                run.state_log_path = str(graph.last_state_log_path)
-            if final_state:
-                report_path = graph.save_reports(final_state, run.ticker)
-                run.report_path = str(report_path)
+                final_state = graph.curr_state or {}
+                run.final_state = final_state
+                run.signal = graph.last_signal or graph.process_signal(
+                    final_state.get("final_trade_decision", "")
+                )
+                if graph.last_state_log_path is not None:
+                    run.state_log_path = str(graph.last_state_log_path)
+                if final_state:
+                    report_path = graph.save_reports(final_state, run.ticker)
+                    run.report_path = str(report_path)
 
-            for section in run.report_sections:
-                if section in final_state and final_state[section]:
-                    run.report_sections[section] = final_state[section]
-            self._update_final_report(run)
+                for section in run.report_sections:
+                    if section in final_state and final_state[section]:
+                        run.report_sections[section] = final_state[section]
+                self._update_final_report(run)
 
-            run._chunk_processor.finalize()
-            for agent in run.agents:
-                run.agents[agent] = "completed"
+                run._chunk_processor.finalize()
+                for agent in run.agents:
+                    run.agents[agent] = "completed"
 
-            run.status = "completed"
-            run.completed_at = datetime.datetime.now().isoformat()
-            terminal_event = self.build_terminal_event(run)
-            if terminal_event is not None:
-                self._put_event(run, terminal_event)
-            self._persist_run(run)
+                run.status = "completed"
+                run.completed_at = datetime.datetime.now().isoformat()
+                terminal_event = self.build_terminal_event(run)
+                if terminal_event is not None:
+                    self._put_event(run, terminal_event)
+                self._persist_run(run)
 
         except RunCancelledError:
             logger.info("Analysis cancelled for run %s", run.run_id)
@@ -620,6 +621,16 @@ class RunService:
             overrides["deep_think_llm"] = req.deep_think_model
         if "output_language" in provided_fields:
             overrides["output_language"] = req.output_language
+        if "market_profile" in provided_fields:
+            overrides["market_profile"] = req.market_profile
+        if "max_risk_discuss_rounds" in provided_fields:
+            overrides["max_risk_discuss_rounds"] = req.max_risk_discuss_rounds
+        if "max_recur_limit" in provided_fields:
+            overrides["max_recur_limit"] = req.max_recur_limit
+        if "checkpoint_enabled" in provided_fields:
+            overrides["checkpoint_enabled"] = req.checkpoint_enabled
+        if "benchmark_ticker" in provided_fields:
+            overrides["benchmark_ticker"] = req.benchmark_ticker
         if "backend_url" in provided_fields:
             overrides["backend_url"] = req.backend_url
         if "temperature" in provided_fields:

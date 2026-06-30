@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import threading
+import time
 
 from web.schemas import AnalysisRequest
 
@@ -56,6 +58,108 @@ def test_run_service_apply_tenant_api_keys_uses_tenant_settings(monkeypatch, tmp
 
     assert captured["settings"]["api_keys"]["openai"] == "tenant-key"
     assert captured["overwrite"] is True
+
+
+def test_run_service_serializes_run_execution_across_tenants(monkeypatch, tmp_path):
+    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.service.models import RunState
+    from tradingagents.service.run_service import RunService
+    from tradingagents.service.runtime_context import build_runtime_context
+
+    release_first = threading.Event()
+    first_stream_started = threading.Event()
+    second_apply_started = threading.Event()
+    apply_order: list[str] = []
+
+    class FakeGraph:
+        def __init__(self, tenant_id: str):
+            self.curr_state = {}
+            self.last_signal = "Hold"
+            self.last_state_log_path = None
+            self._tenant_id = tenant_id
+
+        def stream_propagate(self, ticker, date, asset_type="stock"):
+            if self._tenant_id == "tenant-a":
+                first_stream_started.set()
+                release_first.wait(timeout=2)
+            yield from ()
+
+        def process_signal(self, decision):
+            return "Hold"
+
+        def save_reports(self, final_state, ticker):
+            target = tmp_path / f"{self._tenant_id}-report.md"
+            target.write_text("# Report\n", encoding="utf-8")
+            return target
+
+    service_a = RunService(
+        tenant_id="tenant-a",
+        runs_index_path=tmp_path / "tenant-a-runs.json",
+        run_events_dir=tmp_path / "tenant-a-events",
+        runs_root_dir=tmp_path / "tenant-a-runs",
+    )
+    service_b = RunService(
+        tenant_id="tenant-b",
+        runs_index_path=tmp_path / "tenant-b-runs.json",
+        run_events_dir=tmp_path / "tenant-b-events",
+        runs_root_dir=tmp_path / "tenant-b-runs",
+    )
+
+    monkeypatch.setattr(service_a, "_graph_factory", lambda *args, **kwargs: FakeGraph("tenant-a"))
+    monkeypatch.setattr(service_b, "_graph_factory", lambda *args, **kwargs: FakeGraph("tenant-b"))
+    monkeypatch.setattr(service_a, "_persist_run", lambda run: None)
+    monkeypatch.setattr(service_b, "_persist_run", lambda run: None)
+    monkeypatch.setattr(service_a, "prune_terminal_runs", lambda *args, **kwargs: None)
+    monkeypatch.setattr(service_b, "prune_terminal_runs", lambda *args, **kwargs: None)
+
+    def _mark_apply(service: RunService):
+        def _inner():
+            apply_order.append(service._tenant_id or "default")
+            if service._tenant_id == "tenant-b":
+                second_apply_started.set()
+        return _inner
+
+    monkeypatch.setattr(service_a, "apply_tenant_api_keys", _mark_apply(service_a))
+    monkeypatch.setattr(service_b, "apply_tenant_api_keys", _mark_apply(service_b))
+
+    run_a = RunState(
+        run_id="run-a",
+        ticker="AAPL",
+        date="2026-01-15",
+        asset_type="stock",
+        config=DEFAULT_CONFIG.copy(),
+        selected_analysts=["market"],
+        runtime_context=build_runtime_context("run-a", base_dir=tmp_path / "tenant-a-runs"),
+        status="running",
+    )
+    run_b = RunState(
+        run_id="run-b",
+        ticker="MSFT",
+        date="2026-01-15",
+        asset_type="stock",
+        config=DEFAULT_CONFIG.copy(),
+        selected_analysts=["market"],
+        runtime_context=build_runtime_context("run-b", base_dir=tmp_path / "tenant-b-runs"),
+        status="running",
+    )
+
+    thread_a = threading.Thread(target=service_a._run_analysis_thread, args=(run_a,))
+    thread_b = threading.Thread(target=service_b._run_analysis_thread, args=(run_b,))
+
+    thread_a.start()
+    assert first_stream_started.wait(timeout=1), "first run never started streaming"
+
+    thread_b.start()
+    time.sleep(0.1)
+    assert second_apply_started.is_set() is False
+
+    release_first.set()
+    thread_a.join(timeout=2)
+    thread_b.join(timeout=2)
+
+    assert apply_order == ["tenant-a", "tenant-b"]
+    assert run_a.status == "completed"
+    assert run_b.status == "completed"
 
 
 def test_run_service_uses_injected_state_backend(tmp_path):
