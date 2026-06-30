@@ -20,6 +20,8 @@ pytest tests/test_signal_processing.py  # single test file
 
 # Lint
 ruff check .
+python -m pyright --level warning --pythonpath "$(python -c 'import sys; print(sys.executable)')"
+cd frontend && npm run check
 
 # Run web server
 uvicorn web.app:app --reload --host 0.0.0.0 --port 8000

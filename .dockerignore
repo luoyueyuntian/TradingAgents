@@ -7,6 +7,7 @@
 .DS_Store
 __pycache__
 *.egg-info
+frontend/node_modules
 build
 dist
 results

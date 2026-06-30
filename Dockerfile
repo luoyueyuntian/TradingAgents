@@ -1,3 +1,13 @@
+FROM node:22-slim AS frontend-builder
+
+WORKDIR /build/frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend ./
+RUN npm run build
+
 FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -16,6 +26,7 @@ RUN mkdir -p tradingagents && touch tradingagents/__init__.py \
 
 # 2. Copy source code and install package (no deps, just the code)
 COPY . .
+COPY --from=frontend-builder /build/web/static/spa ./web/static/spa
 RUN pip install --no-cache-dir --no-deps ".[web]"
 
 FROM python:3.12-slim

@@ -24,6 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pyright>=1.1",
     "ruff>=0.15",
     "pytest>=8.0",
     "pytest-subtests>=0.13",
@@ -43,7 +44,7 @@ web = [
 include = ["tradingagents*", "web*"]
 
 [tool.setuptools.package-data]
-web = ["static/*", "templates/*"]
+web = ["static/*", "static/icons/*", "static/spa/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -77,3 +78,33 @@ ignore = ["E501"]
 # Keep multiple aliased names from one module in a single combined import block
 # (e.g. the vendor re-exports in interface.py) instead of one statement per name.
 combine-as-imports = true
+
+[tool.pyright]
+include = ["tradingagents", "web", "cli", "scripts", "tests"]
+exclude = [
+    ".venv",
+    ".pytest_cache",
+    ".ruff_cache",
+    "build",
+    "dist",
+    "results",
+    "tradingagents.egg-info",
+    "tradingagents/llm_clients/bedrock_client.py",
+    "web/static/spa",
+    "worklog",
+]
+pythonVersion = "3.10"
+typeCheckingMode = "basic"
+analyzeUnannotatedFunctions = false
+reportMissingTypeStubs = false
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportGeneralTypeIssues = "none"
+reportIndexIssue = "none"
+reportOperatorIssue = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalOperand = "none"
+reportOptionalSubscript = "none"
+reportReturnType = "none"
+reportSelfClsParameterName = "none"
