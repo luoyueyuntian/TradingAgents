@@ -8,9 +8,8 @@ from fastapi.testclient import TestClient
 
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.service.runtime_context import build_runtime_context
+from web import automation as web_automation, routes as web_routes
 from web.app import app
-from web import automation as web_automation
-from web import routes as web_routes
 from web.runner import RunState
 
 
@@ -233,8 +232,8 @@ def test_run_history_export_csv_returns_filtered_rows(monkeypatch):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
     assert "tradingagents-run-history-default-" in response.headers["content-disposition"]
-    assert "run_id,ticker,date,status,asset_type,llm_provider,created_at,completed_at,queue_position,signal,error" in response.text
-    assert "btc-google,BTC-USD,2026-01-15,failed,crypto,google,2026-01-15T00:00:00" in response.text
+    assert "run_id,ticker,date,status,archived,asset_type,llm_provider,created_at,completed_at,queue_position,signal,error" in response.text
+    assert "btc-google,BTC-USD,2026-01-15,failed,False,crypto,google,2026-01-15T00:00:00" in response.text
     assert "nvda-openai" not in response.text
 
 
@@ -635,7 +634,7 @@ def test_watchlist_post_adds_normalized_ticker_once(monkeypatch, tmp_path):
     assert response.status_code == 201
     assert response.json()["ticker"] == "NVDA"
     assert response_dup.status_code == 201
-    assert state["watchlist"]["tickers"] == ["AAPL", "NVDA"]
+    assert [item["ticker"] for item in state["watchlist"]["tickers"]] == ["AAPL", "NVDA"]
 
 
 def test_watchlist_delete_removes_saved_ticker(monkeypatch, tmp_path):
@@ -655,7 +654,7 @@ def test_watchlist_delete_removes_saved_ticker(monkeypatch, tmp_path):
 
     assert response.status_code == 200
     assert response.json() == {"deleted": 1}
-    assert state["watchlist"]["tickers"] == ["AAPL"]
+    assert [item["ticker"] for item in state["watchlist"]["tickers"]] == ["AAPL"]
 
 
 def test_watchlist_import_persists_unique_tickers_and_reports_duplicates(monkeypatch, tmp_path):
@@ -801,7 +800,7 @@ def test_run_chat_404s_when_run_missing(monkeypatch):
 
     monkeypatch.setattr(web_routes, "get_run", lambda run_id, tenant_id=None: None)
 
-    response = client.post(f"/api/runs/missing/chat", json={"question": "Hello"})
+    response = client.post("/api/runs/missing/chat", json={"question": "Hello"})
 
     assert response.status_code == 404
 
@@ -1087,6 +1086,7 @@ def test_workspace_dashboard_returns_focus_buckets(monkeypatch, tmp_path):
 
     monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant.json")
     monkeypatch.setattr(web_routes, "load_settings", lambda path=None: state)
+    monkeypatch.setattr(web_automation, "load_settings", lambda path=None: state)
 
     nvda = _make_run("nvda")
     nvda.ticker = "NVDA"
@@ -1118,7 +1118,7 @@ def test_workspace_dashboard_returns_focus_buckets(monkeypatch, tmp_path):
     assert payload["summary"]["automation_count"] == 1
     assert payload["summary"]["saved_shortcut_count"] == 2
     assert payload["visible_sections"] == ["bullish_focus", "active_alerts", "pinned_actions", "pending_reviews", "automations", "saved_shortcuts"]
-    assert payload["section_order"] == ["bullish_focus", "active_alerts", "pinned_actions", "pending_reviews", "automations", "saved_shortcuts", "needs_attention", "portfolio_focus", "operational_runs"]
+    assert payload["section_order"] == ["bullish_focus", "needs_attention", "active_alerts", "portfolio_focus", "pinned_actions", "pending_reviews", "automations", "saved_shortcuts", "operational_runs"]
     assert payload["bullish_focus"][0]["ticker"] == "NVDA"
     assert payload["needs_attention"][0]["ticker"] == "AAPL"
     assert payload["active_alerts"][0]["ticker"] == "NVDA"
@@ -1748,7 +1748,17 @@ def test_workspace_export_json_returns_workspace_snapshot(monkeypatch, tmp_path)
     assert payload["saved_views"][0]["name"] == "Morning Focus"
     assert payload["annotations"][0]["label"] == "High conviction"
     assert payload["workspace_settings"]["default_home_view"] == "saved-view"
-    assert payload["dashboard_preferences"]["section_order"] == ["portfolio_focus", "bullish_focus"]
+    assert payload["dashboard_preferences"]["section_order"] == [
+        "portfolio_focus",
+        "bullish_focus",
+        "needs_attention",
+        "active_alerts",
+        "pinned_actions",
+        "pending_reviews",
+        "automations",
+        "saved_shortcuts",
+        "operational_runs",
+    ]
     assert payload["workspace_members"][0]["name"] == "Alice"
     assert payload["run_comments"][0]["id"] == "comment-a"
     assert payload["run_reviews"][0]["reviewer"] == "Alice"
@@ -2432,6 +2442,7 @@ def test_workspace_timeline_returns_saved_events_in_reverse_chronological_order(
     run.date = "2026-01-16"
     run.created_at = "2026-01-16T09:00:00"
     monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [run])
+    monkeypatch.setattr(web_routes, "get_run", lambda run_id, tenant_id=None: run if run_id == "run-a" else None)
     monkeypatch.setattr(web_routes, "get_queue_position", lambda run_id, tenant_id=None: None)
 
     response = client.get("/api/timeline")
@@ -3184,7 +3195,7 @@ def test_workspace_search_can_return_search_view_member_and_share_kinds(monkeypa
     state = {
         "saved_searches": {"items": [{"id": "search-a", "name": "Alpha Search", "query": "alpha thesis", "kinds": ["run"], "created_at": "2026-01-10T09:00:00"}]},
         "saved_views": {"items": [{"id": "view-a", "name": "Alpha View", "url": "/?view=briefing", "visible_panels": ["dashboard-panel"], "created_at": "2026-01-10T10:00:00"}]},
-        "workspace_members": {"items": [{"id": "member-a", "name": "Alice", "role": "analyst", "created_at": "2026-01-10T11:00:00"}]},
+        "workspace_members": {"items": [{"id": "member-a", "name": "Alice", "role": "alpha analyst", "created_at": "2026-01-10T11:00:00"}]},
         "public_run_shares": {"items": [{"share_id": "share-a", "tenant_id": None, "run_id": "run-a", "ticker": "ALPHA", "date": "2026-01-15", "asset_type": "stock", "status": "completed", "created_at": "2026-01-10T12:00:00", "signal": "Buy", "view_count": 0, "last_viewed_at": None, "expires_at": None, "config_summary": {}, "report_sections": {}, "current_report": None, "final_report": "Report", "annotation": None, "review": None}]},
     }
 

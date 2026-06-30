@@ -52,13 +52,15 @@
 
 <div align="center">
 
-🚀 [TradingAgents](#tradingagents-framework) | ⚡ [Installation & CLI](#installation-and-cli) | 🎬 [Demo](https://www.youtube.com/watch?v=90gr5lwjIho) | 📦 [Package Usage](#tradingagents-package) | 🤝 [Contributing](#contributing) | 📄 [Citation](#citation)
+🚀 [TradingAgents](#tradingagents-framework) | 🖥️ [Web UI](#web-ui) | ⚡ [Installation](#installation-and-web-ui) | 📦 [Python Usage](#tradingagents-package) | 🤝 [Contributing](#contributing) | 📄 [Citation](#citation)
 
 </div>
 
 ## TradingAgents Framework
 
 TradingAgents is a multi-agent trading framework that mirrors the dynamics of real-world trading firms. By deploying specialized LLM-powered agents: from fundamental analysts, sentiment experts, and technical analysts, to trader, risk management team, the platform collaboratively evaluates market conditions and informs trading decisions. Moreover, these agents engage in dynamic discussions to pinpoint the optimal strategy.
+
+The current application is delivered primarily as a FastAPI web workspace. It keeps the agent graph reusable as a Python package while adding a browser-based workflow for configuration, queued analyses, saved runs, watchlists, alerts, portfolios, collaboration notes, public read-only shares, and tenant-scoped runtime maintenance.
 
 <p align="center">
   <img src="assets/schema.png" style="width: 100%; height: auto;">
@@ -100,7 +102,7 @@ Our framework decomposes complex trading tasks into specialized roles.
   <img src="assets/risk.png" width="70%" style="display: inline-block; margin: 0 2%;">
 </p>
 
-## Installation and CLI
+## Installation and Web UI
 
 ### Installation
 
@@ -116,7 +118,12 @@ conda create -n tradingagents python=3.12
 conda activate tradingagents
 ```
 
-Install the package and its dependencies:
+Install the web application and core package:
+```bash
+pip install ".[web]"
+```
+
+For direct Python/package usage without the browser UI, the core package can be installed on its own:
 ```bash
 pip install .
 ```
@@ -166,11 +173,15 @@ pip install .  # akshare is a core dep today; planned to become optional
 
 ### Docker
 
-Alternatively, run with Docker:
+The quickest way to run the Web UI is Docker:
 ```bash
 docker compose up -d              # start web UI at http://localhost:8000
 ./deploy.sh                       # or use the deploy script (rebuild + restart)
 ```
+
+Docker Compose publishes the web UI on `127.0.0.1:8000` by default. Before
+binding it to a public interface or reverse proxy, set `TRADINGAGENTS_WEB_API_TOKEN`
+and configure `TRADINGAGENTS_WEB_CORS_ORIGINS` for the browser origins you trust.
 
 To split the API and worker into separate processes:
 ```bash
@@ -220,7 +231,7 @@ For Azure OpenAI, copy `.env.enterprise.example` to `.env.enterprise` and fill i
 
 For AWS Bedrock, install the extra with `pip install ".[bedrock]"`, set `llm_provider: "bedrock"`, configure AWS credentials (environment variables, `~/.aws/credentials`, or an IAM role) and `AWS_DEFAULT_REGION`, and use a Bedrock model ID, e.g. `us.anthropic.claude-opus-4-8-v1:0`.
 
-For local models, configure Ollama with `llm_provider: "ollama"`. The default endpoint is `http://localhost:11434/v1`; set `OLLAMA_BASE_URL` to point at a remote `ollama-serve`. Pull models with `ollama pull <name>`, and pick "Custom model ID" in the CLI for any model not listed by default.
+For local models, configure Ollama with `llm_provider: "ollama"`. The default endpoint is `http://localhost:11434/v1`; set `OLLAMA_BASE_URL` to point at a remote `ollama-serve`. Pull models with `ollama pull <name>`, and pick "Custom model ID" in the Web UI for any model not listed by default.
 
 For any other OpenAI-compatible server (vLLM, LM Studio, llama.cpp, or a custom relay), use `llm_provider: "openai_compatible"` and set the endpoint via `backend_url` (or `TRADINGAGENTS_LLM_BACKEND_URL`), e.g. `http://localhost:8000/v1` for vLLM or `http://localhost:1234/v1` for LM Studio. The model is whatever your server serves. No key is needed for local servers; set `OPENAI_COMPATIBLE_API_KEY` when the endpoint requires one.
 
@@ -231,9 +242,18 @@ cp .env.example .env
 
 ### Web UI
 
-Start the web server:
+The Web UI is the primary product surface. It serves the browser workspace, REST API, static assets, PWA manifest, and Server-Sent Events stream from the same FastAPI app.
+
+Start the web server after installing `.[web]`:
 ```bash
 uvicorn web.app:app --host 0.0.0.0 --port 8000
+```
+
+The web API token is optional for local-only use, but strongly recommended
+whenever the server is reachable from another machine:
+```bash
+export TRADINGAGENTS_WEB_API_TOKEN="choose-a-long-random-token"
+export TRADINGAGENTS_WEB_CORS_ORIGINS="http://localhost:8000"
 ```
 
 To run the API without executing analyses in-process, start it with:
@@ -338,19 +358,7 @@ TradingAgents works with any market Yahoo Finance covers, using the exchange-suf
 - China A-shares: Shanghai `.SS`, Shenzhen `.SZ` (e.g. `600519.SS` for Kweichow Moutai)
 - Crypto: `BTC-USD`, `ETH-USD`
 
-<p align="center">
-  <img src="assets/cli/cli_init.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-An interface will appear showing results as they load, letting you track the agent's progress as it runs.
-
-<p align="center">
-  <img src="assets/cli/cli_news.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
-
-<p align="center">
-  <img src="assets/cli/cli_transaction.png" width="100%" style="display: inline-block; margin: 0 2%;">
-</p>
+In the Web UI, enter the ticker in the Analysis Configuration panel. The workspace infers the asset type, stores completed runs, and lets you reopen the ticker through Ticker Home, history, saved views, dashboard widgets, and shareable deep links.
 
 ## TradingAgents Package
 
@@ -443,11 +451,6 @@ For the Web runtime, checkpoints are tenant-scoped and shared across runs for th
 - named tenant: `~/.tradingagents/web/tenants/<TENANT_ID>/cache/checkpoints/<TICKER>.db`
 
 Enable checkpoint resume from the Settings dialog or the Advanced Run Overrides panel. Use the Runtime Maintenance panel to inspect or clear tenant-scoped checkpoint files.
-
-```bash
-tradingagents analyze --checkpoint           # enable for this run
-tradingagents analyze --clear-checkpoints    # reset before running
-```
 
 ```python
 config = DEFAULT_CONFIG.copy()

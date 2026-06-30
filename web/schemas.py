@@ -1289,20 +1289,6 @@ class AnalysisPresetUpdate(BaseModel):
         return trimmed
 
 
-class AnalysisPresetUpdate(BaseModel):
-    """Payload for renaming one analysis preset."""
-
-    name: str = Field(..., min_length=1)
-
-    @field_validator("name")
-    @classmethod
-    def _strip_name(cls, value: str) -> str:
-        trimmed = value.strip()
-        if not trimmed:
-            raise ValueError("name must not be blank")
-        return trimmed
-
-
 class ShareLink(BaseModel):
     """Relative shareable link that restores saved workspace context."""
 
@@ -1329,6 +1315,40 @@ class WorkspaceExportSummary(BaseModel):
     member_count: int = 0
     comment_count: int = 0
     review_count: int = 0
+
+
+class WorkspaceSettings(BaseModel):
+    default_home_view: str = "auto"
+    default_saved_view_id: str | None = None
+
+    @field_validator("default_home_view")
+    @classmethod
+    def _normalize_default_home_view(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        allowed = {
+            "auto",
+            "dashboard",
+            "member-workspace",
+            "notifications",
+            "briefing",
+            "analytics",
+            "screener",
+            "automations",
+            "reviews",
+            "search",
+            "saved-view",
+        }
+        if normalized not in allowed:
+            raise ValueError("default_home_view must be one of auto, dashboard, member-workspace, notifications, briefing, analytics, screener, automations, reviews, search, saved-view")
+        return normalized
+
+    @field_validator("default_saved_view_id")
+    @classmethod
+    def _strip_default_saved_view_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        return trimmed or None
 
 
 class WorkspaceSearchResult(BaseModel):
@@ -2069,40 +2089,6 @@ class AnalysisSettings(BaseModel):
     checkpoint_enabled: bool = False
     benchmark_ticker: str | None = None
     memory_log_max_entries: int | None = None
-
-
-class WorkspaceSettings(BaseModel):
-    default_home_view: str = "auto"
-    default_saved_view_id: str | None = None
-
-    @field_validator("default_home_view")
-    @classmethod
-    def _normalize_default_home_view(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        allowed = {
-            "auto",
-            "dashboard",
-            "member-workspace",
-            "notifications",
-            "briefing",
-            "analytics",
-            "screener",
-            "automations",
-            "reviews",
-            "search",
-            "saved-view",
-        }
-        if normalized not in allowed:
-            raise ValueError("default_home_view must be one of auto, dashboard, member-workspace, notifications, briefing, analytics, screener, automations, reviews, search, saved-view")
-        return normalized
-
-    @field_validator("default_saved_view_id")
-    @classmethod
-    def _strip_default_saved_view_id(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        trimmed = value.strip()
-        return trimmed or None
 
 
 class ToolVendorSettings(BaseModel):
