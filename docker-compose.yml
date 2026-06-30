@@ -5,12 +5,14 @@ services:
       - TRADINGAGENTS_WEB_RUN_MODE=${TRADINGAGENTS_WEB_RUN_MODE:-local_thread}
       - TRADINGAGENTS_WEB_STATE_BACKEND=${TRADINGAGENTS_WEB_STATE_BACKEND:-file}
       - TRADINGAGENTS_WEB_SQLITE_PATH=${TRADINGAGENTS_WEB_SQLITE_PATH:-/home/appuser/.tradingagents/web/state.db}
+      - TRADINGAGENTS_WEB_API_TOKEN=${TRADINGAGENTS_WEB_API_TOKEN:-}
+      - TRADINGAGENTS_WEB_CORS_ORIGINS=${TRADINGAGENTS_WEB_CORS_ORIGINS:-}
       - TRADINGAGENTS_LLM_PROVIDER=${TRADINGAGENTS_LLM_PROVIDER:-}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
     volumes:
       - tradingagents_data:/home/appuser/.tradingagents
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     tty: true
     stdin_open: true
 

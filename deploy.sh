@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
-# Deploy script: stop old containers, remove old images, build and start fresh.
+# Deploy script: build and start services while preserving hot Docker cache.
 # Usage:
 #   ./deploy.sh              # default (uses Docker cache for fast builds)
 #   ./deploy.sh --ollama     # with local Ollama service
 #   ./deploy.sh --external-worker  # API + worker split
 #   ./deploy.sh --no-cache   # force full rebuild (when dependencies change)
-#   ./deploy.sh --ollama --external-worker --no-cache
+#   ./deploy.sh --deep-clean # also prune unused Docker build cache after deploy
+#   ./deploy.sh --ollama --external-worker --no-cache --deep-clean
+#
+# Optional:
+#   TRADINGAGENTS_DOCKER_BUILD_CACHE_MAX_USED_SPACE=5GB
 
 set -euo pipefail
 
 COMPOSE_ARGS=()
 ENV_VARS=()
 BUILD_ARGS=()
+PRUNE_BUILD_CACHE=0
+BUILD_CACHE_MAX_USED_SPACE="${TRADINGAGENTS_DOCKER_BUILD_CACHE_MAX_USED_SPACE:-5GB}"
 USE_OLLAMA=0
 USE_EXTERNAL_WORKER=0
 for arg in "$@"; do
@@ -30,6 +36,9 @@ for arg in "$@"; do
             ;;
         --no-cache)
             BUILD_ARGS+=(--no-cache)
+            ;;
+        --deep-clean|--prune-build-cache)
+            PRUNE_BUILD_CACHE=1
             ;;
         *)           echo "Unknown arg: $arg"; exit 1 ;;
     esac
@@ -57,25 +66,28 @@ else
     echo ">> Deploying default tradingagents service"
 fi
 
-# 1. Stop and remove running containers
-echo ">> Stopping running containers..."
-run_compose down --remove-orphans
-
-# 2. Remove old images
-echo ">> Removing old images..."
-run_compose down --rmi local 2>/dev/null || true
-
-# 3. Build new images
-echo ">> Building new images..."
+# Build and start services. The default path keeps existing containers alive
+# until the replacement image is ready and preserves Docker's build cache.
 if ((${#BUILD_ARGS[@]})); then
+    echo ">> Building new images without cache..."
     run_compose build "${BUILD_ARGS[@]}"
+    echo ">> Starting services..."
+    run_compose up -d --no-build --remove-orphans
 else
-    run_compose build
+    echo ">> Building and starting services..."
+    run_compose up -d --build --remove-orphans
 fi
 
-# 4. Start services in detached mode
-echo ">> Starting services..."
-run_compose up -d
+echo ">> Pruning dangling Docker images..."
+docker image prune -f
+
+if ((PRUNE_BUILD_CACHE)); then
+    echo ">> Pruning unused Docker build cache..."
+    docker builder prune -af
+else
+    echo ">> Keeping Docker build cache under ${BUILD_CACHE_MAX_USED_SPACE}..."
+    docker builder prune -f --max-used-space "$BUILD_CACHE_MAX_USED_SPACE"
+fi
 
 echo ">> Deploy complete."
 run_compose ps

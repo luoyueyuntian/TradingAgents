@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import pytest
 
-from tradingagents.service.runtime_context import build_runtime_context
 from tradingagents.service import web_state as web_state_module
+from tradingagents.service.runtime_context import build_runtime_context
 
 
 def test_get_web_state_dir_defaults_under_home(monkeypatch, tmp_path):
@@ -42,6 +42,27 @@ def test_get_web_state_dir_accepts_explicit_tenant_override(monkeypatch, tmp_pat
     state_dir = web_state_module.get_web_state_dir("header-tenant")
 
     assert state_dir == tmp_path / ".tradingagents" / "web" / "tenants" / "header-tenant"
+
+
+@pytest.mark.parametrize(
+    "tenant_id",
+    ["../escape", "..", ".", "tenant/a", "tenant\\a", "tenant a", "", "a" * 65],
+)
+def test_get_web_state_dir_rejects_unsafe_tenant_names(monkeypatch, tmp_path, tenant_id):
+    monkeypatch.setattr(web_state_module.Path, "home", lambda: tmp_path)
+
+    with pytest.raises(ValueError):
+        web_state_module.get_web_state_dir(tenant_id)
+
+
+def test_get_web_state_dir_resolves_tenant_under_tenant_root(monkeypatch, tmp_path):
+    monkeypatch.setattr(web_state_module.Path, "home", lambda: tmp_path)
+
+    state_dir = web_state_module.get_web_state_dir("tenant.a-1")
+
+    expected_root = tmp_path / ".tradingagents" / "web" / "tenants"
+    assert state_dir == expected_root / "tenant.a-1"
+    assert state_dir.resolve().is_relative_to(expected_root.resolve())
 
 
 def test_build_runtime_context_uses_configured_web_state_dir(monkeypatch, tmp_path):

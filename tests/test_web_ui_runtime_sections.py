@@ -18,7 +18,10 @@ def _function_body(source: str, name: str) -> str:
     match = re.search(rf"(?:async\s+)?function\s+{name}\b", source)
     assert match is not None, f"could not locate function {name}"
 
-    body_start = source.find("{", match.end())
+    signature_end = source.find(")", match.end())
+    assert signature_end != -1, f"could not locate closing signature for function {name}"
+
+    body_start = source.find("{", signature_end)
     assert body_start != -1, f"could not locate opening brace for function {name}"
 
     depth = 0
@@ -889,7 +892,7 @@ def test_artifact_library_functions_are_wired_from_form_history_and_route_state(
     assert "document.getElementById('refresh-artifacts-library')" in form_body
     assert "document.getElementById('artifacts-library-query')" in form_body
     assert "document.getElementById('export-artifacts-library-csv')" in downloads_body
-    assert "loadArtifactsLibrary();" in history_body
+    assert "void loadArtifactLibrary();" in history_body
     assert "params.get('artifacts_q')" in route_body
     assert "view === 'artifacts'" in route_body
     assert "params.set('artifacts_q'" in url_body
@@ -961,11 +964,9 @@ def test_dashboard_functions_are_wired_from_form_and_history_updates():
     history_body = _function_body(source, "loadRunHistory")
 
     assert "document.getElementById('refresh-dashboard')" in form_body
-    assert "dashboard-section-bullish_focus" in form_body
-    assert "dashboard-section-pending_reviews" in form_body
-    assert "dashboard-section-automations" in form_body
-    assert "dashboard-section-saved_shortcuts" in form_body
-    assert "dashboard-move-up-bullish_focus" in form_body
+    assert "DASHBOARD_SECTION_IDS.forEach" in form_body
+    assert "dashboard-section-${sectionId}" in form_body
+    assert "dashboard-move-up-${sectionId}" in form_body
     assert "moveDashboardSection" in form_body
     assert "reset-dashboard-layout" in form_body
     assert "document.getElementById('import-workspace-json')" in form_body
@@ -1253,7 +1254,8 @@ def test_public_run_share_functions_are_present():
 
     assert "/api/runs/" in share_body
     assert "/public-share" in share_body
-    assert "revoke-public-run-link" in revoke_body
+    assert "currentRunId" in revoke_body
+    assert "revoke-public-run-link" in sync_body
     assert "share-public-run-link" in sync_body
     assert "run.public_share" in sync_body
     assert "renderRunStatus(run)" in open_body
@@ -1308,11 +1310,12 @@ def test_workspace_search_functions_are_wired_from_form():
     form_body = _function_body(source, "initFormHandlers")
     init_body = _function_body(source, "initProviders")
     downloads_body = _function_body(source, "initDownloads")
+    search_action_body = _function_body(source, "runWorkspaceSearch")
     saved_searches_body = _function_body(source, "renderSavedSearches")
     render_body = _function_body(source, "renderWorkspaceSearchResults")
 
     assert "document.getElementById('run-search')" in form_body
-    assert "document.getElementById('workspace-search')" in form_body
+    assert "document.getElementById('workspace-search')" in search_action_body
     assert "document.getElementById('export-search-csv')" in downloads_body
     assert "search-kind-comment" in source
     assert "search-kind-review" in source
@@ -1333,7 +1336,8 @@ def test_workspace_search_functions_are_wired_from_form():
     assert "currentSavedViews.find" in render_body
     assert "currentWorkspaceMembers.find" in render_body
     assert "currentPublicShares.find" in render_body
-    assert "window.open(`/shared/" in render_body or "window.open(item.url" in render_body
+    assert "`/shared/${encodeURIComponent(result.entity_id)}`" in render_body
+    assert "window.open(url" in render_body
 
 
 def test_workspace_member_functions_are_wired_from_form_and_initialization():
@@ -1342,10 +1346,11 @@ def test_workspace_member_functions_are_wired_from_form_and_initialization():
     init_body = _function_body(source, "initProviders")
     populate_body = _function_body(source, "populateMemberFilterOptions")
     render_body = _function_body(source, "renderWorkspaceMembers")
+    save_body = _function_body(source, "saveWorkspaceMember")
 
     assert "document.getElementById('refresh-members')" in form_body
     assert "document.getElementById('save-member')" in form_body
-    assert "document.getElementById('member-role')" in form_body
+    assert "document.getElementById('member-role')" in save_body
     assert "void saveWorkspaceMember();" in form_body
     assert "await loadWorkspaceMembers();" in init_body
     assert "member.role" in populate_body
@@ -1374,6 +1379,7 @@ def test_current_member_context_is_applied_from_header_and_route_state():
     notifications_body = _function_body(source, "loadNotifications")
     default_home_body = _function_body(source, "openDefaultHomeSurface")
     settings_body = _function_body(source, "populateSettingsForm")
+    saved_view_options_body = _function_body(source, "populateDefaultSavedViewOptions")
 
     assert "params.get('member_id')" in route_body
     assert "view === 'member-workspace'" in route_body
@@ -1389,7 +1395,8 @@ def test_current_member_context_is_applied_from_header_and_route_state():
     assert "params.get('history_archived')" in route_body
     assert "params.get('review_reviewer')" in route_body
     assert "params.get('screener_scope')" in route_body
-    assert "!hasExplicitContext && getCurrentMemberId()" in route_body
+    assert "await openDefaultHomeSurface();" in route_body
+    assert "if (getCurrentMemberId())" in default_home_body
     assert "CURRENT_MEMBER_STORAGE_KEY" in init_body
     assert "member-workspace-panel').scrollIntoView" in init_body
     assert "params.set('member_id'" in url_body
@@ -1410,7 +1417,8 @@ def test_current_member_context_is_applied_from_header_and_route_state():
     assert "currentMemberScopedView()" in notifications_body
     assert "default_home_view" in default_home_body
     assert "default_saved_view_id" in default_home_body
-    assert "s-default-saved-view" in settings_body
+    assert "populateDefaultSavedViewOptions" in settings_body
+    assert "s-default-saved-view" in saved_view_options_body
 
 
 def test_saved_views_functions_are_wired_from_form_and_initialization():
@@ -1419,6 +1427,7 @@ def test_saved_views_functions_are_wired_from_form_and_initialization():
     init_body = _function_body(source, "initProviders")
     saved_views_body = _function_body(source, "renderSavedViews")
     card_body = _function_body(source, "renderSavedViewCard")
+    apply_body = _function_body(source, "applySavedViewItem")
 
     assert "document.getElementById('save-view')" in form_body
     assert "document.getElementById('refresh-views')" in form_body
@@ -1429,7 +1438,7 @@ def test_saved_views_functions_are_wired_from_form_and_initialization():
     assert "void saveCurrentView();" in form_body
     assert "await loadSavedViews();" in init_body
     assert "applyPanelVisibility" in init_body or "syncPanelVisibilityControls" in init_body
-    assert "CURRENT_MEMBER_STORAGE_KEY" in saved_views_body
+    assert "CURRENT_MEMBER_STORAGE_KEY" in apply_body
     assert "default_saved_view_id" in saved_views_body
     assert "setDefaultHomeSavedView" in saved_views_body
     assert "applySavedViewItem" in card_body
