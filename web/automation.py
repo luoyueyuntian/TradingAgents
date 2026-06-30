@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import threading
 import uuid
+from copy import deepcopy
 
 from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import load_settings, save_settings
@@ -95,9 +96,14 @@ def _load_automation_rules_raw(tenant_id: str | None = None) -> list[AutomationR
     return rules
 
 
+def _load_settings_for_update(settings_path) -> dict:
+    settings = load_settings(path=settings_path)
+    return deepcopy(settings) if isinstance(settings, dict) else {}
+
+
 def _save_automation_rules_raw(tenant_id: str | None, rules: list[AutomationRule]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("automations", {})
     if not isinstance(bucket, dict):
         bucket = {}

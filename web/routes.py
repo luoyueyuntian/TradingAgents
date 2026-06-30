@@ -8,17 +8,18 @@ import datetime
 import html
 import io
 import json
-from pathlib import Path
 import statistics
-from urllib.parse import urlencode
 import uuid
+from copy import deepcopy
+from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
-from tradingagents.llm_clients.model_catalog import MODEL_OPTIONS
 from tradingagents.llm_clients.factory import create_llm_client
+from tradingagents.llm_clients.model_catalog import MODEL_OPTIONS
 from tradingagents.service.artifact_store import build_run_artifacts, resolve_run_artifact
 from tradingagents.service.execution_lock import PROCESS_EXECUTION_LOCK
 from tradingagents.service.runtime_admin import (
@@ -26,21 +27,6 @@ from tradingagents.service.runtime_admin import (
     clear_runtime_memory_logs,
     list_runtime_checkpoints,
     list_runtime_memory_entries,
-)
-from .auth import get_auth_scope
-from .automation import (
-    create_automation_rule,
-    delete_automation_rule,
-    list_automation_rules,
-    process_due_automation_rules,
-    run_automation_rule_now,
-    update_automation_rule_enabled,
-)
-from .webhook_delivery import process_pending_webhook_notifications
-from .workspace_import import (
-    ParsedImportError,
-    parse_portfolio_import,
-    parse_watchlist_import,
 )
 from tradingagents.service.web_state import (
     get_web_settings_path,
@@ -54,6 +40,15 @@ from tradingagents.settings import (
     save_settings,
 )
 
+from .auth import get_auth_scope
+from .automation import (
+    create_automation_rule,
+    delete_automation_rule,
+    list_automation_rules,
+    process_due_automation_rules,
+    run_automation_rule_now,
+    update_automation_rule_enabled,
+)
 from .runner import (
     TERMINAL_RUN_STATUSES,
     build_terminal_event,
@@ -61,8 +56,8 @@ from .runner import (
     create_run,
     delete_run,
     get_execution_mode,
-    get_run,
     get_queue_position,
+    get_run,
     get_service_status,
     get_state_backend,
     get_state_location,
@@ -73,12 +68,7 @@ from .runner import (
     unsubscribe_run_events,
 )
 from .schemas import (
-    AnalysisRequest,
-    AnalysisResponse,
-    BatchAnalysisRequest,
-    BatchAnalysisResponse,
-    RunBulkAction,
-    RunBulkActionResult,
+    ActionBoardResponse,
     AlertCenterResponse,
     AlertHit,
     AlertRule,
@@ -86,110 +76,120 @@ from .schemas import (
     AnalysisPreset,
     AnalysisPresetCreate,
     AnalysisPresetUpdate,
-    AnalysisPresetUpdate,
+    AnalysisRequest,
+    AnalysisResponse,
     AnalysisSettings,
-    ArtifactLibraryItem,
+    AnalyticsBucket,
+    AnalyticsDailyActivity,
+    AnalyticsSummary,
     ArtifactContent,
     ArtifactInfo,
+    ArtifactLibraryItem,
     AutomationRule,
     AutomationRuleCreate,
     AutomationRuleToggleUpdate,
     AutomationRunResponse,
+    BatchAnalysisRequest,
+    BatchAnalysisResponse,
     CheckpointInfo,
-    DataSettings,
-    DataVendorSettings,
-    DeleteResult,
+    CompareRun,
     DailyBriefingResponse,
     DailyBriefingSummary,
-    AnalyticsBucket,
-    AnalyticsDailyActivity,
-    AnalyticsSummary,
     DashboardPreferences,
     DashboardResponse,
     DashboardSummary,
+    DataSettings,
+    DataVendorSettings,
+    DeleteResult,
     GettingStartedChecklist,
     GettingStartedChecklistItem,
     ImportRowError,
-    SavedShortcutItem,
     IntegrationsSettings,
     LLMSettings,
+    MemberWorkspaceResponse,
+    MemberWorkspaceSummary,
     MemoryEntryInfo,
+    Note,
+    NoteCreate,
+    NoteUpdate,
     NotificationCenterResponse,
     NotificationItem,
     NotificationReadResult,
-    MemberWorkspaceSummary,
-    MemberWorkspaceResponse,
-    Note,
-    NoteCreate,
-    RunComment,
-    RunCommentCreate,
-    RunCommentResolveUpdate,
-    NoteUpdate,
+    PinnedRun,
+    PinnedRunAssigneeUpdate,
+    PinnedRunCreate,
+    PinnedRunStatusUpdate,
     PortfolioPosition,
     PortfolioPositionCreate,
     PortfolioResponse,
     PortfolioSummary,
+    ProviderInfo,
+    ProviderModel,
     PublicRunShareInfo,
     PublicRunShareListItem,
     PublicRunShareSnapshot,
     PublicRunShareUpdate,
-    ProviderInfo,
-    ProviderModel,
     RunAnnotation,
     RunAnnotationCreate,
+    RunBulkAction,
+    RunBulkActionResult,
+    RunChatRequest,
+    RunChatResponse,
+    RunComment,
+    RunCommentCreate,
+    RunCommentResolveUpdate,
+    RunComparison,
+    RunEvent,
     RunReview,
     RunReviewCreate,
     RunReviewHistoryResponse,
     RunReviewHistoryRow,
     RunReviewHistorySummary,
-    ShareLink,
-    CompareRun,
-    RunEvent,
-    RunComparison,
-    RunChatRequest,
-    RunChatResponse,
-    RunSummary,
     RunStatus,
-    ScreenerRow,
-    ScreenerSummary,
-    PinnedRun,
-    PinnedRunCreate,
-    PinnedRunStatusUpdate,
-    SavedSearch,
+    RunSummary,
     SavedItemBulkAction,
     SavedItemBulkActionResult,
+    SavedSearch,
     SavedSearchCreate,
     SavedSearchUpdate,
+    SavedShortcutItem,
     SavedView,
     SavedViewCreate,
     SavedViewUpdate,
+    ScreenerRow,
+    ScreenerSummary,
     SecuritySettings,
     SettingsResponse,
     SettingsUpdate,
+    ShareLink,
     TenantInfo,
     TickerOverview,
     ToolVendorSettings,
     WatchlistEntry,
     WatchlistUpdate,
-    WorkspaceImportRequest,
-    WorkspaceImportResult,
-    WorkspaceSettings,
-    WorkspaceMember,
-    WorkspaceMemberCreate,
-    WorkspaceExport,
-    WorkspaceExportSummary,
-    WorkspaceTimelineEvent,
+    WorkspaceAnalyticsResponse,
     WorkspaceCalendarDay,
     WorkspaceCalendarResponse,
-    WorkspaceTimelineResponse,
-    WorkspaceAnalyticsResponse,
-    WorkspaceSnapshotImportRequest,
-    WorkspaceSnapshotImportResult,
+    WorkspaceExport,
+    WorkspaceExportSummary,
+    WorkspaceImportRequest,
+    WorkspaceImportResult,
+    WorkspaceMember,
+    WorkspaceMemberCreate,
     WorkspaceScreenerResponse,
-    ActionBoardResponse,
     WorkspaceSearchResponse,
     WorkspaceSearchResult,
-    PinnedRunAssigneeUpdate,
+    WorkspaceSettings,
+    WorkspaceSnapshotImportRequest,
+    WorkspaceSnapshotImportResult,
+    WorkspaceTimelineEvent,
+    WorkspaceTimelineResponse,
+)
+from .webhook_delivery import process_pending_webhook_notifications
+from .workspace_import import (
+    ParsedImportError,
+    parse_portfolio_import,
+    parse_watchlist_import,
 )
 
 router = APIRouter()
@@ -389,6 +389,12 @@ def _now_iso() -> str:
     return datetime.datetime.now().isoformat()
 
 
+def _load_settings_for_update(settings_path) -> dict:
+    """Load a detached settings snapshot before mutating and saving it."""
+    settings = load_settings(path=settings_path)
+    return deepcopy(settings) if isinstance(settings, dict) else {}
+
+
 def _load_watchlist_items(tenant_id: str | None = None) -> list[dict[str, object]]:
     settings = load_settings(path=get_web_settings_path(tenant_id))
     raw = settings.get("watchlist", {}).get("tickers", [])
@@ -440,7 +446,7 @@ def _resolve_batch_tickers(payload: BatchAnalysisRequest, tenant_id: str | None)
 
 def _save_watchlist_items(tenant_id: str | None, items: list[dict[str, object]]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     watchlist = existing.get("watchlist", {})
     if not isinstance(watchlist, dict):
         watchlist = {}
@@ -489,7 +495,7 @@ def _load_alert_rules(tenant_id: str | None = None) -> list[AlertRule]:
 
 def _save_alert_rules(tenant_id: str | None, rules: list[AlertRule]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     alerts = existing.get("alerts", {})
     if not isinstance(alerts, dict):
         alerts = {}
@@ -529,7 +535,7 @@ def _load_portfolio_positions(tenant_id: str | None = None) -> list[dict[str, ob
 
 def _save_portfolio_positions(tenant_id: str | None, positions: list[dict[str, object]]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     portfolio = existing.get("portfolio", {})
     if not isinstance(portfolio, dict):
         portfolio = {}
@@ -573,7 +579,7 @@ def _load_workspace_settings_model(tenant_id: str | None = None) -> WorkspaceSet
 
 def _save_workspace_settings_model(tenant_id: str | None, workspace_settings: WorkspaceSettings) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     existing["workspace"] = {
         "default_home_view": workspace_settings.default_home_view,
         "default_saved_view_id": workspace_settings.default_saved_view_id,
@@ -752,7 +758,7 @@ def _load_presets(tenant_id: str | None = None) -> list[AnalysisPreset]:
 
 def _save_presets(tenant_id: str | None, presets: list[AnalysisPreset]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     preset_bucket = existing.get("presets", {})
     if not isinstance(preset_bucket, dict):
         preset_bucket = {}
@@ -781,7 +787,7 @@ def _load_notes(tenant_id: str | None = None) -> list[Note]:
 
 def _save_notes(tenant_id: str | None, notes: list[Note]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("notes", {})
     if not isinstance(bucket, dict):
         bucket = {}
@@ -810,7 +816,7 @@ def _load_run_comments(tenant_id: str | None = None) -> list[RunComment]:
 
 def _save_run_comments(tenant_id: str | None, comments: list[RunComment]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("run_comments", {})
     if not isinstance(bucket, dict):
         bucket = {}
@@ -838,7 +844,7 @@ def _load_run_annotations(tenant_id: str | None = None) -> list[RunAnnotation]:
 
 def _save_run_annotations(tenant_id: str | None, annotations: list[RunAnnotation]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("run_annotations", {})
     if not isinstance(bucket, dict):
         bucket = {}
@@ -870,7 +876,7 @@ def _load_run_reviews(tenant_id: str | None = None) -> list[RunReview]:
 
 def _save_run_reviews(tenant_id: str | None, reviews: list[RunReview]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("run_reviews", {})
     if not isinstance(bucket, dict):
         bucket = {}
@@ -907,7 +913,7 @@ def _load_notification_reads(tenant_id: str | None = None) -> dict[str, str]:
 
 def _save_notification_reads(tenant_id: str | None, reads: dict[str, str]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("notifications", {})
     if not isinstance(bucket, dict):
         bucket = {}
@@ -934,7 +940,7 @@ def _load_archived_run_ids(tenant_id: str | None = None) -> set[str]:
 
 def _save_archived_run_ids(tenant_id: str | None, run_ids: set[str]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("archived_runs", {})
     if not isinstance(bucket, dict):
         bucket = {}
@@ -962,11 +968,11 @@ def _load_public_run_shares(tenant_id: str | None = None) -> list[PublicRunShare
 
 def _save_public_run_shares(tenant_id: str | None, shares: list[PublicRunShareSnapshot]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("public_run_shares", {})
     if not isinstance(bucket, dict):
         bucket = {}
-    bucket["items"] = [item.model_dump(exclude_none=True) for item in shares]
+    bucket["items"] = [item.model_dump() for item in shares]
     existing["public_run_shares"] = bucket
     save_settings(existing, path=settings_path)
 
@@ -1062,7 +1068,7 @@ def _load_saved_searches(tenant_id: str | None = None) -> list[SavedSearch]:
 
 def _save_saved_searches(tenant_id: str | None, searches: list[SavedSearch]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("saved_searches", {})
     if not isinstance(bucket, dict):
         bucket = {}
@@ -1099,7 +1105,7 @@ def _load_saved_views(tenant_id: str | None = None) -> list[SavedView]:
 
 def _save_saved_views(tenant_id: str | None, views: list[SavedView]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("saved_views", {})
     if not isinstance(bucket, dict):
         bucket = {}
@@ -1133,7 +1139,7 @@ def _load_workspace_members(tenant_id: str | None = None) -> list[WorkspaceMembe
 
 def _save_workspace_members(tenant_id: str | None, members: list[WorkspaceMember]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("workspace_members", {})
     if not isinstance(bucket, dict):
         bucket = {}
@@ -1198,7 +1204,7 @@ def _load_dashboard_preferences(tenant_id: str | None = None) -> DashboardPrefer
 
 def _save_dashboard_preferences(tenant_id: str | None, prefs: DashboardPreferences) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     existing["dashboard"] = {
         "visible_sections": prefs.visible_sections or list(_DEFAULT_DASHBOARD_SECTIONS),
         "section_order": prefs.section_order or list(_DEFAULT_DASHBOARD_SECTIONS),
@@ -1208,7 +1214,7 @@ def _save_dashboard_preferences(tenant_id: str | None, prefs: DashboardPreferenc
 
 def _save_pinned_runs(tenant_id: str | None, pinned_runs: list[PinnedRun]) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
     bucket = existing.get("pinned_runs", {})
     if not isinstance(bucket, dict):
         bucket = {}
@@ -1525,10 +1531,7 @@ def _build_alert_hit(rule: AlertRule, overview: TickerOverview) -> AlertHit | No
     if not overview.latest_run_id:
         return None
 
-    if rule.field == "signal":
-        actual_value = overview.latest_signal
-    else:
-        actual_value = overview.latest_status
+    actual_value = overview.latest_signal if rule.field == "signal" else overview.latest_status
 
     if not actual_value:
         return None
@@ -2561,11 +2564,14 @@ def _build_workspace_timeline_response(
 
     if not kinds or "annotation" in kinds:
         for annotation in _load_run_annotations(tenant_id):
+            run = get_run(annotation.run_id, tenant_id)
+            title_target = run.ticker if run is not None else annotation.run_id
             events.append(WorkspaceTimelineEvent(
                 kind="annotation",
                 occurred_at=annotation.updated_at,
-                title=f"Run annotated: {annotation.run_id}",
+                title=f"Run annotated: {title_target}",
                 detail=annotation.label if not annotation.summary else f"{annotation.label} · {annotation.summary}",
+                ticker=run.ticker if run is not None else None,
                 run_id=annotation.run_id,
             ))
 
@@ -5380,13 +5386,7 @@ async def stream_run_events(run_id: str, request: Request):
 # ── Settings endpoints ─────────────────────────────────────────────────────
 
 # Default empty API keys for all known providers.
-_EMPTY_API_KEYS = {k: "" for k in [
-    "openai", "anthropic", "google", "xai", "deepseek",
-    "qwen", "qwen-cn", "glm", "glm-cn", "minimax", "minimax-cn",
-    "openrouter", "mistral", "kimi", "groq", "nvidia",
-    "openai_compatible", "ollama", "bedrock",
-    "FRED_API_KEY", "AWS_DEFAULT_REGION", "AWS_PROFILE", "OLLAMA_BASE_URL",
-]}
+_EMPTY_API_KEYS = dict.fromkeys(["openai", "anthropic", "google", "xai", "deepseek", "qwen", "qwen-cn", "glm", "glm-cn", "minimax", "minimax-cn", "openrouter", "mistral", "kimi", "groq", "nvidia", "openai_compatible", "ollama", "bedrock", "FRED_API_KEY", "AWS_DEFAULT_REGION", "AWS_PROFILE", "OLLAMA_BASE_URL"], "")
 
 
 def _settings_to_response(settings: dict) -> SettingsResponse:
@@ -5478,7 +5478,7 @@ async def put_settings(update: SettingsUpdate, request: Request):
     """Update settings and persist to disk."""
     tenant_id = _request_tenant_id(request)
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    existing = _load_settings_for_update(settings_path)
 
     # Merge API keys — "***" means "keep existing value"
     if update.api_keys is not None:

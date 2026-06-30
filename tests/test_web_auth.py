@@ -95,3 +95,14 @@ def test_api_rejects_token_bound_to_different_tenant(monkeypatch, tmp_path):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Unauthorized"
+
+
+def test_api_rejects_unsafe_tenant_id_before_path_lookup(monkeypatch, tmp_path):
+    client = TestClient(app)
+    monkeypatch.delenv("TRADINGAGENTS_WEB_API_TOKEN", raising=False)
+    monkeypatch.setenv("TRADINGAGENTS_WEB_STATE_DIR", str(tmp_path))
+
+    response = client.get("/api/system/status?tenant_id=../../escape")
+
+    assert response.status_code == 400
+    assert "tenant_id" in response.json()["detail"]

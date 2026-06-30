@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from typing import Any
 
 import requests
@@ -55,7 +56,8 @@ def _save_delivery_state(
     last_error: str | None = None,
 ) -> None:
     settings_path = get_web_settings_path(tenant_id)
-    existing = load_settings(path=settings_path)
+    settings = load_settings(path=settings_path)
+    existing = deepcopy(settings) if isinstance(settings, dict) else {}
 
     integrations = existing.get("integrations", {})
     if not isinstance(integrations, dict):
@@ -99,7 +101,9 @@ def process_pending_webhook_notifications(
     bearer_token = str(config.get("bearer_token") or "").strip()
 
     if notification_items is None:
-        from .routes import _build_notification_center_response  # lazy import to avoid circular dependency
+        from .routes import (
+            _build_notification_center_response,  # lazy import to avoid circular dependency
+        )
 
         center = _build_notification_center_response(tenant_id)
         notification_items = [item.model_dump() for item in center.items]
