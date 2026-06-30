@@ -126,6 +126,27 @@ def test_build_run_request_config_applies_settings_payload():
 
 
 @pytest.mark.unit
+def test_build_run_request_config_applies_advanced_request_overrides():
+    req = AnalysisRequest(
+        ticker="AAPL",
+        date="2026-01-15",
+        market_profile="cn_a",
+        max_risk_discuss_rounds=2,
+        max_recur_limit=150,
+        checkpoint_enabled=True,
+        benchmark_ticker="QQQ",
+    )
+
+    config = web_runner.build_run_request_config(req)
+
+    assert config["market_profile"] == "cn_a"
+    assert config["max_risk_discuss_rounds"] == 2
+    assert config["max_recur_limit"] == 150
+    assert config["checkpoint_enabled"] is True
+    assert config["benchmark_ticker"] == "QQQ"
+
+
+@pytest.mark.unit
 def test_create_run_enqueues_and_returns_queued_status(monkeypatch):
     req = AnalysisRequest(ticker="AAPL", date="2026-01-15")
     enqueued: list[str] = []

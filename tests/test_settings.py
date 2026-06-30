@@ -24,15 +24,24 @@ def test_build_default_config_reads_latest_settings(monkeypatch):
             "max_recur_limit": 150,
             "checkpoint_enabled": True,
             "market_profile": "cn_a",
+            "benchmark_ticker": "QQQ",
+            "memory_log_max_entries": 25,
         },
         "data": {
             "data_vendors": {
                 "news_data": "cn_news",
                 "macro_data": "cn_macro",
             },
+            "tool_vendors": {
+                "get_global_news": "alpha_vantage",
+            },
             "news_article_limit": 12,
             "global_news_article_limit": 8,
             "global_news_lookback_days": 5,
+            "global_news_queries": [
+                "asia earnings outlook",
+                "semiconductor export controls",
+            ],
         },
     }
     fake_settings_module = SimpleNamespace(
@@ -54,11 +63,18 @@ def test_build_default_config_reads_latest_settings(monkeypatch):
     assert config["max_recur_limit"] == 150
     assert config["checkpoint_enabled"] is True
     assert config["market_profile"] == "cn_a"
+    assert config["benchmark_ticker"] == "QQQ"
+    assert config["memory_log_max_entries"] == 25
     assert config["data_vendors"]["news_data"] == "cn_news"
     assert config["data_vendors"]["macro_data"] == "cn_macro"
+    assert config["tool_vendors"]["get_global_news"] == "alpha_vantage"
     assert config["news_article_limit"] == 12
     assert config["global_news_article_limit"] == 8
     assert config["global_news_lookback_days"] == 5
+    assert config["global_news_queries"] == [
+        "asia earnings outlook",
+        "semiconductor export controls",
+    ]
 
 
 def test_export_api_keys_to_env_overwrites_current_process_when_requested(monkeypatch):

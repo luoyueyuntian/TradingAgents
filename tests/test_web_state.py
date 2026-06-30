@@ -52,6 +52,8 @@ def test_build_runtime_context_uses_configured_web_state_dir(monkeypatch, tmp_pa
 
     assert context.run_root == target / "runs" / "run-123"
     assert context.results_dir == target / "runs" / "run-123" / "results"
+    assert context.cache_dir == target / "cache"
+    assert context.memory_log_path == target / "memory" / "trading_memory.md"
 
 
 def test_get_web_state_backend_defaults_to_file(monkeypatch):
@@ -76,3 +78,13 @@ def test_list_web_tenant_ids_discovers_tenant_dirs(monkeypatch, tmp_path):
     tenant_ids = web_state_module.list_web_tenant_ids()
 
     assert tenant_ids == ["tenant-a", "tenant-b"]
+
+
+def test_list_web_tenant_ids_honors_env_override(monkeypatch, tmp_path):
+    override = tmp_path / "custom-web-state" / "tenants"
+    (override / "tenant-a").mkdir(parents=True)
+    monkeypatch.setenv("TRADINGAGENTS_WEB_STATE_DIR", str(tmp_path / "custom-web-state"))
+
+    tenant_ids = web_state_module.list_web_tenant_ids()
+
+    assert tenant_ids == ["tenant-a"]

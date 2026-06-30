@@ -6,13 +6,17 @@ import os
 from pathlib import Path
 
 
-def get_web_state_dir(tenant_id: str | None = None) -> Path:
-    """Return the root directory used for persistent Web runtime state."""
+def get_web_state_base_dir() -> Path:
+    """Return the shared root directory used for all Web runtime state."""
     override = os.environ.get("TRADINGAGENTS_WEB_STATE_DIR", "").strip()
     if override:
-        base = Path(override).expanduser()
-    else:
-        base = Path.home() / ".tradingagents" / "web"
+        return Path(override).expanduser()
+    return Path.home() / ".tradingagents" / "web"
+
+
+def get_web_state_dir(tenant_id: str | None = None) -> Path:
+    """Return the root directory used for persistent Web runtime state."""
+    base = get_web_state_base_dir()
     resolved_tenant_id = get_web_tenant_id(tenant_id)
     if resolved_tenant_id:
         return base / "tenants" / resolved_tenant_id
@@ -67,7 +71,7 @@ def get_web_settings_path(tenant_id: str | None = None) -> Path:
 
 def list_web_tenant_ids() -> list[str]:
     """Discover tenant namespaces stored under the shared web state root."""
-    tenants_dir = (Path.home() / ".tradingagents" / "web") / "tenants"
+    tenants_dir = get_web_state_base_dir() / "tenants"
     if not tenants_dir.exists():
         return []
     return sorted(

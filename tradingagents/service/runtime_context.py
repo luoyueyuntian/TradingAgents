@@ -24,12 +24,14 @@ def build_runtime_context(
     *,
     base_dir: Path | None = None,
 ) -> RuntimeContext:
-    """Build a filesystem context isolated to one run."""
-    root = (base_dir or get_web_runs_root()) / run_id
+    """Build a run context with run-local results and tenant-shared cache/memory."""
+    runs_root = base_dir or get_web_runs_root()
+    root = runs_root / run_id
+    state_root = runs_root.parent
     return RuntimeContext(
         run_id=run_id,
         run_root=root,
         results_dir=root / "results",
-        cache_dir=root / "cache",
-        memory_log_path=root / "memory" / "trading_memory.md",
+        cache_dir=state_root / "cache",
+        memory_log_path=state_root / "memory" / "trading_memory.md",
     )
