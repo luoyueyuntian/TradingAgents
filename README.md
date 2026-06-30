@@ -244,10 +244,89 @@ python -m web.worker
 
 Open http://localhost:8000 to access the interface. From there you can:
 - Configure API keys and LLM provider (Settings gear icon)
-- Select ticker, date, research depth, and analysts
+- Select ticker, date, research depth, analysts, and one-off advanced run overrides
 - Run analysis and watch real-time progress via SSE streaming
 - View tabbed reports (Market, Sentiment, News, Fundamentals, Research, Trading, Decision)
 - Inspect queue position, run history, configuration summaries, timelines, and saved artifacts for past runs
+- Browse a reports library across saved runs so complete reports and full-state files are downloadable from one place
+- Build a tenant-scoped watchlist and use Ticker Home to revisit the latest saved research for each symbol
+- Paste CSV or TSV tables to import watchlist tickers and portfolio positions instead of adding them one by one
+- Upload CSV, TSV, TXT, or JSON files straight into watchlist, portfolio, and workspace import flows instead of copying their contents by hand
+- Queue a manual batch of tickers or run your whole watchlist with the current analysis settings
+- Compare two saved runs side by side to inspect how signals, settings, and report sections changed
+- Ask follow-up questions against a saved run to keep exploring the same analysis without starting over
+- Create tenant-scoped alert rules and review which latest saved runs currently match them
+- Track saved portfolio positions and see each holding alongside the latest research signal and cost basis summary
+- Review a daily workspace briefing that rolls up alert hits, watchlist focus, portfolio context, and recent runs
+- Review an in-app notification center for completed runs, active alert hits, and due pinned actions
+- Filter the notification center by member, kind, severity, and unread state so the inbox stays usable as collaboration activity grows
+- Export the currently filtered notification feed as CSV and mark only the filtered slice as read when triaging the inbox
+- Optionally forward new workspace notifications to an external webhook for downstream automations or chatops
+- Save daily or weekly automation rules that queue the watchlist or a manual basket with your current analysis settings
+- Copy deep links for runs, tickers, compare views, and daily briefing so the UI can reopen the same workspace context
+- Export the saved workspace as JSON or a markdown handoff summary for backup, sharing, or offline review
+- Re-import an exported workspace JSON snapshot to restore saved watchlists, notes, views, pinned actions, and collaboration context
+- Install the web workspace as a lightweight desktop/mobile app shell with cached static assets for basic offline reopening
+- Prompt users to install the web workspace as an app shell directly from the header when the browser exposes an install event
+- Use a command palette and keyboard shortcuts such as `Cmd/Ctrl+K` to jump across major workspace surfaces faster
+- Export filtered screener candidates, workspace search results, and timeline events to CSV for spreadsheet analysis or handoff
+- See a lightweight getting-started checklist on the dashboard so a new workspace knows the next best setup step
+- Turn on browser desktop alerts so new unread run, alert, action, mention, and review notifications can surface outside the tab
+- Create and manage public read-only run snapshots so one saved analysis can be shared outside the authenticated workspace
+- See lightweight view counts and last-viewed timestamps on shared snapshots so public links feel more like real web shares than blind exports
+- Filter shared snapshots by search and availability and export the current share directory as CSV
+- Set optional expiry windows on public run snapshots so external links can be safely time-boxed
+- Customize the title and summary of public run snapshots so shared pages read more like intentional landing pages than raw exports
+- Filter recent runs by query, status, provider, and asset type, then export the narrowed history as CSV
+- Select filtered recent runs for bulk retry or bulk delete when cleaning up saved analysis history
+- Persist recent-run filters in saved views and shareable URLs so history slices reopen with the same status/provider/library context
+- Open a persistent workspace dashboard that surfaces bullish focus, attention items, active alerts, pinned actions, portfolio context, and operational issues
+- Review a dedicated workspace analytics panel for run success rates, provider mix, signal mix, top tickers, and daily activity
+- Export workspace analytics as CSV for spreadsheet analysis or external reporting
+- Use a workspace screener to filter saved ideas by scope, signal, status, asset type, provider, and current attention flags
+- Save reusable analysis presets and re-apply them to the form with one click
+- Rename or duplicate saved presets so common analysis setups can branch without starting from scratch
+- Browse a workspace timeline that chronicles saved runs, watchlist additions, alert rules, positions, and presets
+- See timeline activity for saved searches, saved views, workspace members, and public snapshot sharing as the workspace becomes more collaborative
+- Filter timeline events by kind so workspace activity stays readable as the event stream grows
+- Review the same workspace activity grouped by day in a lightweight calendar view
+- Add structured annotations to important saved runs so their takeaway and next step remain visible in history and detail views
+- Save scoped notes for the current ticker or run and revisit them as part of the workspace timeline
+- Search, tag, and edit saved notes so your research annotations stay reusable instead of becoming a write-only log
+- Browse note tags as clickable chips so recurring themes like risk, earnings, or macro can be reopened faster
+- Switch the notes panel between current-context and all-workspace modes so notes can act as both inline annotations and a lightweight research library
+- Persist notes mode and notes search inside saved views and shareable URLs so a note library slice can reopen with the same context
+- Reopen recently viewed runs, tickers, and saved views from one lightweight local history panel
+- Discuss a saved run with workspace members through a lightweight run-scoped comment thread
+- Resolve or reopen run discussion comments so collaboration threads can double as lightweight work items
+- Surface @member mentions and assignee-specific work inside the notification center, with optional webhook forwarding
+- Open a member-centric workspace view to see assigned actions, mention notifications, and recent comments for one collaborator
+- Set a current member in the header so notifications and the member workspace can open in a default “my inbox” context
+- Persist member-scoped inbox, review, and screener filters inside deep links and saved views so collaboration context reopens cleanly
+- Save member-aware searches and views so applying them restores the same collaboration context, not just the raw query or panel set
+- Group and pin saved searches/views so frequently used workspace shortcuts stay organized as the product surface grows
+- Rename or duplicate saved searches and saved views so workspace shortcuts can evolve without being rebuilt from scratch
+- Archive or restore saved searches/views and filter active versus archived shortcuts as your workspace library grows
+- Personalize the workspace dashboard by choosing which summary panes stay visible on the homepage
+- Choose a default home surface so the app can open into dashboard, inbox, briefing, analytics, or other primary work areas
+- Point the default home surface at a saved view so the app can reopen into a fully curated workspace layout
+- Promote a saved view to the default home directly from the saved views list for faster homepage curation
+- Browse saved views in either gallery or list form so reusable workspace layouts feel more like a visual library than a settings table
+- Surface more than market status on the homepage, including pending reviews, enabled automations, and pinned shortcuts
+- Assign a reviewer to a saved run and track lightweight review status directly inside the workspace
+- Filter review history by reviewer, status, and note text so past review decisions stay inspectable
+- Export filtered review history as CSV when you need a lightweight audit trail outside the app
+- Search runs, notes, watchlist items, portfolio positions, presets, and alert rules from one unified workspace search box
+- Search saved searches, saved views, workspace members, and public shares from the same workspace search surface too
+- Search collaboration data too, including run comments and review records, from the same workspace search surface
+- Filter search results by entity type and save your most-used searches as reusable workspace views
+- Pin important saved runs with a note, category, priority, next action, action status, and optional due/snooze dates so they behave more like an actionable shortlist
+- Open an action board that groups pinned items into todo, doing, and done columns for quick status updates
+- Add lightweight workspace members and assign pinned actions so collaboration can happen without a full user system
+- Label workspace members with lightweight roles such as analyst, reviewer, or lead so collaboration context is easier to scan
+- Save full workspace views so a useful combination of ticker, compare state, briefing, or search context can be reopened in one click
+- Configure benchmark ticker, memory-log rotation, global-news query sets, category vendor chains, and per-tool vendor overrides from the Settings dialog
+- Switch between tenant namespaces and use Runtime Maintenance to inspect or clear tenant-scoped checkpoints and decision memory
 
 ### Markets and tickers
 
@@ -343,15 +422,27 @@ TradingAgents persists two kinds of state across runs.
 
 ### Decision log
 
-The decision log is always on. Each completed run appends its decision to `~/.tradingagents/memory/trading_memory.md`. On the next run for the same ticker, TradingAgents fetches the realised return (raw and alpha vs SPY), generates a one-paragraph reflection, and injects the most recent same-ticker decisions plus recent cross-ticker lessons into the Portfolio Manager prompt, so each analysis carries forward what worked and what didn't.
+The decision log is always on. Each completed run appends its decision to a shared memory log. On the next run for the same ticker, TradingAgents fetches the realised return (raw and alpha vs SPY), generates a one-paragraph reflection, and injects the most recent same-ticker decisions plus recent cross-ticker lessons into the Portfolio Manager prompt, so each analysis carries forward what worked and what didn't.
 
-Override the path with `TRADINGAGENTS_MEMORY_LOG_PATH`.
+For direct Python/package usage, the default path is `~/.tradingagents/memory/trading_memory.md` and you can override it with `TRADINGAGENTS_MEMORY_LOG_PATH`.
+
+For the Web runtime, the memory log is tenant-scoped and shared across runs:
+- default tenant: `~/.tradingagents/web/memory/trading_memory.md`
+- named tenant: `~/.tradingagents/web/tenants/<TENANT_ID>/memory/trading_memory.md`
+
+Use the Web UI's Runtime Maintenance panel to inspect or clear tenant-scoped memory entries.
 
 ### Checkpoint resume
 
-Checkpoint resume is opt-in via `--checkpoint`. When enabled, LangGraph saves state after each node so a crashed or interrupted run resumes from the last successful step instead of starting over. On a resume run you will see `Resuming from step N for <TICKER> on <date>` in the logs; on a new run you will see `Starting fresh`. Checkpoints are cleared automatically on successful completion.
+Checkpoint resume is opt-in. When enabled, LangGraph saves state after each node so a crashed or interrupted run resumes from the last successful step instead of starting over. On a resume run you will see `Resuming from step N for <TICKER> on <date>` in the logs; on a new run you will see `Starting fresh`. Checkpoints are cleared automatically on successful completion.
 
-Per-ticker SQLite databases live at `~/.tradingagents/cache/checkpoints/<TICKER>.db` (override the base with `TRADINGAGENTS_CACHE_DIR`). Use `--clear-checkpoints` to reset all of them before a run.
+For direct Python/package usage, per-ticker SQLite databases live at `~/.tradingagents/cache/checkpoints/<TICKER>.db` (override the base with `TRADINGAGENTS_CACHE_DIR`).
+
+For the Web runtime, checkpoints are tenant-scoped and shared across runs for the same tenant:
+- default tenant: `~/.tradingagents/web/cache/checkpoints/<TICKER>.db`
+- named tenant: `~/.tradingagents/web/tenants/<TENANT_ID>/cache/checkpoints/<TICKER>.db`
+
+Enable checkpoint resume from the Settings dialog or the Advanced Run Overrides panel. Use the Runtime Maintenance panel to inspect or clear tenant-scoped checkpoint files.
 
 ```bash
 tradingagents analyze --checkpoint           # enable for this run
