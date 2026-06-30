@@ -14,9 +14,10 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from sse_starlette.sse import EventSourceResponse
+from starlette.concurrency import run_in_threadpool
 
 from tradingagents.llm_clients.factory import create_llm_client
 from tradingagents.llm_clients.model_catalog import MODEL_OPTIONS
@@ -27,6 +28,13 @@ from tradingagents.service.runtime_admin import (
     clear_runtime_memory_logs,
     list_runtime_checkpoints,
     list_runtime_memory_entries,
+)
+from tradingagents.service.stock_catalog import (
+    StockCatalogItem,
+    list_stock_markets as list_stock_catalog_markets,
+    refresh_stock_catalog,
+    search_stock_catalog,
+    stock_catalog_needs_refresh,
 )
 from tradingagents.service.web_state import (
     get_web_settings_path,
@@ -162,6 +170,10 @@ from .schemas import (
     SettingsResponse,
     SettingsUpdate,
     ShareLink,
+    StockCatalogItemResponse,
+    StockCatalogRefreshRequest,
+    StockCatalogRefreshResponse,
+    StockMarketInfo,
     TenantInfo,
     TickerOverview,
     ToolVendorSettings,
@@ -259,6 +271,17 @@ def _analysis_response_from_run(run) -> AnalysisResponse:
         status=run.status,
         ticker=run.ticker,
         date=run.date,
+    )
+
+
+def _stock_catalog_response(item: StockCatalogItem) -> StockCatalogItemResponse:
+    label_parts = [item.symbol, item.name, item.exchange]
+    return StockCatalogItemResponse(
+        market=item.market,
+        symbol=item.symbol,
+        name=item.name,
+        exchange=item.exchange,
+        label=" · ".join(part for part in label_parts if part),
     )
 
 
@@ -3144,6 +3167,44 @@ def _build_public_run_share_html(snapshot: PublicRunShareSnapshot) -> str:
   </main>
 </body>
 </html>"""
+
+
+@router.get("/api/stocks/markets", response_model=list[StockMarketInfo])
+async def list_stock_markets():
+    """Return stock markets supported by the analysis ticker selector."""
+    return [
+        StockMarketInfo(value=item["value"], label=item["label"])
+        for item in list_stock_catalog_markets()
+    ]
+
+
+@router.get("/api/stocks", response_model=list[StockCatalogItemResponse])
+async def list_stocks(background_tasks: BackgroundTasks, market: str, q: str = "", limit: int = 100):
+    """Return searchable listed company stocks for one selected market."""
+    try:
+        items = search_stock_catalog(market, query=q, limit=limit, refresh_if_stale=False)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if stock_catalog_needs_refresh():
+        background_tasks.add_task(refresh_stock_catalog, force=False)
+    return [_stock_catalog_response(item) for item in items]
+
+
+@router.post("/api/stocks/refresh", response_model=StockCatalogRefreshResponse)
+async def refresh_stocks(payload: StockCatalogRefreshRequest):
+    """Refresh the persisted listed-company stock catalog."""
+    try:
+        snapshot = await run_in_threadpool(refresh_stock_catalog, force=payload.force)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return StockCatalogRefreshResponse(
+        updated_on=snapshot.updated_on,
+        refreshed=snapshot.refreshed,
+        counts=snapshot.counts,
+        errors=snapshot.errors,
+    )
 
 
 @router.get("/api/providers", response_model=list[ProviderInfo])
