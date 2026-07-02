@@ -227,5 +227,6 @@ reports/
 
 # Agent workflow scratch files
 .superpowers/
+.worktrees/
 docs/plans/
 docs/superpowers/plans/
