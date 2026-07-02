@@ -135,6 +135,48 @@ def test_admin_role_is_allowed_past_middleware_for_admin_paths(monkeypatch, tmp_
     assert admin_response.status_code not in {401, 403}
 
 
+def test_analyst_cannot_access_admin_user_routes(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="analyst")
+    _login(client)
+
+    list_response = client.get("/api/admin/users")
+    create_response = client.post(
+        "/api/admin/users",
+        json={
+            "username": "new-user",
+            "email": "new-user@example.com",
+            "display_name": "New User",
+            "role": "viewer",
+            "password": "AnotherStrong123!",
+        },
+    )
+
+    assert list_response.status_code == 403
+    assert create_response.status_code == 403
+
+
+def test_viewer_cannot_access_admin_user_routes(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="viewer")
+    _login(client)
+
+    list_response = client.get("/api/admin/users")
+    create_response = client.post(
+        "/api/admin/users",
+        json={
+            "username": "new-user",
+            "email": "new-user@example.com",
+            "display_name": "New User",
+            "role": "viewer",
+            "password": "AnotherStrong123!",
+        },
+    )
+
+    assert list_response.status_code == 403
+    assert create_response.status_code == 403
+
+
 def test_token_authenticated_request_preserves_legacy_behavior(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="viewer", tenant_id="alpha")

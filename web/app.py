@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .admin_user_routes import router as admin_user_router
 from .auth import (
     get_presented_api_token,
     get_request_tenant_id,
@@ -64,6 +65,7 @@ app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 # Include API routes
 app.include_router(auth_router)
+app.include_router(admin_user_router)
 app.include_router(router)
 
 
