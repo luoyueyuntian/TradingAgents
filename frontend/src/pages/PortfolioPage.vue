@@ -13,21 +13,21 @@
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <MetricGrid :items="metrics" />
 
-    <div class="content-grid">
+    <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(320px,1fr))] uno-gap-4">
       <Card>
         <template #title>{{ t('common.watchlist') }}</template>
         <template #content>
-          <div class="actions-row">
+          <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
             <InputText v-model="watchTicker" :placeholder="t('common.ticker')" />
             <Button icon="pi pi-plus" :label="t('common.add')" @click="addWatchlist" />
           </div>
-          <div class="list-stack" style="margin-top: 0.75rem;">
-            <div v-for="item in watchlist" :key="item.ticker" class="list-item">
-              <div class="list-item-title">
+          <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
+            <div v-for="item in watchlist" :key="item.ticker" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ item.ticker }}</span>
                 <Tag :value="item.latest_signal || item.latest_status || t('common.saved')" :severity="signalSeverity(item.latest_signal || item.latest_status)" />
               </div>
-              <small class="muted">{{ item.company_name || item.latest_date || t('portfolio.noSavedRun') }}</small>
+              <small class="uno-text-[#6f8183]">{{ item.company_name || item.latest_date || t('portfolio.noSavedRun') }}</small>
             </div>
           </div>
         </template>
@@ -36,15 +36,15 @@
       <Card>
         <template #title>{{ t('nav.portfolio') }}</template>
         <template #content>
-          <div class="form-grid">
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
             <InputText v-model="position.ticker" :placeholder="t('common.ticker')" />
             <InputText v-model="position.quantity" type="number" :placeholder="t('portfolio.quantity')" />
             <InputText v-model="position.average_cost" type="number" :placeholder="t('portfolio.averageCost')" />
           </div>
-          <Button icon="pi pi-plus" :label="t('common.addPosition')" style="margin-top: 0.75rem;" @click="addPosition" />
-          <div class="list-stack" style="margin-top: 0.75rem;">
-            <div v-for="item in asArray(portfolio?.positions)" :key="item.id" class="list-item">
-              <div class="list-item-title">
+          <Button icon="pi pi-plus" :label="t('common.addPosition')" class="uno-mt-3" @click="addPosition" />
+          <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
+            <div v-for="item in asArray(portfolio?.positions)" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ item.ticker }} · {{ item.quantity }} @ {{ item.average_cost }}</span>
                 <Tag :value="item.latest_signal || t('common.na')" :severity="signalSeverity(item.latest_signal)" />
               </div>
@@ -56,15 +56,15 @@
       <Card>
         <template #title>{{ t('portfolio.alerts') }}</template>
         <template #content>
-          <div class="form-grid">
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
             <InputText v-model="alertRule.ticker" :placeholder="t('common.ticker')" />
             <Select v-model="alertRule.field" :options="alertFields" option-label="label" option-value="value" />
             <InputText v-model="alertRule.value" :placeholder="t('portfolio.valuePlaceholder')" />
           </div>
-          <Button icon="pi pi-bell" :label="t('common.addRule')" style="margin-top: 0.75rem;" @click="addAlert" />
-          <div class="list-stack" style="margin-top: 0.75rem;">
-            <div v-for="rule in asArray(alerts?.rules)" :key="rule.id" class="list-item">
-              <div class="list-item-title">
+          <Button icon="pi pi-bell" :label="t('common.addRule')" class="uno-mt-3" @click="addAlert" />
+          <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
+            <div v-for="rule in asArray(alerts?.rules)" :key="rule.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ rule.ticker }} · {{ rule.field }} = {{ rule.value }}</span>
                 <Button icon="pi pi-trash" text severity="danger" :aria-label="t('portfolio.deleteAlert')" @click="deleteAlert(rule.id)" />
               </div>
@@ -76,11 +76,11 @@
       <Card>
         <template #title>{{ t('portfolio.screener') }}</template>
         <template #content>
-          <div class="actions-row">
+          <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
             <Select v-model="screenerScope" :options="screenerScopes" option-label="label" option-value="value" @change="loadScreener" />
             <InputText v-model="screenerQuery" :placeholder="t('portfolio.searchCandidates')" @input="loadScreener" />
           </div>
-          <DataTable :value="asArray(screener?.rows)" size="small" style="margin-top: 0.75rem;">
+          <DataTable :value="asArray(screener?.rows)" size="small" class="uno-mt-3">
             <Column field="ticker" :header="t('common.ticker')" />
             <Column field="latest_status" :header="t('common.status')" />
             <Column field="latest_signal" :header="t('common.signal')" />

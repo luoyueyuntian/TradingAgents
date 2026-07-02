@@ -13,13 +13,13 @@
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <Message v-if="notice" severity="success" :closable="false">{{ notice }}</Message>
 
-    <div class="content-grid">
+    <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(320px,1fr))] uno-gap-4">
       <Card>
         <template #title>{{ t('analysis.configuration') }}</template>
         <template #content>
-          <div class="form-grid">
-            <label class="field">
-              <span class="field-label">{{ t('analysis.stockMarket') }}</span>
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.stockMarket') }}</span>
               <Select
                 v-model="form.stock_market"
                 :options="stockMarketOptions"
@@ -28,8 +28,8 @@
                 @change="handleStockMarketChange"
               />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('common.ticker') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('common.ticker') }}</span>
               <Select
                 v-model="form.ticker"
                 :options="stockOptions"
@@ -42,8 +42,8 @@
                 @filter="onStockFilter"
               />
             </label>
-            <div class="field">
-              <span class="field-label">{{ t('analysis.stockCatalog') }}</span>
+            <div class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.stockCatalog') }}</span>
               <Button
                 icon="pi pi-sync"
                 :label="t('analysis.refreshStocks')"
@@ -52,12 +52,12 @@
                 @click="refreshStockCatalog"
               />
             </div>
-            <label class="field">
-              <span class="field-label">{{ t('analysis.analysisDate') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.analysisDate') }}</span>
               <InputText v-model="form.date" type="date" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('common.provider') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('common.provider') }}</span>
               <Select
                 v-model="form.llm_provider"
                 :options="providerOptions"
@@ -67,24 +67,24 @@
                 @change="syncProviderModels"
               />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('analysis.quickModel') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.quickModel') }}</span>
               <Select v-model="form.quick_think_model" :options="quickModelOptions" option-label="label" option-value="value" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('analysis.deepModel') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.deepModel') }}</span>
               <Select v-model="form.deep_think_model" :options="deepModelOptions" option-label="label" option-value="value" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('analysis.depth') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.depth') }}</span>
               <Select v-model="form.research_depth" :options="depthOptions" option-label="label" option-value="value" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('common.language') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('common.language') }}</span>
               <Select v-model="form.output_language" :options="languageOptions" option-label="label" option-value="value" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('analysis.marketProfile') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.marketProfile') }}</span>
               <Select
                 v-model="form.market_profile"
                 :options="marketProfileOptions"
@@ -95,17 +95,17 @@
             </label>
           </div>
 
-          <div class="field" style="margin-top: 1rem;">
-            <span class="field-label">{{ t('analysis.analysts') }}</span>
-            <div class="actions-row">
-              <label v-for="item in analystOptions" :key="item.value" class="inline-row">
+          <div class="uno-mt-4 uno-grid uno-gap-[0.35rem]">
+            <span class="uno-text-[#6f8183]">{{ t('analysis.analysts') }}</span>
+            <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+              <label v-for="item in analystOptions" :key="item.value" class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                 <input v-model="form.analysts" type="checkbox" :value="item.value">
                 <span>{{ item.label }}</span>
               </label>
             </div>
           </div>
 
-          <div class="actions-row" style="margin-top: 1rem;">
+          <div class="uno-mt-4 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
             <Button icon="pi pi-play" :label="t('analysis.startAnalysis')" :loading="submitting" @click="startRun" />
             <Button icon="pi pi-list" :label="t('analysis.openRuns')" severity="secondary" @click="$router.push('/runs')" />
           </div>
@@ -116,29 +116,29 @@
         <template #title>{{ t('analysis.currentRun') }}</template>
         <template #content>
           <MetricGrid :items="runMetrics" />
-          <div class="actions-row" style="margin-bottom: 0.75rem;">
+          <div class="uno-mb-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
             <Tag v-if="currentRun" :value="currentRun.status" :severity="signalSeverity(currentRun.status)" />
             <Button v-if="currentRun?.run_id" icon="pi pi-times" :label="t('common.cancel')" severity="danger" outlined @click="cancelRun" />
           </div>
 
-          <div v-if="agentProgress.length" class="agent-progress-grid">
-            <div v-for="agent in agentProgress" :key="agent.name" class="agent-progress-item">
-              <span>{{ agent.name }}</span>
+          <div v-if="agentProgress.length" class="uno-mb-[0.85rem] uno-grid uno-gap-2">
+            <div v-for="agent in agentProgress" :key="agent.name" class="uno-flex uno-min-h-[42px] uno-items-center uno-justify-between uno-gap-3 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-[0.7rem] uno-py-[0.55rem]">
+              <span class="uno-min-w-0 uno-break-words uno-font-semibold uno-text-[#243a3d]">{{ agent.name }}</span>
               <Tag :value="agent.status" :severity="signalSeverity(agent.status)" />
             </div>
           </div>
 
-          <div v-if="liveReportText" class="live-report-panel">
-            <div class="live-report-header">
-              <span class="field-label">{{ t('analysis.liveReport') }}</span>
+          <div v-if="liveReportText" class="uno-mb-[0.85rem] uno-grid uno-gap-[0.65rem]">
+            <div class="uno-flex uno-items-center uno-justify-between uno-gap-3">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.liveReport') }}</span>
               <Tag v-if="liveState.latestReportSection" :value="sectionLabel(liveState.latestReportSection)" severity="info" />
             </div>
             <ReportMarkdown :content="liveReportText" :empty-text="t('runs.noReport')" />
           </div>
 
-          <details class="event-log-panel" :open="!liveReportText && !agentProgress.length">
-            <summary>{{ t('analysis.eventLog') }}</summary>
-            <pre class="log-box">{{ logText || t('analysis.noActiveRun') }}</pre>
+          <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3" :open="!liveReportText && !agentProgress.length">
+            <summary class="uno-cursor-pointer uno-font-700 uno-text-[#243a3d]">{{ t('analysis.eventLog') }}</summary>
+            <pre class="uno-m-0 uno-mt-3 uno-max-h-[520px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#101b1d] uno-p-[0.85rem] uno-text-[#d8f3ee]">{{ logText || t('analysis.noActiveRun') }}</pre>
           </details>
         </template>
       </Card>
