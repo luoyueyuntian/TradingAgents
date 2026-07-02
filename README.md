@@ -183,6 +183,28 @@ Docker Compose publishes the web UI on `127.0.0.1:8000` by default. Before
 binding it to a public interface or reverse proxy, set `TRADINGAGENTS_WEB_API_TOKEN`
 and configure `TRADINGAGENTS_WEB_CORS_ORIGINS` for the browser origins you trust.
 
+#### Frontend-only debugging with the Docker backend
+
+After the Docker image is built and the backend container is running, you can
+iterate on the local Vue frontend without rebuilding the image:
+
+```bash
+./deploy.sh
+cd frontend
+npm install
+npm run dev:docker
+```
+
+Open `http://127.0.0.1:5173/static/spa/` (the root path redirects there). The
+Vite dev server proxies `/api/*` requests to the Docker backend at
+`http://127.0.0.1:8000`, so frontend edits hot-reload while the container keeps
+serving the backend API and worker runtime. If your backend is published on a
+different local port, override the proxy target:
+
+```bash
+TRADINGAGENTS_WEB_DEV_PROXY_TARGET=http://127.0.0.1:18000 npm run dev:docker
+```
+
 To split the API and worker into separate processes:
 ```bash
 docker compose --profile external-worker up -d
