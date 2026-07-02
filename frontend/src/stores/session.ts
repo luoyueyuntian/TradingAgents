@@ -1,6 +1,6 @@
 import { computed, reactive } from 'vue';
 
-import { apiGet, apiPost, type ApiContext } from '../services/api';
+import { apiGet, apiPost, type ApiContext, type ApiRequestError } from '../services/api';
 
 const TENANT_STORAGE_KEY = 'tradingagents.tenantId';
 const API_TOKEN_STORAGE_KEY = 'tradingagents.apiToken';
@@ -44,10 +44,6 @@ type SessionState = {
   passwordReset: PasswordResetAvailability;
   loading: boolean;
   error: string;
-};
-
-type ApiRequestError = Error & {
-  status?: number;
 };
 
 function readStorage(key: string): string {
@@ -130,8 +126,8 @@ function isUnauthorizedError(error: unknown): error is ApiRequestError {
   if (!(error instanceof Error)) {
     return false;
   }
-  const requestError = error as ApiRequestError;
-  return requestError.status === 401 || /unauthorized/i.test(requestError.message);
+  const requestError = error as Partial<ApiRequestError>;
+  return requestError.status === 401 || /unauthorized/i.test(error.message);
 }
 
 async function withLoading<T>(operation: () => Promise<T>): Promise<T> {
@@ -144,6 +140,7 @@ async function withLoading<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export function useSession() {
+  const authApiContext: ApiContext = {};
   const apiContext = computed<ApiContext>(() => {
     const context: ApiContext = {};
     if (state.tenantId) {
@@ -159,7 +156,7 @@ export function useSession() {
     state.error = '';
     return withLoading(async () => {
       try {
-        const payload = await apiGet<AuthSessionResponse>('/api/auth/me', apiContext.value);
+        const payload = await apiGet<AuthSessionResponse>('/api/auth/me', authApiContext);
         applyAuthSession(payload);
         return payload;
       } catch (error) {
@@ -180,7 +177,7 @@ export function useSession() {
         const payload = await apiPost<AuthSessionResponse>('/api/auth/login', {
           identifier: identifier.trim(),
           password,
-        }, apiContext.value);
+        }, authApiContext);
         applyAuthSession(payload);
         return payload;
       } catch (error) {
@@ -196,7 +193,7 @@ export function useSession() {
     state.error = '';
     return withLoading(async () => {
       try {
-        await apiPost('/api/auth/logout', {}, apiContext.value);
+        await apiPost('/api/auth/logout', {}, authApiContext);
       } finally {
         clearAuthSession();
       }
@@ -210,7 +207,7 @@ export function useSession() {
         const payload = await apiPost<AuthSessionResponse>('/api/auth/change-password', {
           old_password: oldPassword,
           new_password: newPassword,
-        }, apiContext.value);
+        }, authApiContext);
         applyAuthSession(payload);
         return payload;
       } catch (error) {
@@ -224,9 +221,17 @@ export function useSession() {
 
   async function requestPasswordReset(email: string): Promise<PasswordResetAvailability> {
     state.error = '';
-    return withLoading(async () => apiPost<PasswordResetAvailability>('/api/auth/password-reset/request', {
-      email: email.trim(),
-    }, apiContext.value));
+    return withLoading(async () => {
+      const payload = await apiPost<PasswordResetAvailability>('/api/auth/password-reset/request', {
+        email: email.trim(),
+      }, authApiContext);
+      state.passwordReset = {
+        available: payload.available,
+        reset_id: payload.reset_id ?? null,
+        detail: payload.detail ?? null,
+      };
+      return payload;
+    });
   }
 
   async function confirmPasswordReset(
@@ -239,7 +244,7 @@ export function useSession() {
       reset_id: resetId.trim(),
       code: code.trim(),
       new_password: newPassword,
-    }, apiContext.value));
+    }, authApiContext));
   }
 
   const mustChangePassword = computed(() => Boolean(state.currentUser?.must_change_password));
