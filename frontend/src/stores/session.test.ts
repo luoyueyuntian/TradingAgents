@@ -46,7 +46,9 @@ function makeUser(overrides: Partial<AuthUser> = {}): AuthUser {
 function makeAuthResponse(overrides: Partial<AuthSessionResponse> = {}): AuthSessionResponse {
   const userOverrides = overrides.user ?? {};
   const passwordResetOverrides = overrides.password_reset ?? {};
-  const { user: _user, password_reset: _passwordReset, ...restOverrides } = overrides;
+  const restOverrides: Partial<AuthSessionResponse> = { ...overrides };
+  delete restOverrides.user;
+  delete restOverrides.password_reset;
   return {
     user: makeUser(userOverrides),
     session_expires_at: '2026-07-03T00:00:00Z',

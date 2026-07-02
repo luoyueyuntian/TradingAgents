@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import threading
 
-from tradingagents.service.models import RunState, TERMINAL_RUN_STATUSES
+from tradingagents.service.models import TERMINAL_RUN_STATUSES as TERMINAL_RUN_STATUSES, RunState
 from tradingagents.service.run_service import RunService
 from tradingagents.service.state_backend import get_state_backend_adapter
 from tradingagents.service.web_state import (
@@ -16,12 +16,12 @@ from tradingagents.service.web_state import (
     get_web_settings_path,
     get_web_sqlite_path,
     get_web_state_dir,
-    get_web_worker_status_path,
     get_web_tenant_id,
+    get_web_worker_status_path,
 )
+from tradingagents.settings import load_settings
 
 from .schemas import AnalysisRequest
-from tradingagents.settings import load_settings
 
 _service_lock = threading.Lock()
 _services: dict[str, RunService] = {}

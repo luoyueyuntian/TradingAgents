@@ -27,6 +27,7 @@ def test_get_web_state_dir_honors_env_override(monkeypatch, tmp_path):
 
 
 def test_get_web_state_dir_appends_tenant_namespace(monkeypatch, tmp_path):
+    monkeypatch.delenv("TRADINGAGENTS_WEB_STATE_DIR", raising=False)
     monkeypatch.setattr(web_state_module.Path, "home", lambda: tmp_path)
     monkeypatch.setenv("TRADINGAGENTS_WEB_TENANT_ID", "tenant-a")
 
@@ -36,6 +37,7 @@ def test_get_web_state_dir_appends_tenant_namespace(monkeypatch, tmp_path):
 
 
 def test_get_web_state_dir_accepts_explicit_tenant_override(monkeypatch, tmp_path):
+    monkeypatch.delenv("TRADINGAGENTS_WEB_STATE_DIR", raising=False)
     monkeypatch.setattr(web_state_module.Path, "home", lambda: tmp_path)
     monkeypatch.setenv("TRADINGAGENTS_WEB_TENANT_ID", "env-tenant")
 
@@ -56,6 +58,7 @@ def test_get_web_state_dir_rejects_unsafe_tenant_names(monkeypatch, tmp_path, te
 
 
 def test_get_web_state_dir_resolves_tenant_under_tenant_root(monkeypatch, tmp_path):
+    monkeypatch.delenv("TRADINGAGENTS_WEB_STATE_DIR", raising=False)
     monkeypatch.setattr(web_state_module.Path, "home", lambda: tmp_path)
 
     state_dir = web_state_module.get_web_state_dir("tenant.a-1")
@@ -91,6 +94,7 @@ def test_get_web_sqlite_path_honors_env_override(monkeypatch, tmp_path):
 
 
 def test_list_web_tenant_ids_discovers_tenant_dirs(monkeypatch, tmp_path):
+    monkeypatch.delenv("TRADINGAGENTS_WEB_STATE_DIR", raising=False)
     monkeypatch.setattr(web_state_module.Path, "home", lambda: tmp_path)
     base = tmp_path / ".tradingagents" / "web" / "tenants"
     (base / "tenant-a").mkdir(parents=True)
