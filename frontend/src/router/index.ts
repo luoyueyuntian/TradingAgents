@@ -5,13 +5,17 @@ import { useSession } from '../stores/session';
 
 let sessionBootstrapPromise: Promise<unknown> | null = null;
 
-async function ensureSessionLoaded() {
+export async function ensureSessionLoaded() {
   const session = useSession();
-  if (session.state.currentUser || session.state.loading) {
+  if (session.state.currentUser) {
     return;
   }
   if (!sessionBootstrapPromise) {
-    sessionBootstrapPromise = session.loadCurrentUser().catch(() => undefined);
+    sessionBootstrapPromise = session.loadCurrentUser()
+      .catch(() => undefined)
+      .finally(() => {
+        sessionBootstrapPromise = null;
+      });
   }
   await sessionBootstrapPromise;
 }
@@ -44,6 +48,10 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
 
     if (isLoginRoute) {
       return mustChangePassword ? { path: '/change-password' } : { path: '/' };
+    }
+
+    if (isChangePasswordRoute && !mustChangePassword) {
+      return { path: '/' };
     }
 
     if (mustChangePassword && !isChangePasswordRoute) {
