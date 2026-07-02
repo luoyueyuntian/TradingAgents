@@ -20,6 +20,7 @@ from .auth import (
 from .auth_routes import router as auth_router
 from .permissions import (
     has_required_role,
+    is_auth_path,
     is_password_change_allowed_path,
     is_public_path,
     required_role_for_request,
@@ -75,14 +76,18 @@ async def _resolve_request_auth(request, call_next):
 
     path = request.url.path
     method = request.method.upper()
+    session_user = None
+    if path.startswith("/api/"):
+        session_user = get_session_user(request)
+        if session_user is not None:
+            request.state.auth_mode = "session"
+            request.state.current_user = session_user
+            request.state.effective_tenant_id = session_user.tenant_id
+
     if is_public_path(path, method):
         return await call_next(request)
 
-    session_user = get_session_user(request)
     if session_user is not None:
-        request.state.auth_mode = "session"
-        request.state.current_user = session_user
-        request.state.effective_tenant_id = session_user.tenant_id
         if session_user.must_change_password and not is_password_change_allowed_path(path, method):
             return JSONResponse(
                 {
@@ -94,6 +99,9 @@ async def _resolve_request_auth(request, call_next):
         required_role = required_role_for_request(path, method)
         if not has_required_role(session_user.role, required_role):
             return JSONResponse({"detail": "Forbidden"}, status_code=403)
+        return await call_next(request)
+
+    if is_auth_path(path, method):
         return await call_next(request)
 
     try:
