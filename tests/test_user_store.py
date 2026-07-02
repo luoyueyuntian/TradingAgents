@@ -81,6 +81,51 @@ def _create_user(store, **overrides):
     return store.create_user(**values)
 
 
+def _insert_user_direct(db_path, **overrides):
+    values = {
+        "id": "direct-user",
+        "username": "direct-user",
+        "email": "direct@example.com",
+        "display_name": "Direct User",
+        "role": "analyst",
+        "tenant_id": "tenant-a",
+        "password_hash": "hash-direct",
+        "password_salt": "salt-direct",
+        "password_updated_at": None,
+        "must_change_password": 0,
+        "expires_at": None,
+        "disabled": 0,
+        "created_at": "2026-07-02T10:00:00+00:00",
+        "updated_at": "2026-07-02T10:00:00+00:00",
+        "last_login_at": None,
+    }
+    values.update(overrides)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users (
+                id,
+                username,
+                email,
+                display_name,
+                role,
+                tenant_id,
+                password_hash,
+                password_salt,
+                password_updated_at,
+                must_change_password,
+                expires_at,
+                disabled,
+                created_at,
+                updated_at,
+                last_login_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            tuple(values.values()),
+        )
+
+
 def _parse_timestamp(value):
     return datetime.fromisoformat(value)
 
@@ -147,6 +192,28 @@ def test_create_user_rejects_duplicate_username_and_email_case_insensitively(tmp
         )
 
 
+def test_sqlite_rejects_direct_case_insensitive_username_and_email_duplicates(tmp_path):
+    db_path = tmp_path / "auth.db"
+    store = UserStore(db_path)
+    _create_user(store, username="Alice", email="Alice@Example.com")
+
+    with pytest.raises(sqlite3.IntegrityError):
+        _insert_user_direct(
+            db_path,
+            id="duplicate-username",
+            username="alice",
+            email="alice2@example.com",
+        )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        _insert_user_direct(
+            db_path,
+            id="duplicate-email",
+            username="alice2",
+            email="ALICE@example.com",
+        )
+
+
 def test_create_user_validates_role_and_normalizes_tenant_id(tmp_path):
     store = UserStore(tmp_path / "auth.db")
 
@@ -191,6 +258,30 @@ def test_update_user_changes_role_expiry_disabled_and_password_fields(tmp_path):
     assert updated.password_updated_at == "2026-07-02T10:00:00+00:00"
     assert updated.must_change_password is True
     assert store.get_user(user.id) == updated
+
+
+def test_create_and_update_user_reject_malformed_or_naive_expiry(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    user = _create_user(store)
+
+    with pytest.raises(ValueError, match="expires_at"):
+        _create_user(
+            store,
+            username="bad-expiry",
+            email="bad-expiry@example.com",
+            expires_at="not-a-timestamp",
+        )
+    with pytest.raises(ValueError, match="expires_at"):
+        _create_user(
+            store,
+            username="naive-expiry",
+            email="naive-expiry@example.com",
+            expires_at="2026-07-02T10:00:00",
+        )
+    with pytest.raises(ValueError, match="expires_at"):
+        store.update_user(user.id, expires_at="not-a-timestamp")
+    with pytest.raises(ValueError, match="expires_at"):
+        store.update_user(user.id, expires_at="2026-07-02T10:00:00")
 
 
 def test_delete_user_soft_deletes_user_and_removes_only_their_sessions(
@@ -273,6 +364,65 @@ def test_create_session_hashes_raw_session_id_and_rejects_expired_sessions(
     assert store.get_session("expired-session-id") is None
 
 
+def test_create_session_rejects_disabled_or_expired_users(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    disabled = _create_user(
+        store,
+        username="disabled",
+        email="disabled@example.com",
+        disabled=True,
+    )
+    expired = _create_user(
+        store,
+        username="expired",
+        email="expired@example.com",
+        expires_at="2000-01-01T00:00:00+00:00",
+    )
+
+    with pytest.raises(ValueError, match="user not active"):
+        store.create_session(disabled.id)
+    with pytest.raises(ValueError, match="user not active"):
+        store.create_session(expired.id)
+
+
+def test_get_and_touch_session_return_none_when_linked_user_disabled_or_expired(
+    monkeypatch,
+    tmp_path,
+):
+    db_path = tmp_path / "auth.db"
+    store = UserStore(db_path)
+    disabled_user = _create_user(
+        store,
+        username="disabled",
+        email="disabled@example.com",
+    )
+    expired_user = _create_user(
+        store,
+        username="expired",
+        email="expired@example.com",
+    )
+    raw_ids = iter(["disabled-session", "expired-session"])
+    monkeypatch.setattr(
+        user_store_module,
+        "secrets",
+        SimpleNamespace(token_urlsafe=lambda length: next(raw_ids)),
+        raising=False,
+    )
+    disabled_raw_session_id, _disabled_session = store.create_session(disabled_user.id)
+    expired_raw_session_id, _expired_session = store.create_session(expired_user.id)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE users SET disabled = 1 WHERE id = ?", (disabled_user.id,))
+        conn.execute(
+            "UPDATE users SET expires_at = ? WHERE id = ?",
+            ("2000-01-01T00:00:00+00:00", expired_user.id),
+        )
+
+    assert store.get_session(disabled_raw_session_id) is None
+    assert store.touch_session(disabled_raw_session_id) is None
+    assert store.get_session(expired_raw_session_id) is None
+    assert store.touch_session(expired_raw_session_id) is None
+
+
 def test_delete_session_and_delete_sessions_for_user(monkeypatch, tmp_path):
     store = UserStore(tmp_path / "auth.db")
     alice = _create_user(store, username="alice", email="alice@example.com")
@@ -296,6 +446,23 @@ def test_delete_session_and_delete_sessions_for_user(monkeypatch, tmp_path):
     assert store.delete_sessions_for_user(alice.id) == 1
     assert store.get_session(alice_raw_two) is None
     assert store.get_session(bob_raw) == bob_session
+
+
+def test_update_user_disabled_invalidates_sessions(monkeypatch, tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    user = _create_user(store)
+    monkeypatch.setattr(
+        user_store_module,
+        "secrets",
+        SimpleNamespace(token_urlsafe=lambda length: "disabled-user-session"),
+        raising=False,
+    )
+    raw_session_id, _session = store.create_session(user.id)
+
+    updated = store.update_user(user.id, disabled=True)
+
+    assert updated.disabled is True
+    assert store.get_session(raw_session_id) is None
 
 
 def test_touch_session_updates_last_seen_and_optionally_extends_expiry(
@@ -389,6 +556,19 @@ def test_password_reset_tokens_track_attempts_used_at_and_expiry(tmp_path):
         ttl_seconds=-1,
     )
     assert store.get_password_reset_token(expired.id) is None
+
+
+def test_used_password_reset_token_is_not_publicly_retrievable_or_reusable(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    user = _create_user(store)
+    token = store.create_password_reset_token(user.id, "one-use-code-hash")
+
+    used = store.mark_password_reset_token_used(token.id)
+
+    assert used.used_at is not None
+    assert store.get_password_reset_token(token.id) is None
+    with pytest.raises(ValueError, match="password reset token"):
+        store.mark_password_reset_token_used(token.id)
 
 
 def test_delete_password_reset_token_removes_only_selected_token(tmp_path):
