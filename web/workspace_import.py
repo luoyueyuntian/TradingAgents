@@ -189,6 +189,6 @@ def _resolve_portfolio_header_map(cells: list[str]) -> dict[str, int] | None:
 
 def _extract_portfolio_fields(cells: list[str], header_map: dict[str, int]) -> dict[str, str]:
     extracted: dict[str, str] = {}
-    for field, index in header_map.items():
-        extracted[field] = cells[index] if index < len(cells) else ""
+    for field_name, index in header_map.items():
+        extracted[field_name] = cells[index] if index < len(cells) else ""
     return extracted

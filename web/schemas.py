@@ -293,6 +293,7 @@ class BatchAnalysisResponse(BaseModel):
     tickers: list[str] = Field(default_factory=list)
     requested_count: int = 0
     created_count: int = 0
+    runs: list[AnalysisResponse] = Field(default_factory=list)
 
 
 class AdminUserCreate(BaseModel):
@@ -367,7 +368,6 @@ class AdminUserResponse(BaseModel):
     created_at: str
     updated_at: str
     last_login_at: str | None = None
-    runs: list[AnalysisResponse] = Field(default_factory=list)
 
 
 class RunBulkAction(BaseModel):

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from tradingagents.service import web_state as web_state_module
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.service import web_state as web_state_module
 from tradingagents.service.models import RunState
 from tradingagents.service.runtime_context import build_runtime_context
 
 
 def test_get_state_backend_adapter_defaults_to_file(monkeypatch, tmp_path):
     monkeypatch.delenv("TRADINGAGENTS_WEB_STATE_BACKEND", raising=False)
+    monkeypatch.delenv("TRADINGAGENTS_WEB_STATE_DIR", raising=False)
     monkeypatch.setattr(web_state_module.Path, "home", lambda: tmp_path)
 
     from tradingagents.service.state_backend import get_state_backend_adapter
@@ -35,6 +36,7 @@ def test_get_state_backend_adapter_uses_sqlite_path(monkeypatch, tmp_path):
 
 def test_file_backend_adapter_round_trip_for_runs(monkeypatch, tmp_path):
     monkeypatch.delenv("TRADINGAGENTS_WEB_STATE_BACKEND", raising=False)
+    monkeypatch.delenv("TRADINGAGENTS_WEB_STATE_DIR", raising=False)
     monkeypatch.setattr(web_state_module.Path, "home", lambda: tmp_path)
 
     from tradingagents.service.state_backend import get_state_backend_adapter
