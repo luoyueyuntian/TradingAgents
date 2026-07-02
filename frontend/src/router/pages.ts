@@ -2,11 +2,21 @@ import type { RouteRecordRaw } from 'vue-router';
 
 import type { MessageKey } from '../i18n';
 
+export type RouteMinRole = 'admin';
+
+declare module 'vue-router' {
+  interface RouteMeta {
+    requiresAuth?: boolean;
+    minRole?: RouteMinRole;
+  }
+}
+
 export type NavigationGroup = {
   labelKey: MessageKey;
   icon: string;
   path: string;
   descriptionKey: MessageKey;
+  minRole?: RouteMinRole;
 };
 
 export const navigationGroups: NavigationGroup[] = [
@@ -52,42 +62,80 @@ export const navigationGroups: NavigationGroup[] = [
     path: '/settings',
     descriptionKey: 'nav.settingsDesc',
   },
+  {
+    labelKey: 'nav.users',
+    icon: 'pi pi-users',
+    path: '/users',
+    descriptionKey: 'nav.usersDesc',
+    minRole: 'admin',
+  },
 ];
+
+const requiresAuth = { requiresAuth: true } as const;
 
 export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'dashboard',
     component: () => import('../pages/DashboardPage.vue'),
+    meta: requiresAuth,
   },
   {
     path: '/analysis',
     name: 'analysis',
     component: () => import('../pages/AnalyzePage.vue'),
+    meta: requiresAuth,
   },
   {
     path: '/runs',
     name: 'runs',
     component: () => import('../pages/RunsPage.vue'),
+    meta: requiresAuth,
   },
   {
     path: '/portfolio',
     name: 'portfolio',
     component: () => import('../pages/PortfolioPage.vue'),
+    meta: requiresAuth,
   },
   {
     path: '/workspace',
     name: 'workspace',
     component: () => import('../pages/WorkspacePage.vue'),
+    meta: requiresAuth,
   },
   {
     path: '/automations',
     name: 'automations',
     component: () => import('../pages/AutomationsPage.vue'),
+    meta: requiresAuth,
   },
   {
     path: '/settings',
     name: 'settings',
     component: () => import('../pages/SettingsPage.vue'),
+    meta: requiresAuth,
+  },
+  {
+    path: '/users',
+    name: 'users',
+    component: () => Promise.resolve({
+      template: '<section class="uno-py-6" />',
+    }),
+    meta: {
+      requiresAuth: true,
+      minRole: 'admin',
+    },
+  },
+  {
+    path: '/login',
+    name: 'login',
+    component: () => import('../pages/LoginPage.vue'),
+  },
+  {
+    path: '/change-password',
+    name: 'change-password',
+    component: () => import('../pages/ForcePasswordChangePage.vue'),
+    meta: requiresAuth,
   },
 ];
