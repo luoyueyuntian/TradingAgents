@@ -7,7 +7,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed } from 'vue';
 import { RouterView } from 'vue-router';
 
 import { useI18n } from './i18n';
@@ -16,15 +16,5 @@ import { useSession } from './stores/session';
 
 const session = useSession();
 const { t } = useI18n();
-const bootstrapping = ref(true);
-
-onMounted(async () => {
-  try {
-    await session.loadCurrentUser();
-  } catch {
-    // Unauthenticated sessions render the login route.
-  } finally {
-    bootstrapping.value = false;
-  }
-});
+const bootstrapping = computed(() => session.state.loading && !session.state.currentUser);
 </script>

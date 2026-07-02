@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
 
 const sessionState = {
+  loading: false,
   currentUser: null as null | {
     id: string;
     username: string;
@@ -46,6 +47,7 @@ async function loadRouterModule() {
 
 describe('router auth guards', () => {
   beforeEach(() => {
+    sessionState.loading = false;
     sessionState.currentUser = null;
     session.loadCurrentUser.mockReset();
     session.loadCurrentUser.mockResolvedValue(undefined);
@@ -60,6 +62,37 @@ describe('router auth guards', () => {
     expect(router.currentRoute.value.fullPath).toBe('/login');
   });
 
+  it('waits for an in-flight auth bootstrap before deciding protected navigation', async () => {
+    const deferred = { resolve: null as null | (() => void) };
+    session.loadCurrentUser.mockImplementation(() => {
+      sessionState.loading = true;
+      return new Promise<void>((resolve) => {
+        deferred.resolve = () => {
+          sessionState.currentUser = makeUser();
+          sessionState.loading = false;
+          resolve();
+        };
+      });
+    });
+
+    const { createAppRouter, ensureSessionLoaded } = await loadRouterModule();
+    const router = createAppRouter(createMemoryHistory());
+
+    const bootstrapPromise = ensureSessionLoaded();
+    const navigationPromise = router.push('/analysis');
+
+    expect(session.loadCurrentUser).toHaveBeenCalledTimes(1);
+
+    if (!deferred.resolve) {
+      throw new Error('Expected bootstrap resolver to be assigned.');
+    }
+    deferred.resolve();
+    await bootstrapPromise;
+    await navigationPromise;
+
+    expect(router.currentRoute.value.fullPath).toBe('/analysis');
+  });
+
   it('redirects users who must change password to /change-password', async () => {
     sessionState.currentUser = makeUser({ must_change_password: true });
     const { createAppRouter } = await loadRouterModule();
@@ -68,6 +101,16 @@ describe('router auth guards', () => {
     await router.push('/runs');
 
     expect(router.currentRoute.value.fullPath).toBe('/change-password');
+  });
+
+  it('redirects authenticated users without a password change requirement away from /change-password', async () => {
+    sessionState.currentUser = makeUser({ must_change_password: false });
+    const { createAppRouter } = await loadRouterModule();
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push('/change-password');
+
+    expect(router.currentRoute.value.fullPath).toBe('/');
   });
 
   it('blocks non-admin users from navigating to /users', async () => {

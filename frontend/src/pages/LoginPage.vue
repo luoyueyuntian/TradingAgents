@@ -29,14 +29,8 @@
             {{ session.state.error }}
           </Message>
 
-          <div class="uno-flex uno-items-center uno-justify-between uno-gap-3">
+          <div class="uno-flex uno-items-center uno-gap-3">
             <Button :label="t('auth.loginAction')" type="submit" :loading="session.state.loading" />
-            <Button
-              v-if="session.state.passwordReset.available"
-              type="button"
-              text
-              :label="t('auth.forgotPassword')"
-            />
           </div>
         </form>
       </template>
