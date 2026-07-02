@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .auth import get_presented_api_token, get_required_api_token
+from .auth_routes import router as auth_router
 from .routes import router
 from .runner import (
     ensure_worker_started,
@@ -49,6 +50,7 @@ _static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 # Include API routes
+app.include_router(auth_router)
 app.include_router(router)
 
 
@@ -62,6 +64,7 @@ async def _require_api_token(request, call_next):
     if (
         configured
         and request.url.path.startswith("/api/")
+        and not request.url.path.startswith("/api/auth/")
         and get_presented_api_token(request) != configured
     ):
         return JSONResponse({"detail": "Unauthorized"}, status_code=401)
