@@ -130,7 +130,6 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import PageHeader from '../components/PageHeader.vue';
 import { useI18n } from '../i18n';
 import { apiDelete, apiGet, apiPatch, apiPost } from '../services/api';
-import { useSession } from '../stores/session';
 
 type AdminUserRole = 'viewer' | 'analyst' | 'admin';
 
@@ -157,7 +156,6 @@ type ManagedUser = AdminUserResponse & {
   error: string;
 };
 
-const session = useSession();
 const { t } = useI18n();
 const loading = ref(false);
 const creating = ref(false);
@@ -230,7 +228,7 @@ async function loadUsers() {
   loading.value = true;
   pageError.value = '';
   try {
-    const payload = await apiGet<{ users: AdminUserResponse[] }>('/api/admin/users', session.apiContext.value);
+    const payload = await apiGet<{ users: AdminUserResponse[] }>('/api/admin/users');
     users.value = payload.users.map(decorateUser);
   } catch (exc) {
     pageError.value = exc instanceof Error ? exc.message : t('users.loadError');
@@ -251,7 +249,7 @@ async function createUser() {
       role: createForm.role,
       password: createForm.password,
       expires_at: toApiDateTime(createForm.expires_at),
-    }, session.apiContext.value);
+    });
     notice.value = t('users.userCreated', { username: payload.user.username });
     resetCreateForm();
     await loadUsers();
@@ -272,7 +270,7 @@ async function updateUser(user: ManagedUser) {
       role: user.draftRole,
       expires_at: toApiDateTime(user.draftExpiresAt),
       disabled: user.draftDisabled,
-    }, session.apiContext.value);
+    });
     notice.value = t('users.userUpdated', { username: payload.user.username });
     await loadUsers();
   } catch (exc) {
@@ -289,7 +287,7 @@ async function resetPassword(user: ManagedUser) {
   try {
     const payload = await apiPatch<{ user: AdminUserResponse }>(`/api/admin/users/${encodeURIComponent(user.id)}`, {
       password: user.resetPassword,
-    }, session.apiContext.value);
+    });
     notice.value = t('users.passwordResetNotice', { username: payload.user.username });
     await loadUsers();
   } catch (exc) {
@@ -304,7 +302,7 @@ async function deleteUser(user: ManagedUser) {
   user.error = '';
   notice.value = '';
   try {
-    await apiDelete<{ user: AdminUserResponse }>(`/api/admin/users/${encodeURIComponent(user.id)}`, session.apiContext.value);
+    await apiDelete<{ user: AdminUserResponse }>(`/api/admin/users/${encodeURIComponent(user.id)}`);
     notice.value = t('users.userDisabled', { username: user.username });
     await loadUsers();
   } catch (exc) {

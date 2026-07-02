@@ -137,7 +137,7 @@ describe('UserManagementPage', () => {
     const wrapper = mountPage();
     await flushPromises();
 
-    expect(apiGet).toHaveBeenCalledWith('/api/admin/users', session.apiContext.value);
+    expect(apiGet).toHaveBeenCalledWith('/api/admin/users');
     expect(wrapper.text()).toContain('alice@example.com');
   });
 
@@ -176,7 +176,7 @@ describe('UserManagementPage', () => {
       role: 'viewer',
       password: 'TempPass123!',
       expires_at: null,
-    }, session.apiContext.value);
+    });
   });
 
   it('shows api validation errors', async () => {
