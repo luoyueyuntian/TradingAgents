@@ -14,18 +14,18 @@
 
     <MetricGrid :items="metrics" />
 
-    <div class="content-grid">
+    <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(320px,1fr))] uno-gap-4">
       <Card>
         <template #title>{{ t('dashboard.briefing') }}</template>
         <template #content>
-          <p class="muted">{{ briefing?.summary?.headline || briefing?.summary?.message || t('dashboard.noBriefing') }}</p>
-          <div class="list-stack">
-            <div v-for="run in asArray(briefing?.recent_runs).slice(0, 5)" :key="run.run_id" class="list-item">
-              <div class="list-item-title">
+          <p class="uno-text-[#6f8183]">{{ briefing?.summary?.headline || briefing?.summary?.message || t('dashboard.noBriefing') }}</p>
+          <div class="uno-grid uno-gap-[0.65rem]">
+            <div v-for="run in asArray(briefing?.recent_runs).slice(0, 5)" :key="run.run_id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ run.ticker }} · {{ run.date }}</span>
                 <Tag :value="run.signal || run.status" :severity="signalSeverity(run.signal || run.status)" />
               </div>
-              <small class="muted">{{ compactText(run.error || run.created_at) }}</small>
+              <small class="uno-text-[#6f8183]">{{ compactText(run.error || run.created_at) }}</small>
             </div>
           </div>
         </template>
@@ -34,29 +34,29 @@
       <Card>
         <template #title>{{ t('dashboard.notifications') }}</template>
         <template #content>
-          <div class="list-stack">
-            <div v-for="item in asArray(notifications?.items).slice(0, 6)" :key="item.id" class="list-item">
-              <div class="list-item-title">
+          <div class="uno-grid uno-gap-[0.65rem]">
+            <div v-for="item in asArray(notifications?.items).slice(0, 6)" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ item.title }}</span>
                 <Tag :value="item.severity" :severity="item.severity === 'error' ? 'danger' : item.severity" />
               </div>
-              <small class="muted">{{ item.message }}</small>
+              <small class="uno-text-[#6f8183]">{{ item.message }}</small>
             </div>
           </div>
-          <p v-if="!asArray(notifications?.items).length" class="muted">{{ t('dashboard.noNotifications') }}</p>
+          <p v-if="!asArray(notifications?.items).length" class="uno-text-[#6f8183]">{{ t('dashboard.noNotifications') }}</p>
         </template>
       </Card>
 
       <Card>
         <template #title>{{ t('dashboard.focus') }}</template>
         <template #content>
-          <div class="list-stack">
-            <div v-for="item in dashboardFocus" :key="item.key" class="list-item">
-              <div class="list-item-title">
+          <div class="uno-grid uno-gap-[0.65rem]">
+            <div v-for="item in dashboardFocus" :key="item.key" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ item.title }}</span>
                 <Tag :value="String(item.count)" severity="info" />
               </div>
-              <small class="muted">{{ item.description }}</small>
+              <small class="uno-text-[#6f8183]">{{ item.description }}</small>
             </div>
           </div>
         </template>

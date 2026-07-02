@@ -12,21 +12,21 @@
 
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
-    <div class="content-grid">
+    <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(320px,1fr))] uno-gap-4">
       <Card>
         <template #title>{{ t('workspace.searchTitle') }}</template>
         <template #content>
-          <div class="actions-row">
+          <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
             <InputText v-model="searchQuery" :placeholder="t('workspace.searchPlaceholder')" @keyup.enter="runSearch" />
             <Button icon="pi pi-search" :label="t('common.search')" @click="runSearch" />
           </div>
-          <div class="list-stack" style="margin-top: 0.75rem;">
-            <div v-for="item in asArray(searchResults?.results)" :key="`${item.kind}-${item.entity_id}`" class="list-item">
-              <div class="list-item-title">
+          <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
+            <div v-for="item in asArray(searchResults?.results)" :key="`${item.kind}-${item.entity_id}`" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ item.title }}</span>
                 <Tag :value="item.kind" severity="info" />
               </div>
-              <small class="muted">{{ item.subtitle }} · {{ item.excerpt }}</small>
+              <small class="uno-text-[#6f8183]">{{ item.subtitle }} · {{ item.excerpt }}</small>
             </div>
           </div>
         </template>
@@ -35,17 +35,17 @@
       <Card>
         <template #title>{{ t('workspace.notes') }}</template>
         <template #content>
-          <div class="form-grid">
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
             <InputText v-model="note.ticker" :placeholder="t('workspace.tickerOptional')" />
             <InputText v-model="note.tags" :placeholder="t('workspace.tagsPlaceholder')" />
           </div>
-          <Textarea v-model="note.content" rows="4" auto-resize :placeholder="t('workspace.notePlaceholder')" style="width: 100%; margin-top: 0.75rem;" />
-          <Button icon="pi pi-save" :label="t('workspace.saveNote')" style="margin-top: 0.75rem;" @click="saveNote" />
-          <div class="list-stack" style="margin-top: 0.75rem;">
-            <div v-for="item in notes" :key="item.id" class="list-item">
-              <div class="list-item-title">
+          <Textarea v-model="note.content" rows="4" auto-resize :placeholder="t('workspace.notePlaceholder')" class="uno-mt-3 uno-w-full" />
+          <Button icon="pi pi-save" :label="t('workspace.saveNote')" class="uno-mt-3" @click="saveNote" />
+          <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
+            <div v-for="item in notes" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ item.ticker || item.run_id || t('workspace.workspaceFallback') }}</span>
-                <small class="muted">{{ formatDateTime(item.updated_at) }}</small>
+                <small class="uno-text-[#6f8183]">{{ formatDateTime(item.updated_at) }}</small>
               </div>
               <p>{{ item.content }}</p>
             </div>
@@ -56,14 +56,14 @@
       <Card>
         <template #title>{{ t('workspace.members') }}</template>
         <template #content>
-          <div class="actions-row">
+          <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
             <InputText v-model="member.name" :placeholder="t('workspace.name')" />
             <Select v-model="member.role" :options="memberRoles" option-label="label" option-value="value" :placeholder="t('workspace.role')" />
             <Button icon="pi pi-user-plus" :label="t('common.add')" @click="saveMember" />
           </div>
-          <div class="list-stack" style="margin-top: 0.75rem;">
-            <div v-for="item in members" :key="item.id" class="list-item">
-              <div class="list-item-title">
+          <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
+            <div v-for="item in members" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ item.name }}</span>
                 <Tag :value="item.role || t('workspace.member')" severity="secondary" />
               </div>
@@ -87,13 +87,13 @@
       <Card>
         <template #title>{{ t('workspace.timeline') }}</template>
         <template #content>
-          <div class="list-stack">
-            <div v-for="event in asArray(timeline?.events).slice(0, 12)" :key="event.id || `${event.kind}-${event.occurred_at}`" class="list-item">
-              <div class="list-item-title">
+          <div class="uno-grid uno-gap-[0.65rem]">
+            <div v-for="event in asArray(timeline?.events).slice(0, 12)" :key="event.id || `${event.kind}-${event.occurred_at}`" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ event.title }}</span>
                 <Tag :value="event.kind" />
               </div>
-              <small class="muted">{{ formatDateTime(event.occurred_at) }} · {{ event.subtitle || event.description }}</small>
+              <small class="uno-text-[#6f8183]">{{ formatDateTime(event.occurred_at) }} · {{ event.subtitle || event.description }}</small>
             </div>
           </div>
         </template>
@@ -102,20 +102,20 @@
       <Card>
         <template #title>{{ t('workspace.savedViewsAndShares') }}</template>
         <template #content>
-          <div class="list-stack">
-            <div v-for="view in views" :key="view.id" class="list-item">
-              <div class="list-item-title">
+          <div class="uno-grid uno-gap-[0.65rem]">
+            <div v-for="view in views" :key="view.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ view.name }}</span>
                 <Tag :value="view.group || t('workspace.view')" severity="info" />
               </div>
-              <small class="muted">{{ view.url }}</small>
+              <small class="uno-text-[#6f8183]">{{ view.url }}</small>
             </div>
-            <div v-for="share in shares" :key="share.share_id" class="list-item">
-              <div class="list-item-title">
+            <div v-for="share in shares" :key="share.share_id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ t('common.publicSnapshot', { ticker: share.ticker }) }}</span>
                 <a :href="share.url" target="_blank" rel="noopener">{{ t('common.open') }}</a>
               </div>
-              <small class="muted">{{ share.share_id }} · {{ share.status }}</small>
+              <small class="uno-text-[#6f8183]">{{ share.share_id }} · {{ share.status }}</small>
             </div>
           </div>
         </template>

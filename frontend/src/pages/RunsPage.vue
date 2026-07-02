@@ -14,24 +14,24 @@
 
     <Card>
       <template #content>
-        <div class="form-grid">
-          <label class="field">
-            <span class="field-label">{{ t('common.search') }}</span>
+        <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+          <label class="uno-grid uno-gap-[0.35rem]">
+            <span class="uno-text-[#6f8183]">{{ t('common.search') }}</span>
             <InputText v-model="filters.q" :placeholder="t('runs.searchPlaceholder')" @input="loadRuns" />
           </label>
-          <label class="field">
-            <span class="field-label">{{ t('common.status') }}</span>
+          <label class="uno-grid uno-gap-[0.35rem]">
+            <span class="uno-text-[#6f8183]">{{ t('common.status') }}</span>
             <Select v-model="filters.status" :options="statusOptions" option-label="label" option-value="value" @change="loadRuns" />
           </label>
-          <label class="field">
-            <span class="field-label">{{ t('runs.library') }}</span>
+          <label class="uno-grid uno-gap-[0.35rem]">
+            <span class="uno-text-[#6f8183]">{{ t('runs.library') }}</span>
             <Select v-model="filters.archived" :options="archiveOptions" option-label="label" option-value="value" @change="loadRuns" />
           </label>
         </div>
       </template>
     </Card>
 
-    <div class="runs-grid" style="margin-top: 1rem;">
+    <div class="uno-mt-4 uno-grid uno-grid-cols-[minmax(320px,430px)_minmax(0,1fr)] uno-items-start uno-gap-4 max-[900px]:uno-grid-cols-1">
       <Card>
         <template #title>{{ t('runs.recentRuns') }}</template>
         <template #content>
@@ -55,50 +55,55 @@
       <Card>
         <template #title>{{ t('runs.runDetail') }}</template>
         <template #content>
-          <div v-if="selectedRun" class="wide-grid">
-            <div class="run-summary-panel">
-              <div class="summary-heading">
+          <div v-if="selectedRun" class="uno-grid uno-gap-4">
+            <div class="uno-grid uno-gap-[0.9rem] uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-[#fbfdfd] uno-p-4">
+              <div class="uno-flex uno-items-start uno-justify-between uno-gap-4">
                 <div>
-                  <p class="eyebrow">{{ t('runs.summary') }}</p>
-                  <h2>{{ selectedRun.ticker }} · {{ selectedRun.date }}</h2>
+                  <p class="uno-m-0 uno-text-xs uno-font-700 uno-uppercase uno-text-[#6f8183]">{{ t('runs.summary') }}</p>
+                  <h2 class="uno-mb-0 uno-mt-[0.15rem] uno-text-[1.2rem] uno-tracking-normal uno-text-[#132a2d]">{{ selectedRun.ticker }} · {{ selectedRun.date }}</h2>
                 </div>
                 <Tag :value="selectedRun.signal || selectedRun.status" :severity="signalSeverity(selectedRun.signal || selectedRun.status)" />
               </div>
               <MetricGrid :items="detailMetrics" />
-              <div class="decision-grid">
-                <div v-for="item in decisionItems" :key="item.label" class="decision-item">
-                  <span>{{ item.label }}</span>
-                  <strong>{{ item.value }}</strong>
+              <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(150px,1fr))] uno-gap-[0.65rem]">
+                <div v-for="item in decisionItems" :key="item.label" class="uno-grid uno-min-w-0 uno-gap-1 uno-rounded-lg uno-border uno-border-[#dbe6e6] uno-bg-white uno-p-3">
+                  <span class="uno-text-[0.78rem] uno-text-[#607174]">{{ item.label }}</span>
+                  <strong class="uno-min-w-0 uno-break-words uno-text-[#132a2d]">{{ item.value }}</strong>
                 </div>
               </div>
-              <p class="decision-thesis">{{ decisionSummary }}</p>
+              <p class="uno-m-0 uno-leading-[1.55] uno-text-[#304345]">{{ decisionSummary }}</p>
             </div>
 
-            <div class="insight-grid">
-              <div v-for="panel in insightPanels" :key="panel.key" class="insight-panel">
-                <span class="field-label">{{ insightTitle(panel.key) }}</span>
-                <ul v-if="panel.items.length" class="insight-list">
+            <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(210px,1fr))] uno-gap-3">
+              <div v-for="panel in insightPanels" :key="panel.key" class="uno-min-w-0 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-[0.85rem]">
+                <span class="uno-text-[#6f8183]">{{ insightTitle(panel.key) }}</span>
+                <ul v-if="panel.items.length" class="uno-mb-0 uno-mt-[0.55rem] uno-grid uno-gap-[0.45rem] uno-pl-[1.1rem] uno-leading-[1.45] uno-text-[#304345]">
                   <li v-for="item in panel.items" :key="item">{{ item }}</li>
                 </ul>
-                <p v-else class="muted">{{ t('runs.noInsight') }}</p>
+                <p v-else class="uno-text-[#6f8183]">{{ t('runs.noInsight') }}</p>
               </div>
             </div>
 
-            <div class="report-toolbar">
-              <div class="report-tabs" role="tablist" :aria-label="t('runs.reportSections')">
+            <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
+              <div class="uno-flex uno-flex-wrap uno-gap-[0.35rem]" role="tablist" :aria-label="t('runs.reportSections')">
                 <button
                   v-for="section in sectionOptions"
                   :key="section.value"
                   type="button"
                   role="tab"
                   :aria-selected="selectedSectionKey === section.value"
-                  :class="['report-tab', { active: selectedSectionKey === section.value }]"
+                  :class="[
+                    'uno-min-h-9 uno-cursor-pointer uno-rounded-lg uno-border uno-px-3 uno-py-[0.45rem]',
+                    selectedSectionKey === section.value
+                      ? 'uno-border-[#162326] uno-bg-[#162326] uno-text-white'
+                      : 'uno-border-[#d5e2e2] uno-bg-white uno-text-[#304345] hover:uno-border-[#90a9aa]',
+                  ]"
                   @click="selectedSectionKey = section.value"
                 >
                   {{ section.label }}
                 </button>
               </div>
-              <div class="actions-row">
+              <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                 <Button icon="pi pi-refresh" :label="t('common.retry')" severity="secondary" @click="retryRun" />
                 <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined @click="deleteRun" />
               </div>
@@ -106,19 +111,19 @@
 
             <ReportMarkdown :content="selectedSectionText" :empty-text="t('runs.noReport')" />
 
-            <details v-if="artifacts.length" class="artifact-panel">
-              <summary>{{ t('runs.artifacts') }}</summary>
-              <div class="artifact-links">
+            <details v-if="artifacts.length" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+              <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.artifacts') }}</summary>
+              <div class="uno-mt-3 uno-flex uno-flex-wrap uno-gap-2">
                 <a
                   v-for="artifact in artifacts"
                   :key="artifact.key"
-                  class="artifact-link"
+                  class="uno-inline-flex uno-min-h-[34px] uno-items-center uno-rounded-lg uno-border uno-border-[#d5e2e2] uno-px-[0.65rem] uno-py-1.5 uno-text-[#162326] uno-no-underline hover:uno-border-[#90a9aa] hover:uno-bg-[#f4f8f8]"
                   :href="artifact.download_url"
                 >{{ artifact.label }}</a>
               </div>
             </details>
           </div>
-          <p v-else class="muted">{{ t('runs.selectRun') }}</p>
+          <p v-else class="uno-text-[#6f8183]">{{ t('runs.selectRun') }}</p>
         </template>
       </Card>
     </div>

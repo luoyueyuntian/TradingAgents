@@ -1,4 +1,5 @@
 import vue from '@vitejs/plugin-vue';
+import UnoCSS from 'unocss/vite';
 import { defineConfig, type ProxyOptions } from 'vite';
 
 const DEFAULT_DEV_BACKEND_TARGET = 'http://127.0.0.1:8000';
@@ -25,7 +26,7 @@ export function createDevServerProxy(env: DevProxyEnv = process.env): Record<str
 
 export default defineConfig({
   base: '/static/spa/',
-  plugins: [vue()],
+  plugins: [vue(), UnoCSS()],
   server: {
     proxy: createDevServerProxy(),
   },

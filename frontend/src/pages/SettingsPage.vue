@@ -14,29 +14,29 @@
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <Message v-if="notice" severity="success" :closable="false">{{ notice }}</Message>
 
-    <div class="wide-grid">
+    <div class="uno-grid uno-gap-4">
       <Card>
         <template #title>{{ t('settings.llmConfiguration') }}</template>
         <template #content>
-          <div class="form-grid">
-            <label class="field">
-              <span class="field-label">{{ t('common.provider') }}</span>
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('common.provider') }}</span>
               <Select v-model="form.llm.provider" :options="providerOptions" option-label="label" option-value="value" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('analysis.quickModel') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.quickModel') }}</span>
               <InputText v-model="form.llm.quick_think_model" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('analysis.deepModel') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.deepModel') }}</span>
               <InputText v-model="form.llm.deep_think_model" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('settings.temperature') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('settings.temperature') }}</span>
               <InputText v-model="form.llm.temperature" type="number" :placeholder="t('common.default')" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('settings.backendUrl') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('settings.backendUrl') }}</span>
               <InputText v-model="form.llm.backend_url" :placeholder="t('common.providerDefault')" />
             </label>
           </div>
@@ -46,9 +46,9 @@
       <Card>
         <template #title>{{ t('settings.apiKeys') }}</template>
         <template #content>
-          <div class="form-grid">
-            <label v-for="keyName in apiKeyNames" :key="keyName" class="field">
-              <span class="field-label">{{ keyName }}</span>
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+            <label v-for="keyName in apiKeyNames" :key="keyName" class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ keyName }}</span>
               <InputText v-model="form.api_keys[keyName]" type="password" :placeholder="t('common.notSet')" />
             </label>
           </div>
@@ -58,28 +58,28 @@
       <Card>
         <template #title>{{ t('settings.analysisDefaults') }}</template>
         <template #content>
-          <div class="form-grid">
-            <label class="field">
-              <span class="field-label">{{ t('common.language') }}</span>
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('common.language') }}</span>
               <Select v-model="form.analysis.output_language" :options="languageOptions" option-label="label" option-value="value" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('analysis.marketProfile') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.marketProfile') }}</span>
               <Select v-model="form.analysis.market_profile" :options="marketProfileOptions" option-label="label" option-value="value" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('settings.researchDepth') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('settings.researchDepth') }}</span>
               <InputText v-model="form.analysis.research_depth" type="number" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('settings.riskRounds') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('settings.riskRounds') }}</span>
               <InputText v-model="form.analysis.max_risk_discuss_rounds" type="number" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('settings.benchmarkTicker') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('settings.benchmarkTicker') }}</span>
               <InputText v-model="form.analysis.benchmark_ticker" :placeholder="t('common.auto')" />
             </label>
-            <label class="inline-row">
+            <label class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
               <input v-model="form.analysis.checkpoint_enabled" type="checkbox">
               <span>{{ t('settings.enableCheckpoint') }}</span>
             </label>
@@ -90,14 +90,14 @@
       <Card>
         <template #title>{{ t('settings.dataVendors') }}</template>
         <template #content>
-          <div class="form-grid">
-            <label v-for="field in vendorFields" :key="field.key" class="field">
-              <span class="field-label">{{ field.label }}</span>
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+            <label v-for="field in vendorFields" :key="field.key" class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ field.label }}</span>
               <InputText v-model="form.data.data_vendors[field.key]" :placeholder="t('settings.vendorPlaceholder')" />
             </label>
           </div>
-          <label class="field" style="margin-top: 0.75rem;">
-            <span class="field-label">{{ t('settings.globalNewsQueries') }}</span>
+          <label class="uno-mt-3 uno-grid uno-gap-[0.35rem]">
+            <span class="uno-text-[#6f8183]">{{ t('settings.globalNewsQueries') }}</span>
             <Textarea v-model="globalNewsQueriesText" rows="4" auto-resize />
           </label>
         </template>
@@ -106,20 +106,20 @@
       <Card>
         <template #title>{{ t('settings.securityWebhook') }}</template>
         <template #content>
-          <div class="form-grid">
-            <label class="field">
-              <span class="field-label">{{ t('settings.tenantApiToken') }}</span>
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('settings.tenantApiToken') }}</span>
               <InputText v-model="form.security.web_api_token" type="password" :placeholder="t('common.optional')" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('settings.webhookUrl') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('settings.webhookUrl') }}</span>
               <InputText v-model="form.integrations.webhook.url" placeholder="https://example.com/webhook" />
             </label>
-            <label class="field">
-              <span class="field-label">{{ t('settings.webhookBearerToken') }}</span>
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('settings.webhookBearerToken') }}</span>
               <InputText v-model="form.integrations.webhook.bearer_token" type="password" :placeholder="t('common.optional')" />
             </label>
-            <label class="inline-row">
+            <label class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
               <input v-model="form.integrations.webhook.enabled" type="checkbox">
               <span>{{ t('settings.enableWebhook') }}</span>
             </label>
