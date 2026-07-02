@@ -62,6 +62,32 @@ describe('router auth guards', () => {
     expect(router.currentRoute.value.fullPath).toBe('/login');
   });
 
+  it('bootstraps authenticated cold starts on /login and redirects to /', async () => {
+    session.loadCurrentUser.mockImplementation(async () => {
+      sessionState.currentUser = makeUser();
+    });
+    const { createAppRouter } = await loadRouterModule();
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push('/login');
+
+    expect(session.loadCurrentUser).toHaveBeenCalledTimes(1);
+    expect(router.currentRoute.value.fullPath).toBe('/');
+  });
+
+  it('bootstraps forced-change cold starts on /login and redirects to /change-password', async () => {
+    session.loadCurrentUser.mockImplementation(async () => {
+      sessionState.currentUser = makeUser({ must_change_password: true });
+    });
+    const { createAppRouter } = await loadRouterModule();
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push('/login');
+
+    expect(session.loadCurrentUser).toHaveBeenCalledTimes(1);
+    expect(router.currentRoute.value.fullPath).toBe('/change-password');
+  });
+
   it('waits for an in-flight auth bootstrap before deciding protected navigation', async () => {
     const deferred = { resolve: null as null | (() => void) };
     session.loadCurrentUser.mockImplementation(() => {
