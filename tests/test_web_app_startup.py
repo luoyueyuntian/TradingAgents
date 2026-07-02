@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
 
 def test_web_app_imports_in_fresh_process():
     repo_root = Path(__file__).resolve().parents[1]
@@ -34,3 +36,30 @@ def test_web_app_cors_default_is_not_wildcard():
 
     assert 'allow_origins=["*"]' not in app_source
     assert "TRADINGAGENTS_WEB_CORS_ORIGINS" in app_source
+
+
+def test_web_app_startup_bootstraps_first_admin_from_env(monkeypatch, tmp_path):
+    from web.app import app
+    from web.user_store import UserStore
+
+    auth_db = tmp_path / "auth.db"
+    monkeypatch.setenv("TRADINGAGENTS_WEB_AUTH_DB", str(auth_db))
+    monkeypatch.setenv("TRADINGAGENTS_WEB_STATE_DIR", str(tmp_path / "web-state"))
+    monkeypatch.setenv("TRADINGAGENTS_WEB_RUN_MODE", "manual")
+    monkeypatch.setenv("TRADINGAGENTS_ADMIN_EMAIL", "admin@example.com")
+    monkeypatch.setenv("TRADINGAGENTS_ADMIN_PASSWORD", "StrongAdmin123!")
+    monkeypatch.setenv("TRADINGAGENTS_ADMIN_TENANT_ID", "tenant-a")
+    monkeypatch.setenv("TRADINGAGENTS_ADMIN_USERNAME", "root-admin")
+    monkeypatch.setenv("TRADINGAGENTS_ADMIN_DISPLAY_NAME", "Root Admin")
+
+    with TestClient(app):
+        pass
+
+    store = UserStore(auth_db)
+    user = store.get_user_by_identifier("admin@example.com")
+
+    assert user is not None
+    assert user.username == "root-admin"
+    assert user.role == "admin"
+    assert user.tenant_id == "tenant-a"
+    assert user.must_change_password is True

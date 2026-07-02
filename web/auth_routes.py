@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import secrets
+import os
 import uuid
+from contextlib import suppress
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -18,9 +19,10 @@ from .mail import (
 from .passwords import (
     generate_verification_code,
     hash_password,
-    hash_secret,
+    hash_verification_code,
     validate_password_policy,
     verify_password,
+    verify_verification_code,
 )
 from .schemas import (
     AuthLoginRequest,
@@ -35,6 +37,7 @@ from .user_store import PASSWORD_RESET_MAX_ATTEMPTS, UserRecord, UserStore
 
 SESSION_COOKIE_NAME = "tradingagents_session"
 SESSION_TTL_SECONDS = 43_200
+INVALID_RESET_CODE_DETAIL = "Invalid or expired reset code"
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -58,6 +61,20 @@ def _ensure_user_can_login(user: UserRecord) -> None:
 
 def _password_reset_available() -> bool:
     return password_reset_mail_available()
+
+
+def _invalid_reset_code_error() -> HTTPException:
+    return HTTPException(status_code=400, detail=INVALID_RESET_CODE_DETAIL)
+
+
+def _session_cookie_secure(request: Request) -> bool:
+    override = os.environ.get("TRADINGAGENTS_SESSION_COOKIE_SECURE", "").strip().lower()
+    if override in {"1", "true", "yes", "on"}:
+        return True
+    if override in {"0", "false", "no", "off"}:
+        return False
+    forwarded_proto = request.headers.get("X-Forwarded-Proto", "").split(",", 1)[0].strip().lower()
+    return request.url.scheme == "https" or forwarded_proto == "https"
 
 
 def _build_auth_user(user: UserRecord) -> AuthUser:
@@ -115,7 +132,7 @@ def _get_user_by_email(store: UserStore, email: str) -> UserRecord | None:
 
 
 @router.post("/login", response_model=AuthMeResponse)
-def login(payload: AuthLoginRequest, response: Response) -> AuthMeResponse:
+def login(payload: AuthLoginRequest, request: Request, response: Response) -> AuthMeResponse:
     store = _get_store()
     user = store.get_user_by_identifier(payload.identifier)
     if user is None:
@@ -129,6 +146,7 @@ def login(payload: AuthLoginRequest, response: Response) -> AuthMeResponse:
         value=raw_session_id,
         httponly=True,
         samesite="lax",
+        secure=_session_cookie_secure(request),
         max_age=SESSION_TTL_SECONDS,
     )
     return _build_me_response(user, session.expires_at)
@@ -139,7 +157,12 @@ def logout(request: Request, response: Response) -> dict[str, str]:
     raw_session_id = request.cookies.get(SESSION_COOKIE_NAME, "").strip()
     if raw_session_id:
         _get_store().delete_session(raw_session_id)
-    response.delete_cookie(key=SESSION_COOKIE_NAME, httponly=True, samesite="lax")
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=_session_cookie_secure(request),
+    )
     return {"status": "ok"}
 
 
@@ -201,7 +224,7 @@ def password_reset_request(payload: PasswordResetRequest) -> PasswordResetAvaila
         return PasswordResetAvailability(available=True, reset_id=fallback_reset_id)
 
     code = generate_verification_code()
-    token = store.create_password_reset_token(user.id, hash_secret(code))
+    token = store.create_password_reset_token(user.id, hash_verification_code(code))
     send_password_reset_email(PasswordResetEmail(to_email=user.email, code=code))
     return PasswordResetAvailability(available=True, reset_id=token.id)
 
@@ -211,25 +234,26 @@ def password_reset_confirm(payload: PasswordResetConfirm) -> dict[str, str]:
     store = _get_store()
     row = _lookup_password_reset_row(store, payload.reset_id)
     if row is None:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+        raise _invalid_reset_code_error()
     if row["used_at"] is not None:
-        raise HTTPException(status_code=400, detail="Reset code has already been used")
+        raise _invalid_reset_code_error()
     if datetime.fromisoformat(row["expires_at"]) <= datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Reset code has expired")
+        raise _invalid_reset_code_error()
     if int(row["attempt_count"]) >= PASSWORD_RESET_MAX_ATTEMPTS:
-        raise HTTPException(status_code=400, detail="Too many reset attempts")
+        raise _invalid_reset_code_error()
 
     token = store.get_password_reset_token(payload.reset_id)
     if token is None:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+        raise _invalid_reset_code_error()
 
-    if not secrets.compare_digest(token.code_hash, hash_secret(payload.code)):
-        store.increment_password_reset_attempts(payload.reset_id)
-        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+    if not verify_verification_code(payload.code, token.code_hash):
+        with suppress(ValueError):
+            store.increment_password_reset_attempts(payload.reset_id)
+        raise _invalid_reset_code_error()
 
     user = store.get_user(token.user_id)
     if user is None or user.disabled or _is_user_expired(user):
-        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+        raise _invalid_reset_code_error()
     try:
         validate_password_policy(
             payload.new_password,
@@ -239,7 +263,10 @@ def password_reset_confirm(payload: PasswordResetConfirm) -> dict[str, str]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    store.mark_password_reset_token_used(payload.reset_id)
+    try:
+        store.mark_password_reset_token_used(payload.reset_id)
+    except ValueError as exc:
+        raise _invalid_reset_code_error() from exc
     password_record = hash_password(payload.new_password)
     store.update_user(
         user.id,

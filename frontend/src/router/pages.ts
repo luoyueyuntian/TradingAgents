@@ -61,6 +61,7 @@ export const navigationGroups: NavigationGroup[] = [
     icon: 'pi pi-cog',
     path: '/settings',
     descriptionKey: 'nav.settingsDesc',
+    minRole: 'admin',
   },
   {
     labelKey: 'nav.users',
@@ -114,7 +115,10 @@ export const routes: RouteRecordRaw[] = [
     path: '/settings',
     name: 'settings',
     component: () => import('../pages/SettingsPage.vue'),
-    meta: requiresAuth,
+    meta: {
+      requiresAuth: true,
+      minRole: 'admin',
+    },
   },
   {
     path: '/users',
