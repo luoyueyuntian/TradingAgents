@@ -612,6 +612,34 @@ def test_admin_password_reset_sets_must_change_and_invalidates_sessions(monkeypa
     assert store.get_session(raw_session_id) is None
 
 
+def test_admin_password_reset_uses_atomic_store_helper(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    target = _create_user(
+        store,
+        username="target",
+        email="target@example.com",
+        display_name="Target User",
+        role="analyst",
+        must_change_password=False,
+    )
+    store.create_session(target.id)
+    _login(client)
+
+    def _fail_direct_update(self, user_id, **fields):
+        raise AssertionError(f"non-atomic update_user path used for {user_id}: {sorted(fields)}")
+
+    monkeypatch.setattr(UserStore, "update_user", _fail_direct_update)
+
+    response = client.patch(
+        f"/api/admin/users/{target.id}",
+        json={"password": "ResetStrong123!"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["must_change_password"] is True
+
+
 def test_admin_delete_soft_disables_user(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", must_change_password=False)
@@ -656,3 +684,17 @@ def test_admin_cannot_disable_delete_or_demote_last_active_admin(monkeypatch, tm
     assert demote_response.json()["detail"] == "Cannot remove the last active admin from tenant"
     assert delete_response.status_code == 400
     assert delete_response.json()["detail"] == "Cannot remove the last active admin from tenant"
+
+
+def test_admin_cannot_expire_last_active_admin_into_the_past(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    sole_admin = _create_user(store, role="admin", must_change_password=False)
+    _login(client)
+
+    response = client.patch(
+        f"/api/admin/users/{sole_admin.id}",
+        json={"expires_at": "2020-01-01T00:00:00+00:00"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Cannot remove the last active admin from tenant"
