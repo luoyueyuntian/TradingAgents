@@ -56,7 +56,7 @@ def test_static_pwa_assets_are_served_from_spa_build():
     assert app_js.status_code == 200
     assert "serviceWorker" in app_js.text
     assert app_css.status_code == 200
-    assert ".app-shell" in app_css.text
+    assert ".uno-min-h-screen" in app_css.text
 
 
 def test_vue_router_splits_primary_workflows_into_pages():
@@ -69,15 +69,22 @@ def test_vue_router_splits_primary_workflows_into_pages():
         "workspace": ("/workspace", "WorkspacePage.vue"),
         "automations": ("/automations", "AutomationsPage.vue"),
         "settings": ("/settings", "SettingsPage.vue"),
+        "users": ("/users", ""),
+        "login": ("/login", "LoginPage.vue"),
+        "change-password": ("/change-password", "ForcePasswordChangePage.vue"),
     }
 
     for route_name, (path, component) in expected_routes.items():
         assert f"path: '{path}'" in pages_ts
         assert f"name: '{route_name}'" in pages_ts
-        assert f"labelKey: 'nav.{route_name}'" in pages_ts
-        assert component in pages_ts
+        if route_name in {"dashboard", "analysis", "runs", "portfolio", "workspace", "automations", "settings", "users"}:
+            assert f"labelKey: 'nav.{route_name}'" in pages_ts
+        if component:
+            assert component in pages_ts
 
     assert pages_ts.count("name:") == len(expected_routes)
+    assert "requiresAuth: true" in pages_ts
+    assert "minRole: 'admin'" in pages_ts
 
 
 def test_vue_i18n_sources_include_english_and_chinese_copy():
@@ -132,8 +139,12 @@ def test_app_layout_exposes_page_navigation_and_session_context():
     assert 'v-model="locale"' in layout_source
     assert ':options="locales"' in layout_source
     assert "t(item.labelKey)" in layout_source
-    assert "session.state.tenantId" in layout_source
-    assert "session.state.apiToken" in layout_source
+    assert "session.state.currentUser?.display_name" in layout_source
+    assert "session.state.currentUser?.tenant_id" in layout_source
+    assert "visibleNavigationGroups" in layout_source
+    assert "session.isAdmin.value" in layout_source
+    assert "handleLogout" in layout_source
     assert "t('topbar.workspaceSearch')" in layout_source
+    assert "t('auth.logout')" in layout_source
     assert 'aria-label="Settings"' not in layout_source
     assert "router.push('/settings')" not in layout_source

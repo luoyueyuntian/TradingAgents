@@ -12,6 +12,7 @@ describe('page registry', () => {
       '/workspace',
       '/automations',
       '/settings',
+      '/users',
     ]);
     expect(navigationGroups.map((item) => item.labelKey)).toEqual([
       'nav.dashboard',
@@ -21,8 +22,10 @@ describe('page registry', () => {
       'nav.workspace',
       'nav.automations',
       'nav.settings',
+      'nav.users',
     ]);
     expect(navigationGroups.every((item) => item.descriptionKey.endsWith('Desc'))).toBe(true);
+    expect(navigationGroups.find((item) => item.path === '/users')?.minRole).toBe('admin');
   });
 
   it('uses unique route paths and stable route names', () => {
@@ -39,6 +42,11 @@ describe('page registry', () => {
       'workspace',
       'automations',
       'settings',
+      'users',
+      'login',
+      'change-password',
     ]);
+    expect(routes.find((route) => route.path === '/users')?.meta?.minRole).toBe('admin');
+    expect(routes.filter((route) => route.meta?.requiresAuth).length).toBe(9);
   });
 });

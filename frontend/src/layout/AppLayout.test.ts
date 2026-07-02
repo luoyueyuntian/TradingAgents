@@ -1,9 +1,10 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
 import AppLayout from './AppLayout.vue';
 import { navigationGroups } from '../router/pages';
+import { useSession } from '../stores/session';
 
 function createTestRouter() {
   return createRouter({
@@ -16,6 +17,20 @@ function createTestRouter() {
 }
 
 describe('AppLayout', () => {
+  beforeEach(() => {
+    const session = useSession();
+    session.state.currentUser = {
+      id: 'user-1',
+      username: 'alice',
+      email: 'alice@example.com',
+      display_name: 'Alice Analyst',
+      role: 'analyst',
+      tenant_id: 'tenant-a',
+      expires_at: null,
+      must_change_password: false,
+    };
+  });
+
   it('lets page content use the full available width instead of capping at 1440px', async () => {
     const router = createTestRouter();
     await router.push('/');
@@ -26,8 +41,8 @@ describe('AppLayout', () => {
         plugins: [router],
         stubs: {
           Button: true,
-          InputText: true,
           Select: true,
+          Tag: true,
         },
       },
     });

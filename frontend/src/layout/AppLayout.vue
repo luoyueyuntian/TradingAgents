@@ -11,7 +11,7 @@
 
       <nav class="uno-mt-2 uno-grid uno-gap-1 max-[900px]:uno-grid-cols-[repeat(auto-fit,minmax(130px,1fr))]" :aria-label="t('topbar.primaryNavigation')">
         <RouterLink
-          v-for="item in navigationGroups"
+          v-for="item in visibleNavigationGroups"
           :key="item.path"
           :to="item.path"
           class="uno-flex uno-min-h-[42px] uno-items-center uno-gap-[0.65rem] uno-rounded-lg uno-px-[0.7rem] uno-py-[0.55rem] uno-text-[#dce8e8] uno-no-underline"
@@ -26,22 +26,16 @@
 
     <div class="uno-min-w-0">
       <header class="uno-sticky uno-top-0 uno-z-10 uno-flex uno-min-h-[64px] uno-items-center uno-justify-between uno-gap-4 uno-border-b uno-border-[#dce7e7] uno-bg-white/90 uno-px-5 uno-py-3 uno-backdrop-blur-md max-[900px]:uno-flex-col max-[900px]:uno-items-start">
-        <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-2">
-          <span class="uno-text-[#6f8183]">{{ t('topbar.tenant') }}</span>
-          <InputText
-            v-model="tenantDraft"
-            class="uno-w-[180px] max-[900px]:uno-w-[min(100%,240px)]"
-            :placeholder="t('common.default')"
-            @change="session.setTenantId(tenantDraft)"
-          />
-          <span class="uno-text-[#6f8183]">{{ t('topbar.apiToken') }}</span>
-          <InputText
-            v-model="tokenDraft"
-            class="uno-w-[180px] max-[900px]:uno-w-[min(100%,240px)]"
-            type="password"
-            :placeholder="t('common.optional')"
-            @change="session.setApiToken(tokenDraft)"
-          />
+        <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-3">
+          <div class="uno-min-w-0">
+            <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-2">
+              <strong class="uno-max-w-[240px] uno-truncate">{{ session.state.currentUser?.display_name }}</strong>
+              <Tag :value="t(roleLabelKey)" severity="contrast" />
+            </div>
+            <small class="uno-block uno-max-w-[320px] uno-truncate uno-text-[#6f8183]">
+              {{ t('topbar.tenantValue', { tenant: session.state.currentUser?.tenant_id || t('common.notSet') }) }}
+            </small>
+          </div>
           <span class="uno-text-[#6f8183]">{{ t('topbar.language') }}</span>
           <Select
             v-model="locale"
@@ -54,6 +48,7 @@
         </div>
         <div class="uno-flex uno-items-center uno-gap-[0.35rem] max-[900px]:uno-w-full max-[900px]:uno-justify-end">
           <Button icon="pi pi-search" text rounded :aria-label="t('topbar.workspaceSearch')" @click="router.push('/workspace')" />
+          <Button :label="t('auth.logout')" severity="secondary" @click="handleLogout" />
         </div>
       </header>
 
@@ -66,9 +61,9 @@
 
 <script setup lang="ts">
 import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
-import { ref } from 'vue';
+import Tag from 'primevue/tag';
+import { computed } from 'vue';
 import { RouterLink, RouterView, useRouter } from 'vue-router';
 
 import { useI18n } from '../i18n';
@@ -78,6 +73,24 @@ import { useSession } from '../stores/session';
 const router = useRouter();
 const session = useSession();
 const { locale, locales, t } = useI18n();
-const tenantDraft = ref(session.state.tenantId);
-const tokenDraft = ref(session.state.apiToken);
+
+const visibleNavigationGroups = computed(() => navigationGroups.filter((item) => (
+  item.minRole !== 'admin' || session.isAdmin.value
+)));
+
+const roleLabelKey = computed(() => {
+  const role = session.state.currentUser?.role;
+  if (role === 'admin') {
+    return 'auth.roleAdmin';
+  }
+  if (role === 'analyst') {
+    return 'auth.roleAnalyst';
+  }
+  return 'auth.roleViewer';
+});
+
+async function handleLogout() {
+  await session.logout();
+  await router.push('/login');
+}
 </script>
