@@ -280,6 +280,31 @@ def test_password_reset_request_treats_username_input_as_non_enumerating_miss(
     assert len(sent_messages) == 0
 
 
+def test_password_reset_request_matches_stored_email_without_dot_heuristic(
+    monkeypatch, tmp_path
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, email="alice@corp")
+    sent_messages = []
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_PORT", "2525")
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_FROM", "noreply@example.com")
+    monkeypatch.setattr(auth_routes, "send_password_reset_email", sent_messages.append)
+
+    response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "alice@corp"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["available"] is True
+    assert response.json()["reset_id"]
+    assert len(sent_messages) == 1
+    assert sent_messages[0].to_email == "alice@corp"
+    assert sent_messages[0].code.isdigit()
+    assert len(sent_messages[0].code) == 6
+
+
 def test_password_reset_confirm_rejects_invalid_expired_used_and_attempt_limited_codes(
     monkeypatch, tmp_path
 ):
