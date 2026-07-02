@@ -30,9 +30,9 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
     const session = useSession();
     const isLoginRoute = to.path === '/login';
     const isChangePasswordRoute = to.path === '/change-password';
-    const isPublicRoute = isLoginRoute;
+    const shouldBootstrapSession = !session.state.currentUser && (Boolean(to.meta.requiresAuth) || isLoginRoute);
 
-    if (!isPublicRoute && !session.state.currentUser) {
+    if (shouldBootstrapSession) {
       await ensureSessionLoaded();
     }
 
