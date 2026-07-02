@@ -12,11 +12,11 @@
 
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
-    <div class="content-grid">
+    <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(320px,1fr))] uno-gap-4">
       <Card>
         <template #title>{{ t('automations.createRule') }}</template>
         <template #content>
-          <div class="form-grid">
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
             <InputText v-model="form.name" :placeholder="t('automations.namePlaceholder')" />
             <Select v-model="form.source" :options="sourceOptions" option-label="label" option-value="value" />
             <Select v-model="form.cadence" :options="cadenceOptions" option-label="label" option-value="value" />
@@ -28,10 +28,10 @@
             rows="3"
             auto-resize
             :placeholder="t('automations.manualTickersPlaceholder')"
-            style="width: 100%; margin-top: 0.75rem;"
+            class="uno-mt-3 uno-w-full"
           />
-          <div class="actions-row" style="margin-top: 0.75rem;">
-            <label class="inline-row">
+          <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+            <label class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
               <input v-model="form.enabled" type="checkbox">
               <span>{{ t('common.enabled') }}</span>
             </label>
@@ -43,21 +43,21 @@
       <Card>
         <template #title>{{ t('automations.rules') }}</template>
         <template #content>
-          <div class="list-stack">
-            <div v-for="rule in rules" :key="rule.id" class="list-item">
-              <div class="list-item-title">
+          <div class="uno-grid uno-gap-[0.65rem]">
+            <div v-for="rule in rules" :key="rule.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ rule.name }}</span>
                 <Tag :value="rule.enabled ? t('common.enabled') : t('common.paused')" :severity="rule.enabled ? 'success' : 'warn'" />
               </div>
-              <small class="muted">{{ rule.source }} · {{ rule.cadence }} · {{ rule.time_of_day || t('common.na') }} · {{ t('automations.nextRun', { time: rule.next_run_at || t('common.na') }) }}</small>
-              <div class="actions-row" style="margin-top: 0.6rem;">
+              <small class="uno-text-[#6f8183]">{{ rule.source }} · {{ rule.cadence }} · {{ rule.time_of_day || t('common.na') }} · {{ t('automations.nextRun', { time: rule.next_run_at || t('common.na') }) }}</small>
+              <div class="uno-mt-[0.6rem] uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                 <Button icon="pi pi-bolt" :label="t('automations.runNow')" severity="secondary" @click="runNow(rule.id)" />
                 <Button :icon="rule.enabled ? 'pi pi-pause' : 'pi pi-play'" :label="rule.enabled ? t('common.pause') : t('common.enable')" severity="secondary" @click="toggleRule(rule)" />
                 <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined @click="deleteRule(rule.id)" />
               </div>
             </div>
           </div>
-          <p v-if="!rules.length" class="muted">{{ t('automations.noRules') }}</p>
+          <p v-if="!rules.length" class="uno-text-[#6f8183]">{{ t('automations.noRules') }}</p>
         </template>
       </Card>
     </div>

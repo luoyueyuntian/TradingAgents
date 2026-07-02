@@ -1,4 +1,4 @@
-import './styles.css';
+import 'virtual:uno.css';
 import 'primeicons/primeicons.css';
 
 import Aura from '@primeuix/themes/aura';
