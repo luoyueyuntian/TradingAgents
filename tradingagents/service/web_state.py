@@ -62,6 +62,13 @@ def get_web_sqlite_path(tenant_id: str | None = None) -> Path:
     return get_web_state_dir(tenant_id) / "state.db"
 
 
+def get_web_auth_db_path() -> Path:
+    override = os.environ.get("TRADINGAGENTS_WEB_AUTH_DB", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return get_web_state_base_dir() / "auth.db"
+
+
 def get_web_runs_root(tenant_id: str | None = None) -> Path:
     return get_web_state_dir(tenant_id) / "runs"
 
