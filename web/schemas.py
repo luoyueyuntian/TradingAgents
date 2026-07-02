@@ -18,6 +18,41 @@ _DEFAULT_GLOBAL_NEWS_QUERIES = [
 ]
 
 
+def _normalize_required_text(value: str, field_name: str) -> str:
+    trimmed = value.strip()
+    if not trimmed:
+        raise ValueError(f"{field_name} must not be blank")
+    return trimmed
+
+
+def _normalize_email(value: str) -> str:
+    return _normalize_required_text(value, "email").lower()
+
+
+def _normalize_username(value: str) -> str:
+    return _normalize_required_text(value, "username").lower()
+
+
+def _normalize_display_name(value: str) -> str:
+    return _normalize_required_text(value, "display_name")
+
+
+def _normalize_role(value: str) -> str:
+    normalized = _normalize_required_text(value, "role").lower()
+    if normalized not in {"admin", "analyst", "viewer"}:
+        raise ValueError("role must be one of admin, analyst, or viewer")
+    return normalized
+
+
+def _normalize_blank_optional_string(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        trimmed = value.strip()
+        return trimmed or None
+    return value
+
+
 class AnalysisRequest(BaseModel):
     """Request body for creating an analysis run."""
 
@@ -258,6 +293,80 @@ class BatchAnalysisResponse(BaseModel):
     tickers: list[str] = Field(default_factory=list)
     requested_count: int = 0
     created_count: int = 0
+
+
+class AdminUserCreate(BaseModel):
+    username: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=1)
+    display_name: str = Field(..., min_length=1)
+    role: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+    expires_at: str | None = None
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def _normalize_username(cls, value: str) -> str:
+        return _normalize_username(value)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _normalize_email(cls, value: str) -> str:
+        return _normalize_email(value)
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def _normalize_display_name(cls, value: str) -> str:
+        return _normalize_display_name(value)
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def _normalize_role(cls, value: str) -> str:
+        return _normalize_role(value)
+
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def _normalize_expires_at(cls, value: str | None) -> str | None:
+        return _normalize_blank_optional_string(value)
+
+
+class AdminUserUpdate(BaseModel):
+    display_name: str | None = None
+    role: str | None = None
+    expires_at: str | None = None
+    disabled: bool | None = None
+    password: str | None = None
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def _normalize_display_name(cls, value: str | None) -> str | None:
+        normalized = _normalize_blank_optional_string(value)
+        return _normalize_display_name(normalized) if normalized is not None else None
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def _normalize_role(cls, value: str | None) -> str | None:
+        normalized = _normalize_blank_optional_string(value)
+        return _normalize_role(normalized) if normalized is not None else None
+
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def _normalize_expires_at(cls, value: str | None) -> str | None:
+        return _normalize_blank_optional_string(value)
+
+
+class AdminUserResponse(BaseModel):
+    id: str
+    username: str
+    email: str
+    display_name: str
+    role: str
+    tenant_id: str
+    expires_at: str | None = None
+    disabled: bool
+    must_change_password: bool
+    created_at: str
+    updated_at: str
+    last_login_at: str | None = None
     runs: list[AnalysisResponse] = Field(default_factory=list)
 
 

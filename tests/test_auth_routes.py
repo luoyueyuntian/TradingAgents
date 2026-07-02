@@ -36,6 +36,15 @@ def _auth_client(monkeypatch, tmp_path):
     return TestClient(app), UserStore(db_path)
 
 
+def _login(client: TestClient, identifier: str = "alice", password: str = "StrongPass123!"):
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": identifier, "password": password},
+    )
+    assert response.status_code == 200
+    return response
+
+
 def test_login_rejects_invalid_credentials(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store)
@@ -408,3 +417,242 @@ def test_password_reset_confirm_updates_password_and_allows_login(monkeypatch, t
         json={"identifier": "alice@example.com", "password": "EvenStronger456!"},
     )
     assert login.status_code == 200
+
+
+def test_admin_lists_only_tenant_users(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    admin = _create_user(store, role="admin", tenant_id="tenant-a", must_change_password=False)
+    _create_user(
+        store,
+        username="bravo",
+        email="bravo@example.com",
+        display_name="Bravo",
+        tenant_id="tenant-a",
+    )
+    _create_user(
+        store,
+        username="charlie",
+        email="charlie@example.com",
+        display_name="Charlie",
+        tenant_id="tenant-b",
+    )
+    _login(client)
+
+    response = client.get("/api/admin/users")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [user["username"] for user in payload["users"]] == ["alice", "bravo"]
+    assert all(user["tenant_id"] == "tenant-a" for user in payload["users"])
+    assert payload["users"][0]["id"] == admin.id
+    assert "password_hash" not in payload["users"][0]
+    assert "password_salt" not in payload["users"][0]
+
+
+def test_admin_can_create_user(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    _login(client)
+
+    response = client.post(
+        "/api/admin/users",
+        json={
+            "username": "  NEWUSER  ",
+            "email": "  NEWUSER@example.com  ",
+            "display_name": "  New User  ",
+            "role": " ADMIN ",
+            "password": "AnotherStrong123!",
+            "expires_at": "",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()["user"]
+    assert payload["username"] == "newuser"
+    assert payload["email"] == "newuser@example.com"
+    assert payload["display_name"] == "New User"
+    assert payload["role"] == "admin"
+    assert payload["tenant_id"] == "tenant-a"
+    assert payload["expires_at"] is None
+    assert payload["must_change_password"] is True
+    created = store.get_user(payload["id"])
+    assert created is not None
+    assert created.must_change_password is True
+    assert created.tenant_id == "tenant-a"
+
+
+def test_admin_create_user_rejects_duplicate_username_and_email(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    _create_user(
+        store,
+        username="existing",
+        email="existing@example.com",
+        display_name="Existing User",
+    )
+    _login(client)
+
+    duplicate_username = client.post(
+        "/api/admin/users",
+        json={
+            "username": "Existing",
+            "email": "new@example.com",
+            "display_name": "New User",
+            "role": "viewer",
+            "password": "AnotherStrong123!",
+        },
+    )
+    duplicate_email = client.post(
+        "/api/admin/users",
+        json={
+            "username": "new-user",
+            "email": "EXISTING@example.com",
+            "display_name": "New User",
+            "role": "viewer",
+            "password": "AnotherStrong123!",
+        },
+    )
+
+    assert duplicate_username.status_code == 409
+    assert duplicate_username.json()["detail"] == "username already exists"
+    assert duplicate_email.status_code == 409
+    assert duplicate_email.json()["detail"] == "email already exists"
+
+
+def test_admin_can_update_role_and_expiry_within_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    target = _create_user(
+        store,
+        username="target",
+        email="target@example.com",
+        display_name="Target User",
+        role="viewer",
+        must_change_password=False,
+    )
+    other_tenant_user = _create_user(
+        store,
+        username="other-tenant",
+        email="other-tenant@example.com",
+        display_name="Other Tenant",
+        tenant_id="tenant-b",
+        must_change_password=False,
+    )
+    _login(client)
+
+    response = client.patch(
+        f"/api/admin/users/{target.id}",
+        json={
+            "role": " ANALYST ",
+            "display_name": "  Target Person  ",
+            "expires_at": "2030-01-02T03:04:05+00:00",
+        },
+    )
+    missing = client.patch(
+        f"/api/admin/users/{other_tenant_user.id}",
+        json={"role": "viewer"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["user"]
+    assert payload["role"] == "analyst"
+    assert payload["display_name"] == "Target Person"
+    assert payload["expires_at"] == "2030-01-02T03:04:05+00:00"
+    assert missing.status_code == 404
+
+
+def test_admin_disable_invalidates_sessions(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    target = _create_user(
+        store,
+        username="target",
+        email="target@example.com",
+        display_name="Target User",
+        role="analyst",
+        must_change_password=False,
+    )
+    raw_session_id, _session = store.create_session(target.id)
+    _login(client)
+
+    response = client.patch(
+        f"/api/admin/users/{target.id}",
+        json={"disabled": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["disabled"] is True
+    assert store.get_session(raw_session_id) is None
+
+
+def test_admin_password_reset_sets_must_change_and_invalidates_sessions(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    target = _create_user(
+        store,
+        username="target",
+        email="target@example.com",
+        display_name="Target User",
+        role="analyst",
+        must_change_password=False,
+    )
+    raw_session_id, _session = store.create_session(target.id)
+    _login(client)
+
+    response = client.patch(
+        f"/api/admin/users/{target.id}",
+        json={"password": "ResetStrong123!"},
+    )
+
+    assert response.status_code == 200
+    refreshed = store.get_user(target.id)
+    assert refreshed is not None
+    assert refreshed.must_change_password is True
+    assert refreshed.password_updated_at is not None
+    assert store.get_session(raw_session_id) is None
+
+
+def test_admin_delete_soft_disables_user(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    target = _create_user(
+        store,
+        username="target",
+        email="target@example.com",
+        display_name="Target User",
+        role="viewer",
+        must_change_password=False,
+    )
+    raw_session_id, _session = store.create_session(target.id)
+    _login(client)
+
+    response = client.delete(f"/api/admin/users/{target.id}")
+
+    assert response.status_code == 200
+    refreshed = store.get_user(target.id)
+    assert refreshed is not None
+    assert refreshed.disabled is True
+    assert store.get_session(raw_session_id) is None
+
+
+def test_admin_cannot_disable_delete_or_demote_last_active_admin(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    sole_admin = _create_user(store, role="admin", must_change_password=False)
+    _login(client)
+
+    disable_response = client.patch(
+        f"/api/admin/users/{sole_admin.id}",
+        json={"disabled": True},
+    )
+    demote_response = client.patch(
+        f"/api/admin/users/{sole_admin.id}",
+        json={"role": "viewer"},
+    )
+    delete_response = client.delete(f"/api/admin/users/{sole_admin.id}")
+
+    assert disable_response.status_code == 400
+    assert disable_response.json()["detail"] == "Cannot remove the last active admin from tenant"
+    assert demote_response.status_code == 400
+    assert demote_response.json()["detail"] == "Cannot remove the last active admin from tenant"
+    assert delete_response.status_code == 400
+    assert delete_response.json()["detail"] == "Cannot remove the last active admin from tenant"
