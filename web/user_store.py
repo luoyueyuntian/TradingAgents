@@ -18,6 +18,7 @@ from tradingagents.service.web_state import normalize_web_tenant_id
 from web.passwords import hash_password, hash_secret, validate_password_policy
 
 VALID_ROLES = {"admin", "analyst", "viewer"}
+PASSWORD_RESET_MAX_ATTEMPTS = 5
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,7 @@ class UserRecord:
     email: str
     display_name: str
     role: str
-    tenant_id: str | None
+    tenant_id: str
     password_hash: str
     password_salt: str
     password_updated_at: str | None
@@ -108,9 +109,17 @@ def _validate_role(role: str) -> str:
     return normalized
 
 
-def _normalize_tenant_id(tenant_id: str | None) -> str | None:
+def _normalize_optional_tenant_id(tenant_id: str | None) -> str | None:
     if tenant_id is None:
         return None
+    return normalize_web_tenant_id(tenant_id)
+
+
+def _normalize_required_tenant_id(tenant_id: str | None) -> str:
+    if tenant_id is None:
+        raise ValueError(
+            "tenant_id must be 1-64 chars using letters, numbers, dot, dash, or underscore"
+        )
     return normalize_web_tenant_id(tenant_id)
 
 
@@ -192,7 +201,7 @@ class UserStore:
                     email TEXT NOT NULL UNIQUE,
                     display_name TEXT NOT NULL,
                     role TEXT NOT NULL,
-                    tenant_id TEXT,
+                    tenant_id TEXT NOT NULL,
                     password_hash TEXT NOT NULL,
                     password_salt TEXT NOT NULL,
                     password_updated_at TEXT,
@@ -283,7 +292,7 @@ class UserStore:
         normalized_email = _require_text(email, "email")
         normalized_display_name = _require_text(display_name, "display_name")
         normalized_role = _validate_role(role)
-        normalized_tenant_id = _normalize_tenant_id(tenant_id)
+        normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
         normalized_password_hash = _require_text(password_hash, "password_hash")
         normalized_password_salt = _require_text(password_salt, "password_salt")
         normalized_expires_at = _validate_optional_expires_at(expires_at)
@@ -362,7 +371,7 @@ class UserStore:
 
     def list_users(self, tenant_id: str | None = None) -> list[UserRecord]:
         self.ensure_schema()
-        normalized_tenant_id = _normalize_tenant_id(tenant_id)
+        normalized_tenant_id = _normalize_optional_tenant_id(tenant_id)
         with self._connect() as conn:
             if normalized_tenant_id is None:
                 rows = conn.execute("SELECT * FROM users ORDER BY rowid").fetchall()
@@ -408,7 +417,7 @@ class UserStore:
                 elif field_name == "role":
                     value = _validate_role(value)
                 elif field_name == "tenant_id":
-                    value = _normalize_tenant_id(value)
+                    value = _normalize_required_tenant_id(value)
                 elif field_name == "expires_at":
                     value = _validate_optional_expires_at(value)
                 elif field_name in {"password_hash", "password_salt"}:
@@ -465,6 +474,18 @@ class UserStore:
             raise ValueError("user not found")
         return _user_from_row(row)
 
+    def _get_active_user_row_by_id(
+        self,
+        conn: sqlite3.Connection,
+        user_id: str,
+    ) -> sqlite3.Row:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if row is None:
+            raise ValueError("user not found")
+        if not _user_row_is_active(row):
+            raise ValueError("user not active")
+        return row
+
     def _raise_for_duplicate_user_field(
         self,
         conn: sqlite3.Connection,
@@ -482,7 +503,7 @@ class UserStore:
 
     def active_admin_count(self, tenant_id: str | None) -> int:
         self.ensure_schema()
-        normalized_tenant_id = _normalize_tenant_id(tenant_id)
+        normalized_tenant_id = _normalize_optional_tenant_id(tenant_id)
         with self._connect() as conn:
             if normalized_tenant_id is None:
                 rows = conn.execute(
@@ -490,7 +511,6 @@ class UserStore:
                     SELECT * FROM users
                     WHERE role = 'admin'
                       AND disabled = 0
-                      AND tenant_id IS NULL
                     """
                 ).fetchall()
             else:
@@ -521,7 +541,7 @@ class UserStore:
         self.ensure_schema()
         event_id = uuid.uuid4().hex
         normalized_event_type = _require_text(event_type, "event_type")
-        normalized_tenant_id = _normalize_tenant_id(tenant_id)
+        normalized_tenant_id = _normalize_optional_tenant_id(tenant_id)
         encoded_metadata = (
             json.dumps(metadata, sort_keys=True) if metadata is not None else None
         )
@@ -564,14 +584,7 @@ class UserStore:
         expires_at = created_at + timedelta(seconds=ttl_seconds)
 
         with self._connect() as conn:
-            user = conn.execute(
-                "SELECT * FROM users WHERE id = ?",
-                (user_id,),
-            ).fetchone()
-            if user is None:
-                raise ValueError("user not found")
-            if not _user_row_is_active(user):
-                raise ValueError("user not active")
+            self._get_active_user_row_by_id(conn, user_id)
             conn.execute(
                 """
                 INSERT INTO sessions (
@@ -682,7 +695,7 @@ class UserStore:
         expires_at = created_at + timedelta(seconds=ttl_seconds)
 
         with self._connect() as conn:
-            self._get_user_by_id(conn, user_id)
+            self._get_active_user_row_by_id(conn, user_id)
             conn.execute(
                 """
                 INSERT INTO password_reset_tokens (
@@ -716,9 +729,19 @@ class UserStore:
                 "SELECT * FROM password_reset_tokens WHERE id = ?",
                 (token_id,),
             ).fetchone()
-        if row is None or row["used_at"] is not None or _is_expired(row["expires_at"]):
-            return None
-        return _password_reset_token_from_row(row)
+            if (
+                row is None
+                or row["used_at"] is not None
+                or _is_expired(row["expires_at"])
+            ):
+                return None
+            user = conn.execute(
+                "SELECT * FROM users WHERE id = ?",
+                (row["user_id"],),
+            ).fetchone()
+            if user is None or not _user_row_is_active(user):
+                return None
+            return _password_reset_token_from_row(row)
 
     def increment_password_reset_attempts(
         self,
@@ -729,16 +752,23 @@ class UserStore:
             token = self._get_password_reset_token_by_id(conn, token_id)
             if _is_expired(token.expires_at):
                 raise ValueError("password reset token expired")
+            self._get_active_user_row_by_id(conn, token.user_id)
             if token.used_at is not None:
                 raise ValueError("password reset token already used")
-            conn.execute(
+            if token.attempt_count >= PASSWORD_RESET_MAX_ATTEMPTS:
+                raise ValueError("too many password reset token attempts")
+            cursor = conn.execute(
                 """
                 UPDATE password_reset_tokens
                 SET attempt_count = attempt_count + 1
                 WHERE id = ?
+                  AND used_at IS NULL
+                  AND attempt_count < ?
                 """,
-                (token_id,),
+                (token_id, PASSWORD_RESET_MAX_ATTEMPTS),
             )
+            if cursor.rowcount != 1:
+                raise ValueError("too many password reset token attempts")
             return self._get_password_reset_token_by_id(conn, token_id)
 
     def mark_password_reset_token_used(
@@ -751,19 +781,23 @@ class UserStore:
             token = self._get_password_reset_token_by_id(conn, token_id)
             if _is_expired(token.expires_at):
                 raise ValueError("password reset token expired")
+            self._get_active_user_row_by_id(conn, token.user_id)
             if token.used_at is not None:
                 raise ValueError("password reset token already used")
+            if token.attempt_count >= PASSWORD_RESET_MAX_ATTEMPTS:
+                raise ValueError("too many password reset token attempts")
             cursor = conn.execute(
                 """
                 UPDATE password_reset_tokens
                 SET used_at = ?
                 WHERE id = ?
                   AND used_at IS NULL
+                  AND attempt_count < ?
                 """,
-                (used_at, token_id),
+                (used_at, token_id, PASSWORD_RESET_MAX_ATTEMPTS),
             )
             if cursor.rowcount != 1:
-                raise ValueError("password reset token already used")
+                raise ValueError("password reset token could not be used")
             return self._get_password_reset_token_by_id(conn, token_id)
 
     def delete_password_reset_token(self, token_id: str) -> int:

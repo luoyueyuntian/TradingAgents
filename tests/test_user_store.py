@@ -66,6 +66,12 @@ def _table_columns(db_path, table_name):
     return [row[1] for row in rows]
 
 
+def _table_info_by_column(db_path, table_name):
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {row[1]: row for row in rows}
+
+
 def _create_user(store, **overrides):
     values = {
         "username": "alice",
@@ -148,6 +154,7 @@ def test_ensure_schema_creates_auth_tables_and_enables_wal(tmp_path):
     assert journal_mode == "wal"
     for table_name, expected_columns in EXPECTED_SCHEMA.items():
         assert _table_columns(db_path, table_name) == expected_columns
+    assert _table_info_by_column(db_path, "users")["tenant_id"][3] == 1
 
 
 def test_create_user_persists_record_and_looks_up_identifier_case_insensitively(tmp_path):
@@ -222,15 +229,42 @@ def test_create_user_validates_role_and_normalizes_tenant_id(tmp_path):
     assert user.tenant_id == "tenant.a-1"
     with pytest.raises(ValueError, match="role"):
         _create_user(store, username="bob", email="bob@example.com", role="owner")
+    with pytest.raises(ValueError, match="tenant_id"):
+        _create_user(
+            store,
+            username="no-tenant",
+            email="no-tenant@example.com",
+            tenant_id=None,
+        )
+    with pytest.raises(ValueError, match="tenant_id"):
+        _create_user(
+            store,
+            username="blank-tenant",
+            email="blank-tenant@example.com",
+            tenant_id=" ",
+        )
+    with pytest.raises(ValueError, match="tenant_id"):
+        _create_user(
+            store,
+            username="bad-tenant",
+            email="bad-tenant@example.com",
+            tenant_id="../escape",
+        )
+    with pytest.raises(ValueError, match="tenant_id"):
+        store.update_user(user.id, tenant_id=None)
+    with pytest.raises(ValueError, match="tenant_id"):
+        store.update_user(user.id, tenant_id=" ")
+    with pytest.raises(ValueError, match="tenant_id"):
+        store.update_user(user.id, tenant_id="../escape")
 
 
 def test_list_users_filters_by_tenant_when_scope_is_supplied(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     alice = _create_user(store, username="alice", email="alice@example.com", tenant_id="tenant-a")
     bob = _create_user(store, username="bob", email="bob@example.com", tenant_id="tenant-b")
-    root = _create_user(store, username="root", email="root@example.com", tenant_id=None)
+    carol = _create_user(store, username="carol", email="carol@example.com", tenant_id="tenant-c")
 
-    assert store.list_users() == [alice, bob, root]
+    assert store.list_users() == [alice, bob, carol]
     assert store.list_users("tenant-a") == [alice]
     assert store.list_users("tenant-b") == [bob]
 
@@ -558,6 +592,70 @@ def test_password_reset_tokens_track_attempts_used_at_and_expiry(tmp_path):
     assert store.get_password_reset_token(expired.id) is None
 
 
+def test_create_password_reset_token_rejects_disabled_or_expired_users(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    disabled = _create_user(
+        store,
+        username="disabled",
+        email="disabled@example.com",
+        disabled=True,
+    )
+    expired = _create_user(
+        store,
+        username="expired",
+        email="expired@example.com",
+        expires_at="2000-01-01T00:00:00+00:00",
+    )
+
+    with pytest.raises(ValueError, match="user not active"):
+        store.create_password_reset_token(disabled.id, "disabled-code-hash")
+    with pytest.raises(ValueError, match="user not active"):
+        store.create_password_reset_token(expired.id, "expired-code-hash")
+
+
+def test_password_reset_token_becomes_unusable_when_user_is_disabled_or_expired(
+    tmp_path,
+):
+    db_path = tmp_path / "auth.db"
+    store = UserStore(db_path)
+    disabled_user = _create_user(
+        store,
+        username="disabled",
+        email="disabled@example.com",
+    )
+    expired_user = _create_user(
+        store,
+        username="expired",
+        email="expired@example.com",
+    )
+    disabled_token = store.create_password_reset_token(
+        disabled_user.id,
+        "disabled-later-code-hash",
+    )
+    expired_token = store.create_password_reset_token(
+        expired_user.id,
+        "expired-later-code-hash",
+    )
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE users SET disabled = 1 WHERE id = ?", (disabled_user.id,))
+        conn.execute(
+            "UPDATE users SET expires_at = ? WHERE id = ?",
+            ("2000-01-01T00:00:00+00:00", expired_user.id),
+        )
+
+    assert store.get_password_reset_token(disabled_token.id) is None
+    assert store.get_password_reset_token(expired_token.id) is None
+    with pytest.raises(ValueError, match="user not active"):
+        store.increment_password_reset_attempts(disabled_token.id)
+    with pytest.raises(ValueError, match="user not active"):
+        store.increment_password_reset_attempts(expired_token.id)
+    with pytest.raises(ValueError, match="user not active"):
+        store.mark_password_reset_token_used(disabled_token.id)
+    with pytest.raises(ValueError, match="user not active"):
+        store.mark_password_reset_token_used(expired_token.id)
+
+
 def test_used_password_reset_token_is_not_publicly_retrievable_or_reusable(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     user = _create_user(store)
@@ -569,6 +667,23 @@ def test_used_password_reset_token_is_not_publicly_retrievable_or_reusable(tmp_p
     assert store.get_password_reset_token(token.id) is None
     with pytest.raises(ValueError, match="password reset token"):
         store.mark_password_reset_token_used(token.id)
+
+
+def test_password_reset_attempts_allow_limit_then_block_next_attempt(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    user = _create_user(store)
+    token = store.create_password_reset_token(user.id, "attempt-limit-code-hash")
+
+    max_attempts = user_store_module.PASSWORD_RESET_MAX_ATTEMPTS
+    for expected_attempts in range(1, max_attempts + 1):
+        attempted = store.increment_password_reset_attempts(token.id)
+        assert attempted.attempt_count == expected_attempts
+
+    with pytest.raises(ValueError, match="too many"):
+        store.increment_password_reset_attempts(token.id)
+    with pytest.raises(ValueError, match="too many"):
+        store.mark_password_reset_token_used(token.id)
+    assert store.get_password_reset_token(token.id).attempt_count == max_attempts
 
 
 def test_delete_password_reset_token_removes_only_selected_token(tmp_path):
@@ -601,12 +716,12 @@ def test_get_web_auth_db_path_defaults_to_web_state_base(monkeypatch, tmp_path):
 
 def test_active_admin_count_is_scoped_and_excludes_disabled_or_expired_users(tmp_path):
     store = UserStore(tmp_path / "auth.db")
-    global_admin = _create_user(
+    tenant_b_admin = _create_user(
         store,
-        username="global-admin",
-        email="global-admin@example.com",
+        username="tenant-b-admin",
+        email="tenant-b-admin@example.com",
         role="admin",
-        tenant_id=None,
+        tenant_id="tenant-b",
     )
     tenant_admin = _create_user(
         store,
@@ -639,9 +754,9 @@ def test_active_admin_count_is_scoped_and_excludes_disabled_or_expired_users(tmp
         tenant_id="tenant-a",
     )
 
-    assert store.active_admin_count(None) == 1
+    assert store.active_admin_count(None) == 2
     assert store.active_admin_count("tenant-a") == 1
-    assert store.get_user(global_admin.id) is not None
+    assert store.get_user(tenant_b_admin.id) is not None
     assert store.get_user(tenant_admin.id) is not None
 
 
