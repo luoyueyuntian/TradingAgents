@@ -119,9 +119,7 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/users',
     name: 'users',
-    component: () => Promise.resolve({
-      template: '<section class="uno-py-6" />',
-    }),
+    component: () => import('../pages/UserManagementPage.vue'),
     meta: {
       requiresAuth: true,
       minRole: 'admin',

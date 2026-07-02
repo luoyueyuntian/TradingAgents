@@ -17,11 +17,11 @@
         <template #title>{{ t('automations.createRule') }}</template>
         <template #content>
           <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
-            <InputText v-model="form.name" :placeholder="t('automations.namePlaceholder')" />
-            <Select v-model="form.source" :options="sourceOptions" option-label="label" option-value="value" />
-            <Select v-model="form.cadence" :options="cadenceOptions" option-label="label" option-value="value" />
-            <Select v-model="form.weekday" :options="weekdayOptions" option-label="label" option-value="value" :disabled="form.cadence !== 'weekly'" />
-            <InputText v-model="form.time" type="time" />
+            <InputText v-model="form.name" :placeholder="t('automations.namePlaceholder')" :disabled="!canWrite" />
+            <Select v-model="form.source" :options="sourceOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+            <Select v-model="form.cadence" :options="cadenceOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+            <Select v-model="form.weekday" :options="weekdayOptions" option-label="label" option-value="value" :disabled="!canWrite || form.cadence !== 'weekly'" />
+            <InputText v-model="form.time" type="time" :disabled="!canWrite" />
           </div>
           <Textarea
             v-model="form.tickers"
@@ -29,13 +29,14 @@
             auto-resize
             :placeholder="t('automations.manualTickersPlaceholder')"
             class="uno-mt-3 uno-w-full"
+            :disabled="!canWrite"
           />
           <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
             <label class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-              <input v-model="form.enabled" type="checkbox">
+              <input v-model="form.enabled" type="checkbox" :disabled="!canWrite">
               <span>{{ t('common.enabled') }}</span>
             </label>
-            <Button icon="pi pi-save" :label="t('automations.saveAutomation')" @click="saveRule" />
+            <Button icon="pi pi-save" :label="t('automations.saveAutomation')" :disabled="!canWrite" @click="saveRule" />
           </div>
         </template>
       </Card>
@@ -51,9 +52,9 @@
               </div>
               <small class="uno-text-[#6f8183]">{{ rule.source }} · {{ rule.cadence }} · {{ rule.time_of_day || t('common.na') }} · {{ t('automations.nextRun', { time: rule.next_run_at || t('common.na') }) }}</small>
               <div class="uno-mt-[0.6rem] uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-                <Button icon="pi pi-bolt" :label="t('automations.runNow')" severity="secondary" @click="runNow(rule.id)" />
-                <Button :icon="rule.enabled ? 'pi pi-pause' : 'pi pi-play'" :label="rule.enabled ? t('common.pause') : t('common.enable')" severity="secondary" @click="toggleRule(rule)" />
-                <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined @click="deleteRule(rule.id)" />
+                <Button icon="pi pi-bolt" :label="t('automations.runNow')" severity="secondary" :disabled="!canWrite" @click="runNow(rule.id)" />
+                <Button :icon="rule.enabled ? 'pi pi-pause' : 'pi pi-play'" :label="rule.enabled ? t('common.pause') : t('common.enable')" severity="secondary" :disabled="!canWrite" @click="toggleRule(rule)" />
+                <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined :disabled="!canWrite" @click="deleteRule(rule.id)" />
               </div>
             </div>
           </div>
@@ -82,6 +83,7 @@ import type { JsonRecord } from '../utils/format';
 import { buildAutomationPayload } from './automationPayload';
 
 const session = useSession();
+const canWrite = computed(() => session.canWrite.value);
 const rules = ref<JsonRecord[]>([]);
 const error = ref('');
 const { t } = useI18n();

@@ -36,11 +36,11 @@
         <template #title>{{ t('workspace.notes') }}</template>
         <template #content>
           <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
-            <InputText v-model="note.ticker" :placeholder="t('workspace.tickerOptional')" />
-            <InputText v-model="note.tags" :placeholder="t('workspace.tagsPlaceholder')" />
+            <InputText v-model="note.ticker" :placeholder="t('workspace.tickerOptional')" :disabled="!canWrite" />
+            <InputText v-model="note.tags" :placeholder="t('workspace.tagsPlaceholder')" :disabled="!canWrite" />
           </div>
-          <Textarea v-model="note.content" rows="4" auto-resize :placeholder="t('workspace.notePlaceholder')" class="uno-mt-3 uno-w-full" />
-          <Button icon="pi pi-save" :label="t('workspace.saveNote')" class="uno-mt-3" @click="saveNote" />
+          <Textarea v-model="note.content" rows="4" auto-resize :placeholder="t('workspace.notePlaceholder')" class="uno-mt-3 uno-w-full" :disabled="!canWrite" />
+          <Button icon="pi pi-save" :label="t('workspace.saveNote')" class="uno-mt-3" :disabled="!canWrite" @click="saveNote" />
           <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
             <div v-for="item in notes" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
@@ -57,9 +57,9 @@
         <template #title>{{ t('workspace.members') }}</template>
         <template #content>
           <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-            <InputText v-model="member.name" :placeholder="t('workspace.name')" />
-            <Select v-model="member.role" :options="memberRoles" option-label="label" option-value="value" :placeholder="t('workspace.role')" />
-            <Button icon="pi pi-user-plus" :label="t('common.add')" @click="saveMember" />
+            <InputText v-model="member.name" :placeholder="t('workspace.name')" :disabled="!canWrite" />
+            <Select v-model="member.role" :options="memberRoles" option-label="label" option-value="value" :placeholder="t('workspace.role')" :disabled="!canWrite" />
+            <Button icon="pi pi-user-plus" :label="t('common.add')" :disabled="!canWrite" @click="saveMember" />
           </div>
           <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
             <div v-for="item in members" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
@@ -143,6 +143,7 @@ import { useSession } from '../stores/session';
 import { asArray, formatDateTime, type JsonRecord } from '../utils/format';
 
 const session = useSession();
+const canWrite = computed(() => session.canWrite.value);
 const searchQuery = ref('');
 const searchResults = ref<JsonRecord | null>(null);
 const notes = ref<JsonRecord[]>([]);

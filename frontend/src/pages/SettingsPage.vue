@@ -7,7 +7,7 @@
     >
       <template #actions>
         <Button icon="pi pi-refresh" :label="t('common.reload')" severity="secondary" @click="loadSettings" />
-        <Button icon="pi pi-save" :label="t('common.save')" @click="saveSettings" />
+        <Button v-if="canManageSettings" icon="pi pi-save" :label="t('common.save')" @click="saveSettings" />
       </template>
     </PageHeader>
 
@@ -146,6 +146,7 @@ import { useSession } from '../stores/session';
 import type { JsonRecord } from '../utils/format';
 
 const session = useSession();
+const canManageSettings = computed(() => session.isAdmin.value);
 const providers = ref<JsonRecord[]>([]);
 const error = ref('');
 const notice = ref('');

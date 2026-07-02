@@ -49,6 +49,7 @@
                 :label="t('analysis.refreshStocks')"
                 severity="secondary"
                 :loading="refreshingStocks"
+                :disabled="!canWrite"
                 @click="refreshStockCatalog"
               />
             </div>
@@ -106,7 +107,7 @@
           </div>
 
           <div class="uno-mt-4 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-            <Button icon="pi pi-play" :label="t('analysis.startAnalysis')" :loading="submitting" @click="startRun" />
+            <Button icon="pi pi-play" :label="t('analysis.startAnalysis')" :loading="submitting" :disabled="!canWrite" @click="startRun" />
             <Button icon="pi pi-list" :label="t('analysis.openRuns')" severity="secondary" @click="$router.push('/runs')" />
           </div>
         </template>
@@ -118,7 +119,7 @@
           <MetricGrid :items="runMetrics" />
           <div class="uno-mb-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
             <Tag v-if="currentRun" :value="currentRun.status" :severity="signalSeverity(currentRun.status)" />
-            <Button v-if="currentRun?.run_id" icon="pi pi-times" :label="t('common.cancel')" severity="danger" outlined @click="cancelRun" />
+            <Button v-if="currentRun?.run_id" icon="pi pi-times" :label="t('common.cancel')" severity="danger" outlined :disabled="!canWrite" @click="cancelRun" />
           </div>
 
           <div v-if="agentProgress.length" class="uno-mb-[0.85rem] uno-grid uno-gap-2">
@@ -173,6 +174,7 @@ import {
 } from './analyzeStockSelection';
 
 const session = useSession();
+const canWrite = computed(() => session.canWrite.value);
 const providers = ref<JsonRecord[]>([]);
 const stockMarkets = ref<StockMarketOption[]>([]);
 const stocks = ref<Required<StockCatalogOption>[]>([]);
