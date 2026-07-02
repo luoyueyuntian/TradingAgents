@@ -384,72 +384,19 @@ class UserStore:
 
     def update_user(self, user_id: str, **fields: Any) -> UserRecord:
         self.ensure_schema()
-        allowed_fields = {
-            "username",
-            "email",
-            "display_name",
-            "role",
-            "tenant_id",
-            "password_hash",
-            "password_salt",
-            "password_updated_at",
-            "must_change_password",
-            "expires_at",
-            "disabled",
-            "last_login_at",
-        }
-        unknown_fields = sorted(set(fields) - allowed_fields)
-        if unknown_fields:
-            raise ValueError(f"unsupported user field: {unknown_fields[0]}")
-
         with self._connect() as conn:
-            current = conn.execute(
-                "SELECT * FROM users WHERE id = ?",
-                (user_id,),
-            ).fetchone()
-            if current is None:
-                raise ValueError("user not found")
+            self._update_user_in_transaction(conn, user_id, fields)
+            return self._get_user_by_id(conn, user_id)
 
-            updates: dict[str, Any] = {}
-            for field_name, value in fields.items():
-                if field_name in {"username", "email", "display_name"}:
-                    value = _require_text(value, field_name)
-                elif field_name == "role":
-                    value = _validate_role(value)
-                elif field_name == "tenant_id":
-                    value = _normalize_required_tenant_id(value)
-                elif field_name == "expires_at":
-                    value = _validate_optional_expires_at(value)
-                elif field_name in {"password_hash", "password_salt"}:
-                    value = _require_text(value, field_name)
-                elif field_name in {"must_change_password", "disabled"}:
-                    value = int(value)
-                updates[field_name] = value
-
-            if "username" in updates:
-                self._raise_for_duplicate_user_field(
-                    conn,
-                    "username",
-                    updates["username"],
-                    excluding_user_id=user_id,
-                )
-            if "email" in updates:
-                self._raise_for_duplicate_user_field(
-                    conn,
-                    "email",
-                    updates["email"],
-                    excluding_user_id=user_id,
-                )
-
-            if updates:
-                updates["updated_at"] = _utc_now()
-                assignments = ", ".join(f"{field_name} = ?" for field_name in updates)
-                conn.execute(
-                    f"UPDATE users SET {assignments} WHERE id = ?",
-                    (*updates.values(), user_id),
-                )
-                if updates.get("disabled") == 1:
-                    conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    def update_user_and_delete_sessions(self, user_id: str, **fields: Any) -> UserRecord:
+        self.ensure_schema()
+        with self._connect() as conn:
+            self._update_user_in_transaction(
+                conn,
+                user_id,
+                fields,
+                delete_sessions=True,
+            )
             return self._get_user_by_id(conn, user_id)
 
     def delete_user(self, user_id: str) -> UserRecord:
@@ -473,6 +420,89 @@ class UserStore:
         if row is None:
             raise ValueError("user not found")
         return _user_from_row(row)
+
+    def _prepare_user_updates(
+        self,
+        conn: sqlite3.Connection,
+        user_id: str,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
+        allowed_fields = {
+            "username",
+            "email",
+            "display_name",
+            "role",
+            "tenant_id",
+            "password_hash",
+            "password_salt",
+            "password_updated_at",
+            "must_change_password",
+            "expires_at",
+            "disabled",
+            "last_login_at",
+        }
+        unknown_fields = sorted(set(fields) - allowed_fields)
+        if unknown_fields:
+            raise ValueError(f"unsupported user field: {unknown_fields[0]}")
+
+        current = conn.execute(
+            "SELECT * FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if current is None:
+            raise ValueError("user not found")
+
+        updates: dict[str, Any] = {}
+        for field_name, value in fields.items():
+            if field_name in {"username", "email", "display_name"}:
+                value = _require_text(value, field_name)
+            elif field_name == "role":
+                value = _validate_role(value)
+            elif field_name == "tenant_id":
+                value = _normalize_required_tenant_id(value)
+            elif field_name == "expires_at":
+                value = _validate_optional_expires_at(value)
+            elif field_name in {"password_hash", "password_salt"}:
+                value = _require_text(value, field_name)
+            elif field_name in {"must_change_password", "disabled"}:
+                value = int(value)
+            updates[field_name] = value
+
+        if "username" in updates:
+            self._raise_for_duplicate_user_field(
+                conn,
+                "username",
+                updates["username"],
+                excluding_user_id=user_id,
+            )
+        if "email" in updates:
+            self._raise_for_duplicate_user_field(
+                conn,
+                "email",
+                updates["email"],
+                excluding_user_id=user_id,
+            )
+        return updates
+
+    def _update_user_in_transaction(
+        self,
+        conn: sqlite3.Connection,
+        user_id: str,
+        fields: dict[str, Any],
+        *,
+        delete_sessions: bool = False,
+    ) -> None:
+        updates = self._prepare_user_updates(conn, user_id, fields)
+        if not updates:
+            return
+        updates["updated_at"] = _utc_now()
+        assignments = ", ".join(f"{field_name} = ?" for field_name in updates)
+        conn.execute(
+            f"UPDATE users SET {assignments} WHERE id = ?",
+            (*updates.values(), user_id),
+        )
+        if delete_sessions or updates.get("disabled") == 1:
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
 
     def _get_active_user_row_by_id(
         self,

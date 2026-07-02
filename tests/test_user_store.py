@@ -499,6 +499,40 @@ def test_update_user_disabled_invalidates_sessions(monkeypatch, tmp_path):
     assert store.get_session(raw_session_id) is None
 
 
+def test_update_user_and_delete_sessions_updates_password_and_invalidates_sessions(
+    monkeypatch,
+    tmp_path,
+):
+    store = UserStore(tmp_path / "auth.db")
+    user = _create_user(
+        store,
+        password_hash="old-hash",
+        password_salt="old-salt",
+        must_change_password=False,
+    )
+    monkeypatch.setattr(
+        user_store_module,
+        "secrets",
+        SimpleNamespace(token_urlsafe=lambda length: "password-reset-session"),
+        raising=False,
+    )
+    raw_session_id, _session = store.create_session(user.id)
+
+    updated = store.update_user_and_delete_sessions(
+        user.id,
+        password_hash="new-hash",
+        password_salt="new-salt",
+        password_updated_at="2026-07-02T10:00:00+00:00",
+        must_change_password=True,
+    )
+
+    assert updated.password_hash == "new-hash"
+    assert updated.password_salt == "new-salt"
+    assert updated.password_updated_at == "2026-07-02T10:00:00+00:00"
+    assert updated.must_change_password is True
+    assert store.get_session(raw_session_id) is None
+
+
 def test_touch_session_updates_last_seen_and_optionally_extends_expiry(
     monkeypatch,
     tmp_path,

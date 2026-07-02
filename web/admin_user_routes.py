@@ -172,13 +172,16 @@ def update_user(
         updates["password_updated_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         updates["must_change_password"] = True
 
-    try:
-        updated_user = store.update_user(user_id, **updates)
-    except ValueError as exc:
-        raise _map_store_error(exc) from exc
-
     if "password_hash" in updates:
-        store.delete_sessions_for_user(user_id)
+        try:
+            updated_user = store.update_user_and_delete_sessions(user_id, **updates)
+        except ValueError as exc:
+            raise _map_store_error(exc) from exc
+    else:
+        try:
+            updated_user = store.update_user(user_id, **updates)
+        except ValueError as exc:
+            raise _map_store_error(exc) from exc
 
     return {"user": _build_user_response(updated_user)}
 
