@@ -65,6 +65,7 @@ async function apiRequest<T>(
 ): Promise<T> {
   const fetchImpl = context.fetchImpl || fetch;
   const init: RequestInit = {
+    credentials: 'same-origin',
     headers: apiHeaders(context),
   };
   if (method !== 'GET') {
