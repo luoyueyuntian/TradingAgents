@@ -1,0 +1,179 @@
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+import web.routes as web_routes
+from web.app import app
+from web.passwords import hash_password
+from web.user_store import UserStore
+
+
+def _create_user(store: UserStore, **overrides):
+    password_record = hash_password("StrongPass123!")
+    values = {
+        "username": "alice",
+        "email": "alice@example.com",
+        "display_name": "Alice Analyst",
+        "role": "analyst",
+        "tenant_id": "tenant-a",
+        "password_hash": password_record.encoded_hash,
+        "password_salt": password_record.salt,
+        "password_updated_at": "2026-07-02T10:00:00+00:00",
+        "must_change_password": False,
+    }
+    values.update(overrides)
+    return store.create_user(**values)
+
+
+def _auth_client(monkeypatch, tmp_path):
+    db_path = tmp_path / "auth.db"
+    monkeypatch.setenv("TRADINGAGENTS_WEB_AUTH_DB", str(db_path))
+    monkeypatch.delenv("TRADINGAGENTS_WEB_API_TOKEN", raising=False)
+    return TestClient(app), UserStore(db_path)
+
+
+def _login(client: TestClient, identifier: str = "alice", password: str = "StrongPass123!"):
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": identifier, "password": password},
+    )
+    assert response.status_code == 200
+
+
+def _analysis_payload():
+    return {"ticker": "NVDA", "date": "2026-07-02"}
+
+
+def test_session_tenant_overrides_request_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", tenant_id="alpha")
+    _login(client)
+    seen: dict[str, str | None] = {}
+
+    monkeypatch.setattr(web_routes, "get_execution_mode", lambda: "external_worker")
+    monkeypatch.setattr(web_routes, "get_tenant_id", lambda tenant_id=None: tenant_id)
+    monkeypatch.setattr(web_routes, "get_state_backend", lambda: "sqlite")
+    monkeypatch.setattr(web_routes, "get_state_location", lambda tenant_id=None: f"/state/{tenant_id}")
+
+    def _status(tenant_id=None):
+        seen["tenant_id"] = tenant_id
+        return {
+            "queue_depth": 0,
+            "run_count": 0,
+            "worker_running": False,
+            "worker_mode": None,
+            "worker_last_seen": None,
+        }
+
+    monkeypatch.setattr(web_routes, "get_service_status", _status)
+
+    response = client.get(
+        "/api/system/status?tenant_id=beta",
+        headers={"X-TradingAgents-Tenant": "gamma"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["tenant_id"] == "alpha"
+    assert seen["tenant_id"] == "alpha"
+
+
+def test_unauthenticated_request_is_rejected_when_user_auth_enabled(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store)
+
+    response = client.get("/api/runs")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Unauthorized"
+
+
+def test_viewer_can_get_runs_but_cannot_post_runs(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="viewer")
+    _login(client)
+    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [])
+
+    get_response = client.get("/api/runs")
+    post_response = client.post("/api/runs", json=_analysis_payload())
+
+    assert get_response.status_code == 200
+    assert post_response.status_code == 403
+
+
+def test_analyst_can_post_runs_but_cannot_put_settings(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="analyst")
+    _login(client)
+
+    class _Run:
+        run_id = "run-1"
+        status = "queued"
+        ticker = "NVDA"
+        date = "2026-07-02"
+
+    monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
+
+    post_response = client.post("/api/runs", json=_analysis_payload())
+    put_response = client.put("/api/settings", json={})
+
+    assert post_response.status_code == 201
+    assert put_response.status_code == 403
+
+
+def test_admin_role_is_allowed_past_middleware_for_admin_paths(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin")
+    _login(client)
+
+    settings_response = client.put("/api/settings", json={})
+    admin_response = client.put("/api/admin/users", json={})
+
+    assert settings_response.status_code != 403
+    assert settings_response.status_code != 401
+    assert admin_response.status_code not in {401, 403}
+
+
+def test_token_authenticated_request_preserves_legacy_behavior(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="viewer", tenant_id="alpha")
+    monkeypatch.setenv("TRADINGAGENTS_WEB_API_TOKEN", "secret-token")
+    seen: dict[str, str | None] = {}
+
+    monkeypatch.setattr(web_routes, "get_execution_mode", lambda: "external_worker")
+    monkeypatch.setattr(web_routes, "get_tenant_id", lambda tenant_id=None: tenant_id)
+    monkeypatch.setattr(web_routes, "get_state_backend", lambda: "sqlite")
+    monkeypatch.setattr(web_routes, "get_state_location", lambda tenant_id=None: f"/state/{tenant_id}")
+
+    def _status(tenant_id=None):
+        seen["tenant_id"] = tenant_id
+        return {
+            "queue_depth": 0,
+            "run_count": 0,
+            "worker_running": False,
+            "worker_mode": None,
+            "worker_last_seen": None,
+        }
+
+    monkeypatch.setattr(web_routes, "get_service_status", _status)
+
+    response = client.get(
+        "/api/system/status?tenant_id=beta",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["tenant_id"] == "beta"
+    assert seen["tenant_id"] == "beta"
+
+
+def test_forced_password_change_blocks_protected_routes(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="analyst", must_change_password=True)
+    _login(client)
+
+    allowed = client.get("/api/auth/me")
+    blocked = client.get("/api/runs")
+
+    assert allowed.status_code == 200
+    assert blocked.status_code == 403
+    assert blocked.json()["code"] == "password_change_required"

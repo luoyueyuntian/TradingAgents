@@ -48,7 +48,7 @@ from tradingagents.settings import (
     save_settings,
 )
 
-from .auth import get_auth_scope
+from .auth import get_auth_scope, get_request_tenant_id
 from .automation import (
     create_automation_rule,
     delete_automation_rule,
@@ -243,7 +243,7 @@ _DEFAULT_DASHBOARD_SECTIONS = [
 
 
 def _request_tenant_id(request: Request) -> str | None:
-    return request.headers.get("X-TradingAgents-Tenant") or request.query_params.get("tenant_id") or None
+    return get_request_tenant_id(request)
 
 
 def _process_due_automations_if_local(tenant_id: str | None = None) -> None:

@@ -38,6 +38,20 @@ def _dummy_api_keys(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_web_auth_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRADINGAGENTS_WEB_AUTH_DB", str(tmp_path / "auth.db"))
+    monkeypatch.setenv("TRADINGAGENTS_WEB_STATE_DIR", str(tmp_path / "web-state"))
+    for env_var in (
+        "TRADINGAGENTS_ADMIN_EMAIL",
+        "TRADINGAGENTS_ADMIN_PASSWORD",
+        "TRADINGAGENTS_ADMIN_TENANT_ID",
+        "TRADINGAGENTS_ADMIN_USERNAME",
+        "TRADINGAGENTS_ADMIN_DISPLAY_NAME",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_config():
     """Reset the dataflows config before and after each test.
 
