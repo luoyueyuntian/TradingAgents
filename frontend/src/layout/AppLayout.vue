@@ -57,7 +57,7 @@
         </div>
       </header>
 
-      <main class="uno-mx-auto uno-w-[min(1440px,100%)] uno-p-5">
+      <main class="uno-w-full uno-p-5">
         <RouterView />
       </main>
     </div>
