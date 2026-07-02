@@ -2243,6 +2243,81 @@ class ArtifactContent(BaseModel):
     content: str
 
 
+class AuthLoginRequest(BaseModel):
+    identifier: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+
+    @field_validator("identifier", "password")
+    @classmethod
+    def _strip_required_auth_text(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("value must not be blank")
+        return trimmed
+
+
+class AuthUser(BaseModel):
+    id: str
+    username: str
+    email: str
+    display_name: str
+    role: str
+    tenant_id: str
+    expires_at: str | None = None
+    must_change_password: bool = False
+
+
+class PasswordResetAvailability(BaseModel):
+    available: bool
+    reset_id: str | None = None
+    detail: str | None = None
+
+
+class AuthMeResponse(BaseModel):
+    user: AuthUser
+    session_expires_at: str
+    password_reset: PasswordResetAvailability
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=1)
+
+    @field_validator("old_password", "new_password")
+    @classmethod
+    def _strip_required_password_fields(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("value must not be blank")
+        return trimmed
+
+
+class PasswordResetRequest(BaseModel):
+    email: str = Field(..., min_length=1)
+
+    @field_validator("email")
+    @classmethod
+    def _strip_reset_email(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("value must not be blank")
+        return trimmed
+
+
+class PasswordResetConfirm(BaseModel):
+    reset_id: str = Field(..., min_length=1)
+    code: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=1)
+
+    @field_validator("reset_id", "code", "new_password")
+    @classmethod
+    def _strip_reset_confirm_fields(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("value must not be blank")
+        return trimmed
+
+
 class SettingsUpdate(BaseModel):
     """Partial update accepted by PUT /api/settings."""
 
