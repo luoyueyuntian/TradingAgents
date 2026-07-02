@@ -15,7 +15,6 @@ from typing import Any
 from tradingagents.service.web_state import normalize_web_tenant_id
 from web.passwords import hash_password, hash_secret, validate_password_policy
 
-
 VALID_ROLES = {"admin", "analyst", "viewer"}
 
 
@@ -398,6 +397,22 @@ class UserStore:
                 )
             return self._get_user_by_id(conn, user_id)
 
+    def delete_user(self, user_id: str) -> UserRecord:
+        self.ensure_schema()
+        with self._connect() as conn:
+            self._get_user_by_id(conn, user_id)
+            conn.execute(
+                """
+                UPDATE users
+                SET disabled = 1,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (_utc_now(), user_id),
+            )
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+            return self._get_user_by_id(conn, user_id)
+
     def _get_user_by_id(self, conn: sqlite3.Connection, user_id: str) -> UserRecord:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         if row is None:
@@ -541,6 +556,41 @@ class UserStore:
             return None
         return _session_from_row(row)
 
+    def touch_session(
+        self,
+        raw_session_id: str,
+        *,
+        ttl_seconds: int | None = None,
+    ) -> SessionRecord | None:
+        self.ensure_schema()
+        id_hash = hash_secret(raw_session_id)
+        now = _utc_now_dt()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM sessions WHERE id_hash = ?",
+                (id_hash,),
+            ).fetchone()
+            if row is None or datetime.fromisoformat(row["expires_at"]) <= now:
+                return None
+
+            expires_at = row["expires_at"]
+            if ttl_seconds is not None:
+                expires_at = _format_timestamp(now + timedelta(seconds=ttl_seconds))
+            conn.execute(
+                """
+                UPDATE sessions
+                SET last_seen_at = ?,
+                    expires_at = ?
+                WHERE id_hash = ?
+                """,
+                (_format_timestamp(now), expires_at, id_hash),
+            )
+            updated = conn.execute(
+                "SELECT * FROM sessions WHERE id_hash = ?",
+                (id_hash,),
+            ).fetchone()
+        return _session_from_row(updated)
+
     def delete_session(self, raw_session_id: str) -> None:
         self.ensure_schema()
         id_hash = hash_secret(raw_session_id)
@@ -643,6 +693,15 @@ class UserStore:
                 (used_at, token_id),
             )
             return self._get_password_reset_token_by_id(conn, token_id)
+
+    def delete_password_reset_token(self, token_id: str) -> int:
+        self.ensure_schema()
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM password_reset_tokens WHERE id = ?",
+                (token_id,),
+            )
+        return int(cursor.rowcount)
 
     def _get_password_reset_token_by_id(
         self,

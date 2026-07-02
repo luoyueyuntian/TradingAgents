@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -13,7 +13,6 @@ import web.user_store as user_store_module
 from tradingagents.service import web_state as web_state_module
 from web.passwords import hash_secret, verify_password
 from web.user_store import UserStore
-
 
 EXPECTED_SCHEMA = {
     "users": [
@@ -194,6 +193,46 @@ def test_update_user_changes_role_expiry_disabled_and_password_fields(tmp_path):
     assert store.get_user(user.id) == updated
 
 
+def test_delete_user_soft_deletes_user_and_removes_only_their_sessions(
+    monkeypatch,
+    tmp_path,
+):
+    store = UserStore(tmp_path / "auth.db")
+    alice = _create_user(store, username="alice", email="alice@example.com")
+    bob = _create_user(store, username="bob", email="bob@example.com")
+    raw_ids = iter(["alice-one", "alice-two", "bob-one"])
+    monkeypatch.setattr(
+        user_store_module,
+        "secrets",
+        SimpleNamespace(token_urlsafe=lambda length: next(raw_ids)),
+        raising=False,
+    )
+    alice_raw_one, _alice_session_one = store.create_session(alice.id)
+    alice_raw_two, _alice_session_two = store.create_session(alice.id)
+    bob_raw, bob_session = store.create_session(bob.id)
+    deleted_at = datetime(2026, 7, 2, 12, 0, 0, tzinfo=timezone.utc)
+
+    with monkeypatch.context() as clock:
+        clock.setattr(user_store_module, "_utc_now_dt", lambda: deleted_at)
+        deleted = store.delete_user(alice.id)
+
+    assert deleted.id == alice.id
+    assert deleted.disabled is True
+    assert deleted.updated_at == deleted_at.isoformat()
+    assert store.get_user(alice.id) == deleted
+    assert store.get_user(bob.id) == bob
+    assert store.get_session(alice_raw_one) is None
+    assert store.get_session(alice_raw_two) is None
+    assert store.get_session(bob_raw) == bob_session
+
+
+def test_delete_user_raises_for_missing_user(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+
+    with pytest.raises(ValueError, match="user not found"):
+        store.delete_user("missing-user")
+
+
 def test_create_session_hashes_raw_session_id_and_rejects_expired_sessions(
     monkeypatch,
     tmp_path,
@@ -259,6 +298,65 @@ def test_delete_session_and_delete_sessions_for_user(monkeypatch, tmp_path):
     assert store.get_session(bob_raw) == bob_session
 
 
+def test_touch_session_updates_last_seen_and_optionally_extends_expiry(
+    monkeypatch,
+    tmp_path,
+):
+    store = UserStore(tmp_path / "auth.db")
+    user = _create_user(store)
+    monkeypatch.setattr(
+        user_store_module,
+        "secrets",
+        SimpleNamespace(token_urlsafe=lambda length: "touch-session"),
+        raising=False,
+    )
+    created_at = datetime(2026, 7, 2, 10, 0, 0, tzinfo=timezone.utc)
+    touched_at = datetime(2026, 7, 2, 10, 0, 30, tzinfo=timezone.utc)
+
+    with monkeypatch.context() as clock:
+        clock.setattr(user_store_module, "_utc_now_dt", lambda: created_at)
+        raw_session_id, session = store.create_session(user.id, ttl_seconds=60)
+
+    with monkeypatch.context() as clock:
+        clock.setattr(user_store_module, "_utc_now_dt", lambda: touched_at)
+        touched = store.touch_session(raw_session_id, ttl_seconds=300)
+
+    assert touched is not None
+    assert touched.id_hash == hash_secret(raw_session_id)
+    assert touched.id_hash != raw_session_id
+    assert touched.user_id == session.user_id
+    assert touched.created_at == session.created_at
+    assert touched.last_seen_at == touched_at.isoformat()
+    assert touched.expires_at == "2026-07-02T10:05:30+00:00"
+    assert _parse_timestamp(touched.last_seen_at) > _parse_timestamp(session.last_seen_at)
+    assert _parse_timestamp(touched.expires_at) > _parse_timestamp(session.expires_at)
+
+
+def test_touch_session_returns_none_for_missing_or_expired_sessions(
+    monkeypatch,
+    tmp_path,
+):
+    store = UserStore(tmp_path / "auth.db")
+    user = _create_user(store)
+    monkeypatch.setattr(
+        user_store_module,
+        "secrets",
+        SimpleNamespace(token_urlsafe=lambda length: "expired-session"),
+        raising=False,
+    )
+    created_at = datetime(2026, 7, 2, 10, 0, 0, tzinfo=timezone.utc)
+    after_expiry = datetime(2026, 7, 2, 10, 1, 1, tzinfo=timezone.utc)
+
+    assert store.touch_session("missing-session") is None
+    with monkeypatch.context() as clock:
+        clock.setattr(user_store_module, "_utc_now_dt", lambda: created_at)
+        raw_session_id, _session = store.create_session(user.id, ttl_seconds=60)
+
+    with monkeypatch.context() as clock:
+        clock.setattr(user_store_module, "_utc_now_dt", lambda: after_expiry)
+        assert store.touch_session(raw_session_id) is None
+
+
 def test_password_reset_tokens_track_attempts_used_at_and_expiry(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     user = _create_user(store)
@@ -291,6 +389,19 @@ def test_password_reset_tokens_track_attempts_used_at_and_expiry(tmp_path):
         ttl_seconds=-1,
     )
     assert store.get_password_reset_token(expired.id) is None
+
+
+def test_delete_password_reset_token_removes_only_selected_token(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    user = _create_user(store)
+    first = store.create_password_reset_token(user.id, "first-code-hash")
+    second = store.create_password_reset_token(user.id, "second-code-hash")
+
+    assert store.delete_password_reset_token(first.id) == 1
+
+    assert store.get_password_reset_token(first.id) is None
+    assert store.get_password_reset_token(second.id) == second
+    assert store.delete_password_reset_token("missing-token") == 0
 
 
 def test_get_web_auth_db_path_honors_override(monkeypatch, tmp_path):
