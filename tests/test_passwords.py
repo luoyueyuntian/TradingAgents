@@ -94,6 +94,22 @@ def test_verify_password_returns_false_for_invalid_salt(salt):
     assert not verify_password("StrongerPass123!", stored.encoded_hash, salt)
 
 
+def test_verify_password_returns_false_for_base64_valid_wrong_length_salt():
+    wrong_salt = b"short"
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        b"StrongerPass123!",
+        wrong_salt,
+        PBKDF2_ITERATIONS,
+    )
+
+    assert not verify_password(
+        "StrongerPass123!",
+        base64.b64encode(digest).decode("ascii"),
+        base64.b64encode(wrong_salt).decode("ascii"),
+    )
+
+
 @pytest.mark.parametrize("encoded_hash", ["not-base64!", "not-base64\u2603"])
 def test_verify_password_returns_false_for_invalid_encoded_hash(encoded_hash):
     stored = hash_password("StrongerPass123!")

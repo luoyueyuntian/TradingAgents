@@ -12,10 +12,11 @@ class PasswordHash:
 
 
 PBKDF2_ITERATIONS = 260_000
+SALT_BYTES = 16
 
 
 def hash_password(password: str) -> PasswordHash:
-    salt = secrets.token_bytes(16)
+    salt = secrets.token_bytes(SALT_BYTES)
     digest = hashlib.pbkdf2_hmac(
         "sha256",
         password.encode("utf-8"),
@@ -39,6 +40,8 @@ def verify_password(password: str, encoded_hash: str, salt: str) -> bool:
     salt_bytes = _decode_base64_ascii(salt)
     stored_digest = _decode_base64_ascii(encoded_hash)
     if salt_bytes is None or stored_digest is None:
+        return False
+    if len(salt_bytes) != SALT_BYTES:
         return False
 
     digest = hashlib.pbkdf2_hmac(
