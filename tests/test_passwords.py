@@ -5,11 +5,15 @@ import pytest
 
 from web.passwords import (
     PBKDF2_ITERATIONS,
+    VERIFICATION_CODE_HASH_PREFIX,
+    VERIFICATION_CODE_PBKDF2_ITERATIONS,
     generate_verification_code,
     hash_password,
     hash_secret,
+    hash_verification_code,
     validate_password_policy,
     verify_password,
+    verify_verification_code,
 )
 
 
@@ -163,6 +167,32 @@ def test_generate_verification_code_returns_zero_padded_six_digit_code(monkeypat
     monkeypatch.setattr("web.passwords.secrets.randbelow", fake_randbelow)
 
     assert generate_verification_code() == "000042"
+
+
+def test_hash_verification_code_uses_salted_pbkdf2_and_verifies_code():
+    first = hash_verification_code("123456")
+    second = hash_verification_code("123456")
+
+    assert first != second
+    assert first.startswith(f"{VERIFICATION_CODE_HASH_PREFIX}$")
+    assert f"${VERIFICATION_CODE_PBKDF2_ITERATIONS}$" in first
+    assert first != hashlib.sha256(b"123456").hexdigest()
+    assert verify_verification_code("123456", first)
+    assert not verify_verification_code("000000", first)
+
+
+@pytest.mark.parametrize(
+    "encoded_hash",
+    [
+        "",
+        "not-a-reset-code-hash",
+        "pbkdf2_sha256$not-an-int$salt$digest",
+        "pbkdf2_sha256$1$c2FsdA==$ZGlnZXN0",
+        "pbkdf2_sha256$260000$not-base64!$ZGlnZXN0",
+    ],
+)
+def test_verify_verification_code_rejects_malformed_hashes(encoded_hash):
+    assert not verify_verification_code("123456", encoded_hash)
 
 
 def test_hash_secret_returns_sha256_hex_digest_for_high_entropy_secret():

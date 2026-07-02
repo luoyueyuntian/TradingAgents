@@ -25,6 +25,7 @@ describe('page registry', () => {
       'nav.users',
     ]);
     expect(navigationGroups.every((item) => item.descriptionKey.endsWith('Desc'))).toBe(true);
+    expect(navigationGroups.find((item) => item.path === '/settings')?.minRole).toBe('admin');
     expect(navigationGroups.find((item) => item.path === '/users')?.minRole).toBe('admin');
   });
 
@@ -46,6 +47,7 @@ describe('page registry', () => {
       'login',
       'change-password',
     ]);
+    expect(routes.find((route) => route.path === '/settings')?.meta?.minRole).toBe('admin');
     expect(routes.find((route) => route.path === '/users')?.meta?.minRole).toBe('admin');
     expect(routes.filter((route) => route.meta?.requiresAuth).length).toBe(9);
   });

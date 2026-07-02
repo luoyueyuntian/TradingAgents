@@ -12,6 +12,8 @@ class PasswordHash:
 
 
 PBKDF2_ITERATIONS = 260_000
+VERIFICATION_CODE_PBKDF2_ITERATIONS = PBKDF2_ITERATIONS
+VERIFICATION_CODE_HASH_PREFIX = "pbkdf2_sha256"
 SALT_BYTES = 16
 
 
@@ -79,6 +81,55 @@ def validate_password_policy(password: str, *, username: str, email: str) -> Non
 
 def generate_verification_code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_verification_code(code: str) -> str:
+    """Hash a low-entropy email verification code with a per-token salt."""
+    salt = secrets.token_bytes(SALT_BYTES)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        code.encode("utf-8"),
+        salt,
+        VERIFICATION_CODE_PBKDF2_ITERATIONS,
+    )
+    return "$".join(
+        (
+            VERIFICATION_CODE_HASH_PREFIX,
+            str(VERIFICATION_CODE_PBKDF2_ITERATIONS),
+            base64.b64encode(salt).decode("ascii"),
+            base64.b64encode(digest).decode("ascii"),
+        )
+    )
+
+
+def verify_verification_code(code: str, encoded_hash: str) -> bool:
+    parts = encoded_hash.split("$")
+    if len(parts) != 4:
+        return False
+    prefix, iteration_text, salt, stored = parts
+    if prefix != VERIFICATION_CODE_HASH_PREFIX:
+        return False
+    try:
+        iterations = int(iteration_text)
+    except ValueError:
+        return False
+    if iterations != VERIFICATION_CODE_PBKDF2_ITERATIONS:
+        return False
+
+    salt_bytes = _decode_base64_ascii(salt)
+    stored_digest = _decode_base64_ascii(stored)
+    if salt_bytes is None or stored_digest is None:
+        return False
+    if len(salt_bytes) != SALT_BYTES:
+        return False
+
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        code.encode("utf-8"),
+        salt_bytes,
+        iterations,
+    )
+    return secrets.compare_digest(digest, stored_digest)
 
 
 def hash_secret(value: str) -> str:

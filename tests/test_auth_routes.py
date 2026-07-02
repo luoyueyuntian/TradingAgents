@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 import web.auth_routes as auth_routes
 from web.app import app
-from web.passwords import hash_password, hash_secret
+from web.passwords import hash_password, hash_verification_code
 from web.user_store import UserStore
 
 
@@ -69,6 +69,20 @@ def test_login_sets_session_cookie(monkeypatch, tmp_path):
 
     assert response.status_code == 200
     assert response.cookies.get("tradingagents_session")
+
+
+def test_login_marks_session_cookie_secure_for_forwarded_https(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice@example.com", "password": "StrongPass123!"},
+        headers={"X-Forwarded-Proto": "https"},
+    )
+
+    assert response.status_code == 200
+    assert "secure" in response.headers["set-cookie"].lower()
 
 
 def test_me_returns_authenticated_user_summary(monkeypatch, tmp_path):
@@ -362,24 +376,24 @@ def test_password_reset_confirm_rejects_invalid_expired_used_and_attempt_limited
     assert invalid.status_code == 400
     assert invalid.json()["detail"] == "Invalid or expired reset code"
 
-    expired = store.create_password_reset_token(user.id, hash_secret("111111"), ttl_seconds=-1)
+    expired = store.create_password_reset_token(user.id, hash_verification_code("111111"), ttl_seconds=-1)
     expired_response = client.post(
         "/api/auth/password-reset/confirm",
         json={"reset_id": expired.id, "code": "111111", "new_password": "EvenStronger456!"},
     )
     assert expired_response.status_code == 400
-    assert expired_response.json()["detail"] == "Reset code has expired"
+    assert expired_response.json()["detail"] == "Invalid or expired reset code"
 
-    used = store.create_password_reset_token(user.id, hash_secret("222222"))
+    used = store.create_password_reset_token(user.id, hash_verification_code("222222"))
     store.mark_password_reset_token_used(used.id)
     used_response = client.post(
         "/api/auth/password-reset/confirm",
         json={"reset_id": used.id, "code": "222222", "new_password": "EvenStronger456!"},
     )
     assert used_response.status_code == 400
-    assert used_response.json()["detail"] == "Reset code has already been used"
+    assert used_response.json()["detail"] == "Invalid or expired reset code"
 
-    limited = store.create_password_reset_token(user.id, hash_secret("333333"))
+    limited = store.create_password_reset_token(user.id, hash_verification_code("333333"))
     for _ in range(5):
         wrong = client.post(
             "/api/auth/password-reset/confirm",
@@ -393,13 +407,43 @@ def test_password_reset_confirm_rejects_invalid_expired_used_and_attempt_limited
         json={"reset_id": limited.id, "code": "333333", "new_password": "EvenStronger456!"},
     )
     assert limited_response.status_code == 400
-    assert limited_response.json()["detail"] == "Too many reset attempts"
+    assert limited_response.json()["detail"] == "Invalid or expired reset code"
+
+
+def test_password_reset_confirm_does_not_distinguish_fake_and_limited_reset_ids(
+    monkeypatch, tmp_path
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    user = _create_user(store)
+    real = store.create_password_reset_token(user.id, hash_verification_code("333333"))
+    fake_reset_id = "f" * 32
+
+    for _ in range(5):
+        response = client.post(
+            "/api/auth/password-reset/confirm",
+            json={"reset_id": real.id, "code": "000000", "new_password": "EvenStronger456!"},
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid or expired reset code"
+
+    real_limited = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"reset_id": real.id, "code": "333333", "new_password": "EvenStronger456!"},
+    )
+    fake = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"reset_id": fake_reset_id, "code": "333333", "new_password": "EvenStronger456!"},
+    )
+
+    assert real_limited.status_code == 400
+    assert fake.status_code == 400
+    assert real_limited.json()["detail"] == fake.json()["detail"] == "Invalid or expired reset code"
 
 
 def test_password_reset_confirm_updates_password_and_allows_login(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     user = _create_user(store, must_change_password=True)
-    token = store.create_password_reset_token(user.id, hash_secret("444444"))
+    token = store.create_password_reset_token(user.id, hash_verification_code("444444"))
 
     response = client.post(
         "/api/auth/password-reset/confirm",

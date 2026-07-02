@@ -139,23 +139,23 @@ describe('router auth guards', () => {
     expect(router.currentRoute.value.fullPath).toBe('/');
   });
 
-  it('blocks non-admin users from navigating to /users', async () => {
+  it.each(['/settings', '/users'])('blocks non-admin users from navigating to %s', async (path) => {
     sessionState.currentUser = makeUser({ role: 'analyst' });
     const { createAppRouter } = await loadRouterModule();
     const router = createAppRouter(createMemoryHistory());
 
-    await router.push('/users');
+    await router.push(path);
 
     expect(router.currentRoute.value.fullPath).toBe('/');
   });
 
-  it('allows admin users to navigate to /users', async () => {
+  it.each(['/settings', '/users'])('allows admin users to navigate to %s', async (path) => {
     sessionState.currentUser = makeUser({ role: 'admin' });
     const { createAppRouter } = await loadRouterModule();
     const router = createAppRouter(createMemoryHistory());
 
-    await router.push('/users');
+    await router.push(path);
 
-    expect(router.currentRoute.value.fullPath).toBe('/users');
+    expect(router.currentRoute.value.fullPath).toBe(path);
   });
 });
