@@ -43,6 +43,21 @@ describe('api service', () => {
     expect(error.message).toBe('Ticker is required; Date is invalid');
   });
 
+  it('attaches the HTTP status to api request errors', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'Unauthorized' }), {
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await expect(apiGet('/api/auth/me', { fetchImpl: fetchMock })).rejects.toMatchObject({
+      message: 'Unauthorized',
+      status: 401,
+    });
+  });
+
   it('sends tenant and token headers for JSON fetch requests', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify([{ run_id: 'run-1' }]), {

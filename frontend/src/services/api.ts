@@ -4,6 +4,10 @@ export type ApiContext = {
   fetchImpl?: typeof fetch;
 };
 
+export type ApiRequestError = Error & {
+  status: number;
+};
+
 type RequestBody = Record<string, unknown> | unknown[] | string | null;
 type ApiErrorDetail = {
   msg?: string;
@@ -22,24 +26,28 @@ export function buildApiUrl(path: string, context: ApiContext = {}): string {
   return `${url.pathname}${url.search}`;
 }
 
-export async function createApiError(response: Response): Promise<Error> {
+function withApiStatus(error: Error, response: Response): ApiRequestError {
+  return Object.assign(error, { status: response.status });
+}
+
+export async function createApiError(response: Response): Promise<ApiRequestError> {
   try {
     const payload = await response.json();
     if (payload && typeof payload.detail === 'string') {
-      return new Error(payload.detail);
+      return withApiStatus(new Error(payload.detail), response);
     }
     if (payload && Array.isArray(payload.detail)) {
-      return new Error(payload.detail.map((item: ApiErrorDetail | string) => {
+      return withApiStatus(new Error(payload.detail.map((item: ApiErrorDetail | string) => {
         if (typeof item === 'string') {
           return item;
         }
         return item.msg || String(item);
-      }).join('; '));
+      }).join('; ')), response);
     }
   } catch {
     // Fall back to status text below.
   }
-  return new Error(response.statusText || `Request failed with ${response.status}`);
+  return withApiStatus(new Error(response.statusText || `Request failed with ${response.status}`), response);
 }
 
 function apiHeaders(context: ApiContext): HeadersInit {

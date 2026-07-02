@@ -93,6 +93,47 @@ describe('session store', () => {
     expect(session.state.error).toBe('');
   });
 
+  it('keeps auth session calls isolated from legacy tenant and token context', async () => {
+    apiGetMock.mockResolvedValue(makeAuthResponse());
+    apiPostMock
+      .mockResolvedValueOnce(makeAuthResponse())
+      .mockResolvedValueOnce({ status: 'ok' })
+      .mockResolvedValueOnce(makeAuthResponse())
+      .mockResolvedValueOnce({ available: true, reset_id: 'reset-123', detail: null })
+      .mockResolvedValueOnce({ status: 'ok' });
+    const { useSession } = await loadSessionModule();
+
+    const session = useSession();
+    session.setTenantId('operator-tenant');
+    session.setApiToken('operator-token');
+
+    await session.loadCurrentUser();
+    await session.login('alice', 'StrongPass123!');
+    await session.logout();
+    await session.changePassword('OldPass123!', 'NewPass456!');
+    await session.requestPasswordReset('alice@example.com');
+    await session.confirmPasswordReset('reset-123', '123456', 'NewPass456!');
+
+    expect(apiGetMock).toHaveBeenCalledWith('/api/auth/me', {});
+    expect(apiPostMock).toHaveBeenNthCalledWith(1, '/api/auth/login', {
+      identifier: 'alice',
+      password: 'StrongPass123!',
+    }, {});
+    expect(apiPostMock).toHaveBeenNthCalledWith(2, '/api/auth/logout', {}, {});
+    expect(apiPostMock).toHaveBeenNthCalledWith(3, '/api/auth/change-password', {
+      old_password: 'OldPass123!',
+      new_password: 'NewPass456!',
+    }, {});
+    expect(apiPostMock).toHaveBeenNthCalledWith(4, '/api/auth/password-reset/request', {
+      email: 'alice@example.com',
+    }, {});
+    expect(apiPostMock).toHaveBeenNthCalledWith(5, '/api/auth/password-reset/confirm', {
+      reset_id: 'reset-123',
+      code: '123456',
+      new_password: 'NewPass456!',
+    }, {});
+  });
+
   it('clears the current user on unauthorized loadCurrentUser failures', async () => {
     apiGetMock.mockRejectedValue(Object.assign(new Error('Unauthorized'), { status: 401 }));
     const { useSession } = await loadSessionModule();
@@ -176,6 +217,20 @@ describe('session store', () => {
     expect(confirmResult).toEqual({ status: 'ok' });
     expect(session.state.currentUser).toBeNull();
     expect(window.localStorage.getItem('tradingagents.currentMemberId')).toBeNull();
+  });
+
+  it('stores password reset availability responses on the session state', async () => {
+    apiPostMock.mockResolvedValue({ available: true, reset_id: 'reset-123', detail: null });
+    const { useSession } = await loadSessionModule();
+
+    const session = useSession();
+    await session.requestPasswordReset('alice@example.com');
+
+    expect(session.state.passwordReset).toEqual({
+      available: true,
+      reset_id: 'reset-123',
+      detail: null,
+    });
   });
 
   it('supports role helpers for viewer, analyst, and admin', async () => {
