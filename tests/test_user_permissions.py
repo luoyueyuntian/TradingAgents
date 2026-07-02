@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+import web.auth_routes as auth_routes
 import web.routes as web_routes
 from web.app import app
 from web.passwords import hash_password
+from web.permissions import is_public_path
 from web.user_store import UserStore
 
 
@@ -177,3 +179,40 @@ def test_forced_password_change_blocks_protected_routes(monkeypatch, tmp_path):
     assert allowed.status_code == 200
     assert blocked.status_code == 403
     assert blocked.json()["code"] == "password_change_required"
+
+
+def test_authenticated_me_request_populates_auth_state(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    user = _create_user(store, role="viewer", tenant_id="alpha")
+    _login(client)
+    observed: dict[str, object | None] = {}
+    original = auth_routes._get_current_session
+
+    def _wrapped_get_current_session(request):
+        observed["auth_mode"] = getattr(request.state, "auth_mode", None)
+        observed["current_user_id"] = getattr(
+            getattr(request.state, "current_user", None),
+            "id",
+            None,
+        )
+        observed["effective_tenant_id"] = getattr(
+            request.state,
+            "effective_tenant_id",
+            None,
+        )
+        return original(request)
+
+    monkeypatch.setattr(auth_routes, "_get_current_session", _wrapped_get_current_session)
+
+    response = client.get("/api/auth/me")
+
+    assert response.status_code == 200
+    assert observed == {
+        "auth_mode": "session",
+        "current_user_id": user.id,
+        "effective_tenant_id": "alpha",
+    }
+
+
+def test_unknown_auth_path_is_not_public():
+    assert is_public_path("/api/auth/private", "GET") is False

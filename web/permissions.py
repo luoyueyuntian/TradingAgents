@@ -20,6 +20,12 @@ _PASSWORD_CHANGE_ALLOWED = {
     ("POST", "/api/auth/change-password"),
     ("POST", "/api/auth/logout"),
 }
+_PUBLIC_AUTH_PATHS = {
+    ("POST", "/api/auth/login"),
+    ("POST", "/api/auth/logout"),
+    ("POST", "/api/auth/password-reset/request"),
+    ("POST", "/api/auth/password-reset/confirm"),
+}
 
 
 def is_public_path(path: str, method: str) -> bool:
@@ -28,11 +34,16 @@ def is_public_path(path: str, method: str) -> bool:
         return True
     if not path.startswith("/api/"):
         return True
-    return path.startswith("/api/auth/")
+    return (normalized_method, path) in _PUBLIC_AUTH_PATHS
+
+
+def is_auth_path(path: str, method: str) -> bool:
+    normalized = (method.upper(), path)
+    return normalized in _PUBLIC_AUTH_PATHS or normalized in _PASSWORD_CHANGE_ALLOWED
 
 
 def required_role_for_request(path: str, method: str) -> str | None:
-    if is_public_path(path, method):
+    if is_public_path(path, method) or is_auth_path(path, method):
         return None
     if path.startswith(_ADMIN_PREFIXES):
         return "admin"
