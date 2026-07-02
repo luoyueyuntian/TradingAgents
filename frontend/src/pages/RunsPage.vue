@@ -104,8 +104,8 @@
                 </button>
               </div>
               <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-                <Button icon="pi pi-refresh" :label="t('common.retry')" severity="secondary" @click="retryRun" />
-                <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined @click="deleteRun" />
+                <Button icon="pi pi-refresh" :label="t('common.retry')" severity="secondary" :disabled="!canWrite" @click="retryRun" />
+                <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined :disabled="!canWrite" @click="deleteRun" />
               </div>
             </div>
 
@@ -161,6 +161,7 @@ const SECTION_ORDER = [
 ];
 
 const session = useSession();
+const canWrite = computed(() => session.canWrite.value);
 const runs = ref<JsonRecord[]>([]);
 const selectedRun = ref<JsonRecord | null>(null);
 const artifacts = ref<JsonRecord[]>([]);

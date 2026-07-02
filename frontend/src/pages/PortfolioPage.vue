@@ -18,8 +18,8 @@
         <template #title>{{ t('common.watchlist') }}</template>
         <template #content>
           <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-            <InputText v-model="watchTicker" :placeholder="t('common.ticker')" />
-            <Button icon="pi pi-plus" :label="t('common.add')" @click="addWatchlist" />
+            <InputText v-model="watchTicker" :placeholder="t('common.ticker')" :disabled="!canWrite" />
+            <Button icon="pi pi-plus" :label="t('common.add')" :disabled="!canWrite" @click="addWatchlist" />
           </div>
           <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
             <div v-for="item in watchlist" :key="item.ticker" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
@@ -37,11 +37,11 @@
         <template #title>{{ t('nav.portfolio') }}</template>
         <template #content>
           <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
-            <InputText v-model="position.ticker" :placeholder="t('common.ticker')" />
-            <InputText v-model="position.quantity" type="number" :placeholder="t('portfolio.quantity')" />
-            <InputText v-model="position.average_cost" type="number" :placeholder="t('portfolio.averageCost')" />
+            <InputText v-model="position.ticker" :placeholder="t('common.ticker')" :disabled="!canWrite" />
+            <InputText v-model="position.quantity" type="number" :placeholder="t('portfolio.quantity')" :disabled="!canWrite" />
+            <InputText v-model="position.average_cost" type="number" :placeholder="t('portfolio.averageCost')" :disabled="!canWrite" />
           </div>
-          <Button icon="pi pi-plus" :label="t('common.addPosition')" class="uno-mt-3" @click="addPosition" />
+          <Button icon="pi pi-plus" :label="t('common.addPosition')" class="uno-mt-3" :disabled="!canWrite" @click="addPosition" />
           <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
             <div v-for="item in asArray(portfolio?.positions)" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
@@ -57,16 +57,16 @@
         <template #title>{{ t('portfolio.alerts') }}</template>
         <template #content>
           <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
-            <InputText v-model="alertRule.ticker" :placeholder="t('common.ticker')" />
-            <Select v-model="alertRule.field" :options="alertFields" option-label="label" option-value="value" />
-            <InputText v-model="alertRule.value" :placeholder="t('portfolio.valuePlaceholder')" />
+            <InputText v-model="alertRule.ticker" :placeholder="t('common.ticker')" :disabled="!canWrite" />
+            <Select v-model="alertRule.field" :options="alertFields" option-label="label" option-value="value" :disabled="!canWrite" />
+            <InputText v-model="alertRule.value" :placeholder="t('portfolio.valuePlaceholder')" :disabled="!canWrite" />
           </div>
-          <Button icon="pi pi-bell" :label="t('common.addRule')" class="uno-mt-3" @click="addAlert" />
+          <Button icon="pi pi-bell" :label="t('common.addRule')" class="uno-mt-3" :disabled="!canWrite" @click="addAlert" />
           <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
             <div v-for="rule in asArray(alerts?.rules)" :key="rule.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ rule.ticker }} · {{ rule.field }} = {{ rule.value }}</span>
-                <Button icon="pi pi-trash" text severity="danger" :aria-label="t('portfolio.deleteAlert')" @click="deleteAlert(rule.id)" />
+                <Button v-if="canWrite" icon="pi pi-trash" text severity="danger" :aria-label="t('portfolio.deleteAlert')" @click="deleteAlert(rule.id)" />
               </div>
             </div>
           </div>
@@ -111,6 +111,7 @@ import { useSession } from '../stores/session';
 import { asArray, signalSeverity, type JsonRecord } from '../utils/format';
 
 const session = useSession();
+const canWrite = computed(() => session.canWrite.value);
 const watchlist = ref<JsonRecord[]>([]);
 const portfolio = ref<JsonRecord | null>(null);
 const alerts = ref<JsonRecord | null>(null);
