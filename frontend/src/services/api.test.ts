@@ -59,10 +59,31 @@ describe('api service', () => {
 
     expect(result).toEqual([{ run_id: 'run-1' }]);
     expect(fetchMock).toHaveBeenCalledWith('/api/runs?tenant_id=alpha&api_token=token', {
+      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
         'X-TradingAgents-Tenant': 'alpha',
         'X-TradingAgents-Token': 'token',
+      },
+    });
+  });
+
+  it('sends same-origin credentials by default for cookie-backed session requests', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([{ run_id: 'run-1' }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await apiGet('/api/runs', {
+      fetchImpl: fetchMock,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/runs', {
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
       },
     });
   });
