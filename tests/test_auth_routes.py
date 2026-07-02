@@ -251,6 +251,35 @@ def test_password_reset_request_is_non_enumerating_and_uses_fake_sender(monkeypa
     assert len(sent_messages[0].code) == 6
 
 
+def test_password_reset_request_treats_username_input_as_non_enumerating_miss(
+    monkeypatch, tmp_path
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, username="alice-user", email="alice@example.com")
+    sent_messages = []
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_PORT", "2525")
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_FROM", "noreply@example.com")
+    monkeypatch.setattr(auth_routes, "send_password_reset_email", sent_messages.append)
+
+    username_response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "alice-user"},
+    )
+    missing_response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "missing@example.com"},
+    )
+
+    assert username_response.status_code == 200
+    assert username_response.json()["available"] is True
+    assert username_response.json()["reset_id"]
+    assert username_response.json() == missing_response.json() | {
+        "reset_id": username_response.json()["reset_id"]
+    }
+    assert len(sent_messages) == 0
+
+
 def test_password_reset_confirm_rejects_invalid_expired_used_and_attempt_limited_codes(
     monkeypatch, tmp_path
 ):

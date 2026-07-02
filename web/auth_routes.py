@@ -43,6 +43,12 @@ def _get_store() -> UserStore:
     return UserStore(get_web_auth_db_path())
 
 
+def _looks_like_email(value: str) -> bool:
+    candidate = value.strip()
+    local, separator, domain = candidate.partition("@")
+    return bool(separator and local and domain and "." in domain)
+
+
 def _is_user_expired(user: UserRecord) -> bool:
     return user.expires_at is not None and datetime.fromisoformat(user.expires_at) <= datetime.now(
         timezone.utc
@@ -104,6 +110,17 @@ def _lookup_password_reset_row(
             "SELECT * FROM password_reset_tokens WHERE id = ?",
             (token_id,),
         ).fetchone()
+
+
+def _get_user_by_email(store: UserStore, email: str) -> UserRecord | None:
+    if not _looks_like_email(email):
+        return None
+    user = store.get_user_by_identifier(email)
+    if user is None:
+        return None
+    if user.email.casefold() != email.casefold():
+        return None
+    return user
 
 
 @router.post("/login", response_model=AuthMeResponse)
@@ -187,7 +204,7 @@ def password_reset_request(payload: PasswordResetRequest) -> PasswordResetAvaila
         )
 
     store = _get_store()
-    user = store.get_user_by_identifier(payload.email)
+    user = _get_user_by_email(store, payload.email)
     fallback_reset_id = uuid.uuid4().hex
     if user is None or user.disabled or _is_user_expired(user):
         return PasswordResetAvailability(available=True, reset_id=fallback_reset_id)
