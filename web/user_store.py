@@ -7,6 +7,8 @@ import os
 import secrets
 import sqlite3
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -80,6 +82,18 @@ def _is_expired(expires_at: str) -> bool:
     return datetime.fromisoformat(expires_at) <= _utc_now_dt()
 
 
+def _validate_optional_expires_at(expires_at: str | None) -> str | None:
+    if expires_at is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(expires_at)
+    except ValueError as exc:
+        raise ValueError("expires_at must be an offset-aware ISO timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("expires_at must be an offset-aware ISO timestamp")
+    return expires_at
+
+
 def _require_text(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -142,16 +156,31 @@ def _password_reset_token_from_row(row: sqlite3.Row) -> PasswordResetTokenRecord
     )
 
 
+def _user_row_is_active(row: sqlite3.Row) -> bool:
+    if bool(row["disabled"]):
+        return False
+    expires_at = row["expires_at"]
+    return expires_at is None or not _is_expired(expires_at)
+
+
 class UserStore:
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(self.db_path), timeout=5)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        return conn
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def ensure_schema(self) -> None:
         with self._connect() as conn:
@@ -213,6 +242,18 @@ class UserStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS users_username_ci_unique
+                ON users(lower(username))
+                """
+            )
+            conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS users_email_ci_unique
+                ON users(lower(email))
+                """
+            )
 
     def count_users(self) -> int:
         self.ensure_schema()
@@ -245,6 +286,7 @@ class UserStore:
         normalized_tenant_id = _normalize_tenant_id(tenant_id)
         normalized_password_hash = _require_text(password_hash, "password_hash")
         normalized_password_salt = _require_text(password_salt, "password_salt")
+        normalized_expires_at = _validate_optional_expires_at(expires_at)
         now = _utc_now()
         resolved_user_id = user_id or uuid.uuid4().hex
 
@@ -288,7 +330,7 @@ class UserStore:
                         normalized_password_salt,
                         password_updated_at,
                         int(must_change_password),
-                        expires_at,
+                        normalized_expires_at,
                         int(disabled),
                         now,
                         now,
@@ -367,6 +409,8 @@ class UserStore:
                     value = _validate_role(value)
                 elif field_name == "tenant_id":
                     value = _normalize_tenant_id(value)
+                elif field_name == "expires_at":
+                    value = _validate_optional_expires_at(value)
                 elif field_name in {"password_hash", "password_salt"}:
                     value = _require_text(value, field_name)
                 elif field_name in {"must_change_password", "disabled"}:
@@ -395,6 +439,8 @@ class UserStore:
                     f"UPDATE users SET {assignments} WHERE id = ?",
                     (*updates.values(), user_id),
                 )
+                if updates.get("disabled") == 1:
+                    conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
             return self._get_user_by_id(conn, user_id)
 
     def delete_user(self, user_id: str) -> UserRecord:
@@ -518,7 +564,14 @@ class UserStore:
         expires_at = created_at + timedelta(seconds=ttl_seconds)
 
         with self._connect() as conn:
-            self._get_user_by_id(conn, user_id)
+            user = conn.execute(
+                "SELECT * FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if user is None:
+                raise ValueError("user not found")
+            if not _user_row_is_active(user):
+                raise ValueError("user not active")
             conn.execute(
                 """
                 INSERT INTO sessions (
@@ -552,9 +605,15 @@ class UserStore:
                 "SELECT * FROM sessions WHERE id_hash = ?",
                 (id_hash,),
             ).fetchone()
-        if row is None or _is_expired(row["expires_at"]):
-            return None
-        return _session_from_row(row)
+            if row is None or _is_expired(row["expires_at"]):
+                return None
+            user = conn.execute(
+                "SELECT * FROM users WHERE id = ?",
+                (row["user_id"],),
+            ).fetchone()
+            if user is None or not _user_row_is_active(user):
+                return None
+            return _session_from_row(row)
 
     def touch_session(
         self,
@@ -571,6 +630,12 @@ class UserStore:
                 (id_hash,),
             ).fetchone()
             if row is None or datetime.fromisoformat(row["expires_at"]) <= now:
+                return None
+            user = conn.execute(
+                "SELECT * FROM users WHERE id = ?",
+                (row["user_id"],),
+            ).fetchone()
+            if user is None or not _user_row_is_active(user):
                 return None
 
             expires_at = row["expires_at"]
@@ -651,7 +716,7 @@ class UserStore:
                 "SELECT * FROM password_reset_tokens WHERE id = ?",
                 (token_id,),
             ).fetchone()
-        if row is None or _is_expired(row["expires_at"]):
+        if row is None or row["used_at"] is not None or _is_expired(row["expires_at"]):
             return None
         return _password_reset_token_from_row(row)
 
@@ -664,6 +729,8 @@ class UserStore:
             token = self._get_password_reset_token_by_id(conn, token_id)
             if _is_expired(token.expires_at):
                 raise ValueError("password reset token expired")
+            if token.used_at is not None:
+                raise ValueError("password reset token already used")
             conn.execute(
                 """
                 UPDATE password_reset_tokens
@@ -684,14 +751,19 @@ class UserStore:
             token = self._get_password_reset_token_by_id(conn, token_id)
             if _is_expired(token.expires_at):
                 raise ValueError("password reset token expired")
-            conn.execute(
+            if token.used_at is not None:
+                raise ValueError("password reset token already used")
+            cursor = conn.execute(
                 """
                 UPDATE password_reset_tokens
                 SET used_at = ?
                 WHERE id = ?
+                  AND used_at IS NULL
                 """,
                 (used_at, token_id),
             )
+            if cursor.rowcount != 1:
+                raise ValueError("password reset token already used")
             return self._get_password_reset_token_by_id(conn, token_id)
 
     def delete_password_reset_token(self, token_id: str) -> int:
