@@ -107,12 +107,11 @@ def _lookup_password_reset_row(
 
 
 def _get_user_by_email(store: UserStore, email: str) -> UserRecord | None:
-    user = store.get_user_by_identifier(email)
-    if user is None:
-        return None
-    if user.email.casefold() != email.casefold():
-        return None
-    return user
+    target = email.casefold()
+    for user in store.list_users():
+        if user.email.casefold() == target:
+            return user
+    return None
 
 
 @router.post("/login", response_model=AuthMeResponse)
