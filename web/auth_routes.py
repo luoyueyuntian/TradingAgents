@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from contextlib import suppress
 from datetime import datetime, timezone
+from functools import lru_cache
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 
 from tradingagents.service.web_state import get_web_auth_db_path
 
@@ -40,6 +42,7 @@ SESSION_TTL_SECONDS = 43_200
 INVALID_RESET_CODE_DETAIL = "Invalid or expired reset code"
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _get_store() -> UserStore:
@@ -65,6 +68,22 @@ def _password_reset_available() -> bool:
 
 def _invalid_reset_code_error() -> HTTPException:
     return HTTPException(status_code=400, detail=INVALID_RESET_CODE_DETAIL)
+
+
+@lru_cache(maxsize=1)
+def _dummy_reset_code_hash() -> str:
+    return hash_verification_code("000000")
+
+
+def _burn_reset_code_verification(code: str) -> None:
+    verify_verification_code(code, _dummy_reset_code_hash())
+
+
+def _send_password_reset_email_safely(message: PasswordResetEmail) -> None:
+    try:
+        send_password_reset_email(message)
+    except Exception:
+        logger.warning("Failed to send password reset email", exc_info=True)
 
 
 def _session_cookie_secure(request: Request) -> bool:
@@ -209,7 +228,10 @@ def change_password(
 
 
 @router.post("/password-reset/request", response_model=PasswordResetAvailability)
-def password_reset_request(payload: PasswordResetRequest) -> PasswordResetAvailability:
+def password_reset_request(
+    payload: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+) -> PasswordResetAvailability:
     if not _password_reset_available():
         return PasswordResetAvailability(
             available=False,
@@ -220,12 +242,16 @@ def password_reset_request(payload: PasswordResetRequest) -> PasswordResetAvaila
     store = _get_store()
     user = _get_user_by_email(store, payload.email)
     fallback_reset_id = uuid.uuid4().hex
+    code = generate_verification_code()
     if user is None or user.disabled or _is_user_expired(user):
+        hash_verification_code(code)
         return PasswordResetAvailability(available=True, reset_id=fallback_reset_id)
 
-    code = generate_verification_code()
     token = store.create_password_reset_token(user.id, hash_verification_code(code))
-    send_password_reset_email(PasswordResetEmail(to_email=user.email, code=code))
+    background_tasks.add_task(
+        _send_password_reset_email_safely,
+        PasswordResetEmail(to_email=user.email, code=code),
+    )
     return PasswordResetAvailability(available=True, reset_id=token.id)
 
 
@@ -234,16 +260,21 @@ def password_reset_confirm(payload: PasswordResetConfirm) -> dict[str, str]:
     store = _get_store()
     row = _lookup_password_reset_row(store, payload.reset_id)
     if row is None:
+        _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
     if row["used_at"] is not None:
+        _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
     if datetime.fromisoformat(row["expires_at"]) <= datetime.now(timezone.utc):
+        _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
     if int(row["attempt_count"]) >= PASSWORD_RESET_MAX_ATTEMPTS:
+        _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
 
     token = store.get_password_reset_token(payload.reset_id)
     if token is None:
+        _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
 
     if not verify_verification_code(payload.code, token.code_hash):
@@ -253,6 +284,7 @@ def password_reset_confirm(payload: PasswordResetConfirm) -> dict[str, str]:
 
     user = store.get_user(token.user_id)
     if user is None or user.disabled or _is_user_expired(user):
+        _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
     try:
         validate_password_policy(

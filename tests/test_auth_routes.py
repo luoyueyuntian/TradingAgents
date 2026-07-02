@@ -274,6 +274,37 @@ def test_password_reset_request_is_non_enumerating_and_uses_fake_sender(monkeypa
     assert len(sent_messages[0].code) == 6
 
 
+def test_password_reset_request_hides_smtp_failures_for_existing_accounts(
+    monkeypatch, tmp_path
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store)
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_PORT", "2525")
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_FROM", "noreply@example.com")
+
+    def _fail_send(_message):
+        raise OSError("smtp unavailable")
+
+    monkeypatch.setattr(auth_routes, "send_password_reset_email", _fail_send)
+
+    existing = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "alice@example.com"},
+    )
+    missing = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "missing@example.com"},
+    )
+
+    assert existing.status_code == 200
+    assert missing.status_code == 200
+    assert existing.json()["available"] is True
+    assert missing.json()["available"] is True
+    assert existing.json()["reset_id"]
+    assert missing.json()["reset_id"]
+
+
 def test_password_reset_request_treats_username_input_as_non_enumerating_miss(
     monkeypatch, tmp_path
 ):
