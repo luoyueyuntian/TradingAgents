@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import analyzePageSource from './AnalyzePage.vue?raw';
 import automationsPageSource from './AutomationsPage.vue?raw';
 import portfolioPageSource from './PortfolioPage.vue?raw';
+import runDetailPageSource from './RunDetailPage.vue?raw';
 import runsPageSource from './RunsPage.vue?raw';
 import settingsPageSource from './SettingsPage.vue?raw';
 import workspacePageSource from './WorkspacePage.vue?raw';
@@ -10,7 +11,7 @@ describe('viewer role gating', () => {
   it('ties write controls to session.canWrite on operational pages', () => {
     const expectations = [
       analyzePageSource,
-      runsPageSource,
+      runDetailPageSource,
       portfolioPageSource,
       workspacePageSource,
       automationsPageSource,
@@ -19,6 +20,8 @@ describe('viewer role gating', () => {
     for (const source of expectations) {
       expect(source).toContain('session.canWrite.value');
     }
+
+    expect(runsPageSource).not.toContain('session.canWrite.value');
   });
 
   it('keeps settings save controls admin-only', () => {

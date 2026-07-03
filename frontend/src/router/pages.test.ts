@@ -39,6 +39,7 @@ describe('page registry', () => {
       'dashboard',
       'analysis',
       'runs',
+      'run-detail',
       'portfolio',
       'workspace',
       'automations',
@@ -47,8 +48,9 @@ describe('page registry', () => {
       'login',
       'change-password',
     ]);
+    expect(routes.find((route) => route.path === '/runs/:runId')?.name).toBe('run-detail');
     expect(routes.find((route) => route.path === '/settings')?.meta?.minRole).toBe('admin');
     expect(routes.find((route) => route.path === '/users')?.meta?.minRole).toBe('admin');
-    expect(routes.filter((route) => route.meta?.requiresAuth).length).toBe(9);
+    expect(routes.filter((route) => route.meta?.requiresAuth).length).toBe(10);
   });
 });
