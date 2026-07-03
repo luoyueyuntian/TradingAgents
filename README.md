@@ -137,7 +137,7 @@ TradingAgents keeps its dependency set minimal. All LLM calls go through HTTP AP
 | Package | Size | When it's used |
 |---|---|---|
 | **langchain-core** | — | **Always.** Provides the `@tool` decorator for data tools, `ChatPromptTemplate` for agent prompts, and `HumanMessage`/`AIMessage` for inter-agent communication. Used in 11 files across agents and tools. |
-| **langchain-openai** | — | When `llm_provider` is `openai`, `deepseek`, `qwen`, `glm`, `minimax`, `mistral`, `kimi`, `groq`, `nvidia`, `openai_compatible`, or `openrouter`. Provides `ChatOpenAI` (and `AzureChatOpenAI` for Azure). |
+| **langchain-openai** | — | When `llm_provider` is `openai`, `deepseek`, `qwen`, `glm`, `minimax`, `mimo`, `mistral`, `kimi`, `groq`, `nvidia`, `openai_compatible`, or `openrouter`. Provides `ChatOpenAI` (and `AzureChatOpenAI` for Azure). |
 | **langchain-anthropic** | — | When `llm_provider` is `anthropic`. Provides `ChatAnthropic`. |
 | **langchain-google-genai** | — | When `llm_provider` is `google`. Provides `ChatGoogleGenerativeAI`. |
 | **langgraph** | — | **Always.** The agent orchestration framework. Builds the `StateGraph` that connects analysts → researchers → trader → risk management → portfolio manager. |
@@ -245,6 +245,7 @@ export ZHIPU_API_KEY=...           # GLM via Z.AI (international)
 export ZHIPU_CN_API_KEY=...        # GLM via BigModel (China, open.bigmodel.cn)
 export MINIMAX_API_KEY=...         # MiniMax — Global (api.minimax.io)
 export MINIMAX_CN_API_KEY=...      # MiniMax — China (api.minimaxi.com)
+export MIMO_API_KEY=...            # Xiaomi MiMo (api.xiaomimimo.com)
 export OPENROUTER_API_KEY=...      # OpenRouter
 export ALPHA_VANTAGE_API_KEY=...   # Alpha Vantage
 ```
@@ -254,6 +255,8 @@ For Azure OpenAI, copy `.env.enterprise.example` to `.env.enterprise` and fill i
 For AWS Bedrock, install the extra with `pip install ".[bedrock]"`, set `llm_provider: "bedrock"`, configure AWS credentials (environment variables, `~/.aws/credentials`, or an IAM role) and `AWS_DEFAULT_REGION`, and use a Bedrock model ID, e.g. `us.anthropic.claude-opus-4-8-v1:0`.
 
 For local models, configure Ollama with `llm_provider: "ollama"`. The default endpoint is `http://localhost:11434/v1`; set `OLLAMA_BASE_URL` to point at a remote `ollama-serve`. Pull models with `ollama pull <name>`, and pick "Custom model ID" in the Web UI for any model not listed by default.
+
+For Xiaomi MiMo, configure `llm_provider: "mimo"` and set `MIMO_API_KEY`. The default endpoint is `https://api.xiaomimimo.com/v1`; Token Plan users can override it with `backend_url` or `TRADINGAGENTS_LLM_BACKEND_URL`, for example `https://token-plan-cn.xiaomimimo.com/v1`.
 
 For any other OpenAI-compatible server (vLLM, LM Studio, llama.cpp, or a custom relay), use `llm_provider: "openai_compatible"` and set the endpoint via `backend_url` (or `TRADINGAGENTS_LLM_BACKEND_URL`), e.g. `http://localhost:8000/v1` for vLLM or `http://localhost:1234/v1` for LM Studio. The model is whatever your server serves. No key is needed for local servers; set `OPENAI_COMPATIBLE_API_KEY` when the endpoint requires one.
 
@@ -386,7 +389,7 @@ In the Web UI, enter the ticker in the Analysis Configuration panel. The workspa
 
 ### Implementation Details
 
-We built TradingAgents with LangGraph to ensure flexibility and modularity. The framework supports multiple LLM providers: OpenAI, Google, Anthropic, xAI, DeepSeek, Qwen (Alibaba DashScope, international and China endpoints), GLM (Zhipu), MiniMax (global + China), OpenRouter, Ollama for local models, and Azure OpenAI for enterprise.
+We built TradingAgents with LangGraph to ensure flexibility and modularity. The framework supports multiple LLM providers: OpenAI, Google, Anthropic, xAI, DeepSeek, Qwen (Alibaba DashScope, international and China endpoints), GLM (Zhipu), MiniMax (global + China), Xiaomi MiMo, OpenRouter, Ollama for local models, and Azure OpenAI for enterprise.
 
 ### Python Usage
 
@@ -410,7 +413,7 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 
 config = DEFAULT_CONFIG.copy()
-config["llm_provider"] = "openai"        # e.g. openai, google, anthropic, deepseek, groq, ollama; openai_compatible covers any OpenAI-compatible endpoint (vLLM, LM Studio, llama.cpp, ...)
+config["llm_provider"] = "openai"        # e.g. openai, google, anthropic, deepseek, mimo, groq, ollama; openai_compatible covers any OpenAI-compatible endpoint (vLLM, LM Studio, llama.cpp, ...)
 config["deep_think_llm"] = "gpt-5.5"     # Model for complex reasoning
 config["quick_think_llm"] = "gpt-5.4-mini" # Model for quick tasks
 config["max_debate_rounds"] = 2

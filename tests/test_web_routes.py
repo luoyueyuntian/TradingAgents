@@ -90,6 +90,32 @@ def test_settings_are_scoped_by_request_tenant(monkeypatch, tmp_path):
     assert tenant_b.json()["analysis"]["output_language"] == "English"
 
 
+def test_provider_catalog_includes_mimo():
+    client = TestClient(app)
+
+    response = client.get("/api/providers")
+
+    assert response.status_code == 200
+    providers = {item["provider"]: item for item in response.json()}
+    assert providers["mimo"]["display_name"] == "Xiaomi MiMo"
+    assert providers["mimo"]["quick_models"][0]["value"] == "mimo-v2.5"
+    assert providers["mimo"]["deep_models"][0]["value"] == "mimo-v2.5-pro"
+
+
+def test_settings_response_includes_empty_mimo_api_key(monkeypatch, tmp_path):
+    client = TestClient(app)
+    monkeypatch.setattr(
+        web_routes,
+        "get_web_settings_path",
+        lambda tenant_id=None: tmp_path / "settings.json",
+    )
+
+    response = client.get("/api/settings")
+
+    assert response.status_code == 200
+    assert response.json()["api_keys"]["mimo"] == ""
+
+
 def test_settings_security_token_is_masked(monkeypatch, tmp_path):
     client = TestClient(app)
     monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant-a.json")

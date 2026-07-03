@@ -151,7 +151,7 @@ const providers = ref<JsonRecord[]>([]);
 const error = ref('');
 const notice = ref('');
 const { t } = useI18n();
-const apiKeyNames = ['openai', 'anthropic', 'google', 'deepseek', 'qwen', 'glm', 'minimax', 'openrouter', 'alpha_vantage'];
+const apiKeyNames = ['openai', 'anthropic', 'google', 'deepseek', 'qwen', 'glm', 'minimax', 'mimo', 'openrouter', 'alpha_vantage'];
 const vendorFields = computed(() => [
   { key: 'core_stock_apis', label: t('settings.coreStockApis') },
   { key: 'technical_indicators', label: t('settings.technicalIndicators') },

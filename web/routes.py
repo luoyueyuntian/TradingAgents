@@ -219,6 +219,7 @@ _PROVIDER_DISPLAY_NAMES = {
     "glm-cn": "GLM (BigModel China)",
     "minimax": "MiniMax (International)",
     "minimax-cn": "MiniMax (China)",
+    "mimo": "Xiaomi MiMo",
     "ollama": "Ollama (Local)",
     "openai_compatible": "OpenAI-Compatible",
     "mistral": "Mistral",
@@ -5477,7 +5478,7 @@ async def stream_run_events(run_id: str, request: Request):
 # ── Settings endpoints ─────────────────────────────────────────────────────
 
 # Default empty API keys for all known providers.
-_EMPTY_API_KEYS = dict.fromkeys(["openai", "anthropic", "google", "xai", "deepseek", "qwen", "qwen-cn", "glm", "glm-cn", "minimax", "minimax-cn", "openrouter", "mistral", "kimi", "groq", "nvidia", "openai_compatible", "ollama", "bedrock", "FRED_API_KEY", "AWS_DEFAULT_REGION", "AWS_PROFILE", "OLLAMA_BASE_URL"], "")
+_EMPTY_API_KEYS = dict.fromkeys(["openai", "anthropic", "google", "xai", "deepseek", "qwen", "qwen-cn", "glm", "glm-cn", "minimax", "minimax-cn", "mimo", "openrouter", "mistral", "kimi", "groq", "nvidia", "openai_compatible", "ollama", "bedrock", "FRED_API_KEY", "AWS_DEFAULT_REGION", "AWS_PROFILE", "OLLAMA_BASE_URL"], "")
 
 
 def _settings_to_response(settings: dict) -> SettingsResponse:
