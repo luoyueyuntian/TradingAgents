@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from web import routes as web_routes
 from web.app import app
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,7 +17,31 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_index_html_is_vue_spa_shell_with_pwa_metadata():
+def _write_spa_shell(tmp_path: Path) -> Path:
+    index_path = tmp_path / "static" / "spa" / "index.html"
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    index_path.write_text(
+        """<!doctype html>
+<html lang="en">
+  <head>
+    <meta name="theme-color" content="#162326">
+    <link rel="manifest" href="/static/app.webmanifest">
+    <link rel="stylesheet" href="/static/spa/assets/index.css">
+  </head>
+  <body>
+    <div id="app" data-app="tradingagents-vue-spa"></div>
+    <script type="module" src="/static/spa/assets/app.js"></script>
+  </body>
+</html>
+""",
+        encoding="utf-8",
+    )
+    return index_path
+
+
+def test_index_html_is_vue_spa_shell_with_pwa_metadata(monkeypatch, tmp_path):
+    index_path = _write_spa_shell(tmp_path)
+    monkeypatch.setattr(web_routes, "_spa_index_path", lambda: index_path)
     client = TestClient(app)
 
     response = client.get("/")
@@ -33,7 +58,7 @@ def test_index_html_is_vue_spa_shell_with_pwa_metadata():
     assert "/static/app.js" not in html
 
 
-def test_static_pwa_assets_are_served_from_spa_build():
+def test_static_pwa_assets_are_served_without_checked_in_spa_bundle():
     client = TestClient(app)
 
     manifest = client.get("/static/app.webmanifest")
@@ -52,10 +77,8 @@ def test_static_pwa_assets_are_served_from_spa_build():
     assert "/static/app.js" not in service_worker.text
     assert icon.status_code == 200
     assert "<svg" in icon.text
-    assert app_js.status_code == 200
-    assert "serviceWorker" in app_js.text
-    assert app_css.status_code == 200
-    assert ".uno-min-h-screen" in app_css.text
+    assert app_js.status_code == 404
+    assert app_css.status_code == 404
 
 
 def test_vue_router_splits_primary_workflows_into_pages():
