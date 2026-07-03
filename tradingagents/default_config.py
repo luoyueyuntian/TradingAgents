@@ -1,6 +1,19 @@
 import os
+from copy import deepcopy
 
 _TRADINGAGENTS_HOME = os.path.join(os.path.expanduser("~"), ".tradingagents")
+
+# Lazy-imported to avoid circular dependency at module level.
+_settings_module = None
+
+
+def _get_settings():
+    """Lazy-load tradingagents.settings (avoids circular imports)."""
+    global _settings_module
+    if _settings_module is None:
+        from tradingagents import settings as _mod
+        _settings_module = _mod
+    return _settings_module
 
 # Single source of truth for env-var → config-key overrides. To expose
 # a new config key for environment-based override, add a row here — no
@@ -68,7 +81,92 @@ def _apply_env_overrides(config: dict) -> dict:
     return config
 
 
-DEFAULT_CONFIG = _apply_env_overrides({
+def _apply_settings_file(config: dict) -> dict:
+    """Load settings.json and merge into *config* (in-place).
+
+    Priority: settings file > code defaults, but env vars > settings file
+    (env overrides are applied separately after this function).
+    API keys from settings are pushed into ``os.environ`` so downstream
+    clients (LLM, data vendors) pick them up without code changes.
+    """
+    try:
+        settings = _get_settings().load_settings()
+    except Exception:
+        return config  # settings file is optional — never block startup
+
+    if not settings:
+        return config
+
+    # Push API keys into os.environ (only if not already set)
+    _get_settings().export_api_keys_to_env()
+
+    return apply_settings_payload(config, settings)
+
+
+def apply_settings_payload(config: dict, settings: dict) -> dict:
+    """Merge a settings payload into an existing config dict in-place."""
+    if not settings:
+        return config
+
+    # LLM settings
+    llm = settings.get("llm", {})
+    _SETTINGS_TO_CONFIG = {
+        "provider": "llm_provider",
+        "quick_think_model": "quick_think_llm",
+        "deep_think_model": "deep_think_llm",
+        "backend_url": "backend_url",
+        "temperature": "temperature",
+        "google_thinking_level": "google_thinking_level",
+        "openai_reasoning_effort": "openai_reasoning_effort",
+        "anthropic_effort": "anthropic_effort",
+    }
+    for settings_key, config_key in _SETTINGS_TO_CONFIG.items():
+        val = llm.get(settings_key)
+        if val is not None and val != "":
+            config[config_key] = val
+
+    # Analysis settings
+    analysis = settings.get("analysis", {})
+    _ANALYSIS_TO_CONFIG = {
+        "output_language": "output_language",
+        "market_profile": "market_profile",
+        "max_risk_discuss_rounds": "max_risk_discuss_rounds",
+        "max_recur_limit": "max_recur_limit",
+        "checkpoint_enabled": "checkpoint_enabled",
+        "benchmark_ticker": "benchmark_ticker",
+        "memory_log_max_entries": "memory_log_max_entries",
+    }
+    for settings_key, config_key in _ANALYSIS_TO_CONFIG.items():
+        val = analysis.get(settings_key)
+        if val is not None:
+            config[config_key] = val
+    # research_depth (web UI) is an alias for max_debate_rounds.
+    # Explicit max_debate_rounds takes precedence over research_depth.
+    debate_rounds = analysis.get("max_debate_rounds") or analysis.get("research_depth")
+    if debate_rounds is not None:
+        config["max_debate_rounds"] = debate_rounds
+
+    # Data settings — deep merge
+    data = settings.get("data", {})
+    if "data_vendors" in data and isinstance(config.get("data_vendors"), dict):
+        config["data_vendors"].update(data["data_vendors"])
+    if "tool_vendors" in data and isinstance(config.get("tool_vendors"), dict):
+        config["tool_vendors"].update(data["tool_vendors"])
+    for key in (
+        "news_article_limit",
+        "global_news_article_limit",
+        "global_news_lookback_days",
+        "global_news_queries",
+    ):
+        val = data.get(key)
+        if val is not None:
+            config[key] = val
+
+    return config
+
+
+# Build DEFAULT_CONFIG: base values → settings file → env overrides
+_BASE_CONFIG_TEMPLATE = {
     "project_dir": os.path.abspath(os.path.join(os.path.dirname(__file__), ".")),
     "results_dir": os.getenv("TRADINGAGENTS_RESULTS_DIR", os.path.join(_TRADINGAGENTS_HOME, "logs")),
     "data_cache_dir": os.getenv("TRADINGAGENTS_CACHE_DIR", os.path.join(_TRADINGAGENTS_HOME, "cache")),
@@ -161,4 +259,13 @@ DEFAULT_CONFIG = _apply_env_overrides({
         ".SZ":  "399001.SZ",   # Shenzhen (SZSE Component)
         "":     "SPY",         # default for US-listed tickers (no suffix)
     },
-})
+}
+
+def build_default_config() -> dict:
+    """Build the current runtime config from defaults, settings.json, and env vars."""
+    return _apply_env_overrides(_apply_settings_file(deepcopy(_BASE_CONFIG_TEMPLATE)))
+
+
+# Build final DEFAULT_CONFIG: base → settings file → env overrides
+# Settings file sits between defaults and env vars so env vars always win.
+DEFAULT_CONFIG = build_default_config()

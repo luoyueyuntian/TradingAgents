@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import copy
-
 import pytest
 
 import tradingagents.dataflows.config as config_module
-import tradingagents.default_config as default_config
 from tradingagents.dataflows import interface
+from tradingagents.dataflows.config import initialize_config
 
 
 def _reset_config():
-    config_module._config = copy.deepcopy(default_config.DEFAULT_CONFIG)
+    initialize_config()
 
 
 @pytest.mark.unit

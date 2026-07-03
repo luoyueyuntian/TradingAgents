@@ -7,6 +7,8 @@ from importlib import import_module
 
 import pandas as pd
 
+from .errors import NoMarketDataError, VendorNotConfiguredError
+
 SUPPORTED_TOPICS = {
     "northbound": "沪深港通北向资金流向",
     "margin": "融资融券余额变化",
@@ -92,7 +94,9 @@ def get_china_market_signals(topic: str, limit: int | None = None) -> str:
     try:
         ak = _load_akshare()
     except Exception as exc:  # noqa: BLE001
-        return f"DATA_UNAVAILABLE: China market-signal vendor could not be loaded ({exc})."
+        raise VendorNotConfiguredError(
+            f"China market-signal vendor could not be loaded: {exc}"
+        ) from exc
 
     try:
         if signal_type == "northbound":
@@ -102,15 +106,18 @@ def get_china_market_signals(topic: str, limit: int | None = None) -> str:
         else:
             frame = _fund_flow_signal(ak, limit)
     except Exception as exc:  # noqa: BLE001
-        return (
-            f"DATA_UNAVAILABLE: China market signals for {SUPPORTED_TOPICS[signal_type]} "
-            f"are currently unavailable ({exc})."
-        )
+        raise NoMarketDataError(
+            symbol=topic,
+            detail=(
+                f"China market signals for {SUPPORTED_TOPICS[signal_type]} "
+                f"are currently unavailable ({exc})"
+            ),
+        ) from exc
 
     if not isinstance(frame, pd.DataFrame) or frame.empty:
-        return (
-            f"DATA_UNAVAILABLE: China market signals for {SUPPORTED_TOPICS[signal_type]} "
-            "returned no rows."
+        raise NoMarketDataError(
+            symbol=topic,
+            detail=f"China market signals for {SUPPORTED_TOPICS[signal_type]} returned no rows",
         )
 
     trimmed = frame.copy()

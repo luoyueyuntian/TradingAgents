@@ -11,31 +11,20 @@ requires-python = ">=3.10"
 dependencies = [
     "akshare>=1.18.64",
     "langchain-core>=0.3.81",
-    "backtrader>=1.9.78.123",
     "langchain-anthropic>=0.3.15",
-    "langchain-experimental>=0.3.4",
     "langchain-google-genai>=4.0.0",
     "langchain-openai>=0.3.23",
     "langgraph>=0.4.8",
     "langgraph-checkpoint-sqlite>=2.0.0",
     "pandas>=2.3.0",
-    "parsel>=1.10.0",
-    "python-dotenv>=1.0.0",
-    "pytz>=2025.2",
-    "questionary>=2.1.0",
-    "redis>=6.2.0",
     "requests>=2.32.4",
-    "rich>=14.0.0",
-    "typer>=0.21.0",
-    "setuptools>=80.9.0",
     "stockstats>=0.6.5",
-    "tqdm>=4.67.1",
-    "typing-extensions>=4.14.0",
     "yfinance>=1.4.1",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "pyright>=1.1",
     "ruff>=0.15",
     "pytest>=8.0",
     "pytest-subtests>=0.13",
@@ -45,15 +34,17 @@ dev = [
 bedrock = [
     "langchain-aws>=1.5.0",
 ]
-
-[project.scripts]
-tradingagents = "cli.main:app"
+web = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "sse-starlette>=2.0.0",
+]
 
 [tool.setuptools.packages.find]
-include = ["tradingagents*", "cli*"]
+include = ["tradingagents*", "web*"]
 
 [tool.setuptools.package-data]
-cli = ["static/*"]
+web = ["static/*", "static/icons/*", "static/spa/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -87,3 +78,33 @@ ignore = ["E501"]
 # Keep multiple aliased names from one module in a single combined import block
 # (e.g. the vendor re-exports in interface.py) instead of one statement per name.
 combine-as-imports = true
+
+[tool.pyright]
+include = ["tradingagents", "web", "cli", "scripts", "tests"]
+exclude = [
+    ".venv",
+    ".pytest_cache",
+    ".ruff_cache",
+    "build",
+    "dist",
+    "results",
+    "tradingagents.egg-info",
+    "tradingagents/llm_clients/bedrock_client.py",
+    "web/static/spa",
+    "worklog",
+]
+pythonVersion = "3.10"
+typeCheckingMode = "basic"
+analyzeUnannotatedFunctions = false
+reportMissingTypeStubs = false
+reportArgumentType = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportGeneralTypeIssues = "none"
+reportIndexIssue = "none"
+reportOperatorIssue = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalOperand = "none"
+reportOptionalSubscript = "none"
+reportReturnType = "none"
+reportSelfClsParameterName = "none"

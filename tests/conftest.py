@@ -38,22 +38,33 @@ def _dummy_api_keys(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_web_auth_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRADINGAGENTS_WEB_AUTH_DB", str(tmp_path / "auth.db"))
+    monkeypatch.setenv("TRADINGAGENTS_WEB_STATE_DIR", str(tmp_path / "web-state"))
+    for env_var in (
+        "TRADINGAGENTS_ADMIN_EMAIL",
+        "TRADINGAGENTS_ADMIN_PASSWORD",
+        "TRADINGAGENTS_ADMIN_TENANT_ID",
+        "TRADINGAGENTS_ADMIN_USERNAME",
+        "TRADINGAGENTS_ADMIN_DISPLAY_NAME",
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_config():
-    """Reset the global dataflows config before and after each test.
+    """Reset the dataflows config before and after each test.
 
     ``set_config`` merges (it never clears keys absent from the override), so a
     test that sets e.g. ``tool_vendors`` would otherwise leak into later tests
-    and make routing behavior order-dependent. Replace the global outright so
-    every test starts from a clean DEFAULT_CONFIG.
+    and make routing behavior order-dependent.  ``initialize_config()`` resets
+    the context-local config to a fresh DEFAULT_CONFIG copy.
     """
-    import copy
+    from tradingagents.dataflows.config import initialize_config
 
-    import tradingagents.dataflows.config as config_module
-    import tradingagents.default_config as default_config
-
-    config_module._config = copy.deepcopy(default_config.DEFAULT_CONFIG)
+    initialize_config()
     yield
-    config_module._config = copy.deepcopy(default_config.DEFAULT_CONFIG)
+    initialize_config()
 
 
 @pytest.fixture()

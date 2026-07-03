@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">TradingAgents App Icon</title>
+  <desc id="desc">A teal chart arrow inside a dark rounded square.</desc>
+  <rect x="12" y="12" width="232" height="232" rx="52" fill="#0b1220"/>
+  <path d="M64 176h28l28-44 28 24 44-60 20 14-58 82-32-28-18 28H64z" fill="#4fd1c5"/>
+  <circle cx="194" cy="96" r="12" fill="#f6ad55"/>
+  <path d="M64 64h20v88H64zm44 28h20v60h-20zm44-20h20v80h-20z" fill="#233044"/>
+</svg>
