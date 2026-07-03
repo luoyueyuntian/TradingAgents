@@ -31,7 +31,14 @@
       </template>
     </Card>
 
-    <div class="uno-mt-4 uno-grid uno-grid-cols-[minmax(320px,430px)_minmax(0,1fr)] uno-items-start uno-gap-4 max-[900px]:uno-grid-cols-1">
+    <div
+      :class="[
+        'uno-mt-4 uno-grid uno-items-start uno-gap-4',
+        selectedRun
+          ? 'uno-grid-cols-[minmax(320px,430px)_minmax(0,1fr)] max-[900px]:uno-grid-cols-1'
+          : 'uno-grid-cols-1',
+      ]"
+    >
       <Card>
         <template #title>{{ t('runs.recentRuns') }}</template>
         <template #content>
@@ -52,10 +59,10 @@
         </template>
       </Card>
 
-      <Card>
+      <Card v-if="selectedRun">
         <template #title>{{ t('runs.runDetail') }}</template>
         <template #content>
-          <div v-if="selectedRun" class="uno-grid uno-gap-4">
+          <div class="uno-grid uno-gap-4">
             <div class="uno-grid uno-gap-[0.9rem] uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-[#fbfdfd] uno-p-4">
               <div class="uno-flex uno-items-start uno-justify-between uno-gap-4">
                 <div>
@@ -65,7 +72,7 @@
                 <Tag :value="selectedRun.signal || selectedRun.status" :severity="signalSeverity(selectedRun.signal || selectedRun.status)" />
               </div>
               <MetricGrid :items="detailMetrics" />
-              <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(150px,1fr))] uno-gap-[0.65rem]">
+              <div class="uno-grid uno-grid-cols-4 max-[1100px]:uno-grid-cols-2 max-[640px]:uno-grid-cols-1 uno-gap-[0.65rem]">
                 <div v-for="item in decisionItems" :key="item.label" class="uno-grid uno-min-w-0 uno-gap-1 uno-rounded-lg uno-border uno-border-[#dbe6e6] uno-bg-white uno-p-3">
                   <span class="uno-text-[0.78rem] uno-text-[#607174]">{{ item.label }}</span>
                   <strong class="uno-min-w-0 uno-break-words uno-text-[#132a2d]">{{ item.value }}</strong>
@@ -111,6 +118,11 @@
 
             <ReportMarkdown :content="selectedSectionText" :empty-text="t('runs.noReport')" />
 
+            <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+              <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.terminalOutput') }}</summary>
+              <pre class="uno-m-0 uno-mt-3 uno-max-h-[460px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#101b1d] uno-p-[0.85rem] uno-text-[#d8f3ee]">{{ terminalOutput || t('runs.noTerminalOutput') }}</pre>
+            </details>
+
             <details v-if="artifacts.length" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
               <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.artifacts') }}</summary>
               <div class="uno-mt-3 uno-flex uno-flex-wrap uno-gap-2">
@@ -123,7 +135,6 @@
               </div>
             </details>
           </div>
-          <p v-else class="uno-text-[#6f8183]">{{ t('runs.selectRun') }}</p>
         </template>
       </Card>
     </div>
@@ -145,7 +156,7 @@ import MetricGrid from '../components/MetricGrid.vue';
 import PageHeader from '../components/PageHeader.vue';
 import ReportMarkdown from '../components/ReportMarkdown.vue';
 import { useI18n } from '../i18n';
-import { apiDelete, apiGet, apiPost } from '../services/api';
+import { apiDelete, apiGet, apiPost, buildApiUrl } from '../services/api';
 import { useSession } from '../stores/session';
 import { compactText, signalSeverity, type JsonRecord } from '../utils/format';
 import { buildDecisionHighlights, buildInsightPanels } from '../utils/runDisplay';
@@ -165,6 +176,7 @@ const canWrite = computed(() => session.canWrite.value);
 const runs = ref<JsonRecord[]>([]);
 const selectedRun = ref<JsonRecord | null>(null);
 const artifacts = ref<JsonRecord[]>([]);
+const terminalOutput = ref('');
 const selectedSectionKey = ref('');
 const error = ref('');
 const { t } = useI18n();
@@ -317,7 +329,23 @@ async function openRun(run: JsonRecord) {
   selectedRun.value = await apiGet<JsonRecord>(`/api/runs/${encodeURIComponent(String(run.run_id))}`, session.apiContext.value);
   const hasOverview = Boolean(selectedRun.value.final_report || selectedRun.value.current_report);
   selectedSectionKey.value = hasOverview ? 'overview' : orderedReportKeys.value[0] || '';
-  artifacts.value = await apiGet<JsonRecord[]>(`/api/runs/${encodeURIComponent(String(run.run_id))}/artifacts`, session.apiContext.value);
+  const runId = encodeURIComponent(String(run.run_id));
+  const [artifactRows, output] = await Promise.all([
+    apiGet<JsonRecord[]>(`/api/runs/${runId}/artifacts`, session.apiContext.value),
+    loadTerminalOutput(runId),
+  ]);
+  artifacts.value = artifactRows;
+  terminalOutput.value = output;
+}
+
+async function loadTerminalOutput(runId: string) {
+  const response = await fetch(buildApiUrl(`/api/runs/${runId}/terminal-output`, session.apiContext.value), {
+    credentials: 'same-origin',
+  });
+  if (!response.ok) {
+    throw new Error(response.statusText || t('runs.terminalOutputLoadError'));
+  }
+  return response.text();
 }
 
 async function retryRun() {
@@ -329,6 +357,7 @@ async function retryRun() {
   );
   await loadRuns();
   selectedRun.value = created;
+  terminalOutput.value = '';
 }
 
 async function deleteRun() {
@@ -336,6 +365,7 @@ async function deleteRun() {
   await apiDelete(`/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}`, session.apiContext.value);
   selectedRun.value = null;
   artifacts.value = [];
+  terminalOutput.value = '';
   await loadRuns();
 }
 

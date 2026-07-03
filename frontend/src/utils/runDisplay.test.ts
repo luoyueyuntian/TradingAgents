@@ -53,6 +53,18 @@ describe('run display helpers', () => {
     ]);
   });
 
+  it('appends streamed terminal output to the live log', () => {
+    const state = applyRunStreamEvent(createLiveRunViewState(), 'terminal_output', JSON.stringify({
+      stream: 'stdout',
+      line: 'Downloading market data',
+    }), '09:30:20');
+
+    expect(state.status).toBe('running');
+    expect(state.logLines).toEqual([
+      '09:30:20 stdout: Downloading market data',
+    ]);
+  });
+
   it('builds decision highlights from structured report fields', () => {
     const highlights = buildDecisionHighlights({
       final_trade_decision: [

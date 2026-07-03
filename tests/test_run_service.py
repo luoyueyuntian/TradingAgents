@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import sys
 import threading
 import time
+from pathlib import Path
 
+import pytest
+
+from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.service.models import RunState
+from tradingagents.service.runtime_context import build_runtime_context
 from web.schemas import AnalysisRequest
 
 
@@ -27,6 +33,213 @@ def test_run_service_create_run_starts_queued(tmp_path):
     assert service.get_run(run.run_id) is run
     assert run.runtime_context.run_root == tmp_path / "runs" / run.run_id
     assert enqueued == [run.run_id]
+
+
+def test_run_service_persists_terminal_output_from_analysis(tmp_path):
+    from tradingagents.service.run_service import RunService
+
+    class FakeGraph:
+        def __init__(self, *args, **kwargs):
+            self.curr_state = {
+                "market_report": "Momentum is improving.",
+                "final_trade_decision": "Hold",
+            }
+            self.last_signal = "Hold"
+            self.last_state_log_path = None
+
+        def stream_propagate(self, ticker, date, asset_type="stock"):
+            print("stdout: downloading market data")
+            print("stderr: vendor retry", file=sys.stderr)
+            yield {"market_report": "Momentum is improving."}
+
+        def process_signal(self, decision):
+            return "Hold"
+
+        def save_reports(self, final_state, ticker):
+            path = tmp_path / "report.md"
+            path.write_text("# Report\n", encoding="utf-8")
+            return path
+
+    service = RunService(
+        runs_index_path=tmp_path / "runs.json",
+        run_events_dir=tmp_path / "events",
+        runs_root_dir=tmp_path / "runs",
+        graph_factory=FakeGraph,
+    )
+    run = RunState(
+        run_id="terminal-run",
+        ticker="AAPL",
+        date="2026-01-15",
+        asset_type="stock",
+        config=DEFAULT_CONFIG.copy(),
+        selected_analysts=["market"],
+        runtime_context=build_runtime_context("terminal-run", base_dir=tmp_path / "runs"),
+        status="running",
+    )
+
+    service._run_analysis_thread(run)
+
+    terminal_output = Path(run.terminal_log_path).read_text(encoding="utf-8")
+    assert "stdout: downloading market data" in terminal_output
+    assert "stderr: vendor retry" in terminal_output
+    assert any(
+        item["event"] == "terminal_output"
+        and item["data"]["line"] == "stdout: downloading market data"
+        for item in run.event_history
+    )
+
+
+def test_run_service_logs_run_configuration_and_execution_phases(tmp_path):
+    from tradingagents.service.run_service import RunService
+
+    class FakeGraph:
+        def __init__(self, selected_analysts, config=None, debug=False):
+            assert selected_analysts == ["market"]
+            assert config["llm_provider"] == "openai"
+            assert config["quick_think_llm"] == "quick-test"
+            assert config["deep_think_llm"] == "deep-test"
+            assert config["output_language"] == "Chinese"
+            assert config["market_profile"] == "cn_a"
+            assert config["max_debate_rounds"] == 3
+            self.curr_state = {
+                "market_report": "Momentum is improving.",
+                "final_trade_decision": "Hold",
+            }
+            self.last_signal = "Hold"
+            self.last_state_log_path = None
+
+        def stream_propagate(self, ticker, date, asset_type="stock"):
+            yield {"market_report": "Momentum is improving."}
+
+        def process_signal(self, decision):
+            return "Hold"
+
+        def save_reports(self, final_state, ticker):
+            path = tmp_path / "report.md"
+            path.write_text("# Report\n", encoding="utf-8")
+            return path
+
+    config = DEFAULT_CONFIG.copy()
+    config.update({
+        "llm_provider": "openai",
+        "quick_think_llm": "quick-test",
+        "deep_think_llm": "deep-test",
+        "output_language": "Chinese",
+        "market_profile": "cn_a",
+        "max_debate_rounds": 3,
+        "max_risk_discuss_rounds": 2,
+        "max_recur_limit": 88,
+        "checkpoint_enabled": True,
+    })
+    service = RunService(
+        runs_index_path=tmp_path / "runs.json",
+        run_events_dir=tmp_path / "events",
+        runs_root_dir=tmp_path / "runs",
+        graph_factory=FakeGraph,
+    )
+    run = RunState(
+        run_id="phase-run",
+        ticker="600941.SS",
+        date="2026-07-03",
+        asset_type="stock",
+        config=config,
+        selected_analysts=["market"],
+        runtime_context=build_runtime_context("phase-run", base_dir=tmp_path / "runs"),
+        status="running",
+    )
+
+    service._run_analysis_thread(run)
+
+    terminal_output = Path(run.terminal_log_path).read_text(encoding="utf-8")
+    assert "Run configuration" in terminal_output
+    assert "selected_analysts: market" in terminal_output
+    assert "llm_provider: openai" in terminal_output
+    assert "quick_think_llm: quick-test" in terminal_output
+    assert "deep_think_llm: deep-test" in terminal_output
+    assert "output_language: Chinese" in terminal_output
+    assert "market_profile: cn_a" in terminal_output
+    assert "max_debate_rounds: 3" in terminal_output
+    assert "max_risk_discuss_rounds: 2" in terminal_output
+    assert "max_recur_limit: 88" in terminal_output
+    assert "checkpoint_enabled: True" in terminal_output
+    assert "Phase: waiting for execution lock" in terminal_output
+    assert "Phase: initializing trading graph" in terminal_output
+    assert "Phase: starting graph stream" in terminal_output
+    assert "Phase: processed graph chunk 1" in terminal_output
+    assert "Phase: saving reports" in terminal_output
+    assert "Phase: completed analysis" in terminal_output
+
+
+def test_local_worker_processes_enqueued_run(tmp_path):
+    from tradingagents.service.run_service import RunService
+
+    class FakeGraph:
+        def __init__(self, *args, **kwargs):
+            self.curr_state = {
+                "market_report": "Momentum is improving.",
+                "final_trade_decision": "Hold",
+            }
+            self.last_signal = "Hold"
+            self.last_state_log_path = None
+
+        def stream_propagate(self, ticker, date, asset_type="stock"):
+            yield {"market_report": "Momentum is improving."}
+
+        def process_signal(self, decision):
+            return "Hold"
+
+        def save_reports(self, final_state, ticker):
+            path = tmp_path / "report.md"
+            path.write_text("# Report\n", encoding="utf-8")
+            return path
+
+    service = RunService(
+        runs_index_path=tmp_path / "runs.json",
+        run_events_dir=tmp_path / "events",
+        runs_root_dir=tmp_path / "runs",
+        graph_factory=FakeGraph,
+    )
+
+    run = service.create_run(AnalysisRequest(ticker="AAPL", date="2026-01-15"))
+
+    deadline = time.time() + 2
+    while time.time() < deadline and run.status != "completed":
+        time.sleep(0.02)
+
+    assert run.status == "completed"
+    assert service.get_queue_position(run.run_id) is None
+
+
+def test_run_service_rejects_key_required_provider_before_enqueue(monkeypatch, tmp_path):
+    from tradingagents.service.run_service import RunService
+
+    service = RunService(
+        runs_index_path=tmp_path / "runs.json",
+        run_events_dir=tmp_path / "events",
+        runs_root_dir=tmp_path / "runs",
+    )
+    enqueued: list[str] = []
+    service.ensure_worker_started = lambda: None
+    service._enqueue_run = lambda run_id: enqueued.append(run_id)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "env-key-that-tenant-settings-would-clear")
+
+    with pytest.raises(ValueError, match="DEEPSEEK_API_KEY"):
+        service.create_run(
+            AnalysisRequest(
+                ticker="600941.SS",
+                date="2026-07-03",
+                llm_provider="deepseek",
+                quick_think_model="deepseek-v4-flash",
+                deep_think_model="deepseek-v4-pro",
+            ),
+            settings={
+                "analysis": {"output_language": "Chinese"},
+                "api_keys": {"deepseek": ""},
+            },
+        )
+
+    assert enqueued == []
+    assert service.list_runs() == []
 
 
 def test_run_service_apply_tenant_api_keys_uses_tenant_settings(monkeypatch, tmp_path):
@@ -226,8 +439,8 @@ def test_run_service_uses_injected_state_backend(tmp_path):
 
 def test_run_service_resume_incomplete_runs_requeues_active_work(tmp_path):
     from tradingagents.default_config import DEFAULT_CONFIG
-    from tradingagents.service.run_claims import acquire_run_claim, claim_path
     from tradingagents.service.models import RunState
+    from tradingagents.service.run_claims import acquire_run_claim, claim_path
     from tradingagents.service.run_service import RunService
     from tradingagents.service.runtime_context import build_runtime_context
 
@@ -647,8 +860,8 @@ def test_run_service_process_next_queued_run_returns_false_when_empty(tmp_path):
 def test_run_service_save_runs_index_preserves_unloaded_runs(tmp_path):
     from tradingagents.default_config import DEFAULT_CONFIG
     from tradingagents.service.models import RunState
-    from tradingagents.service.run_service import RunService
     from tradingagents.service.run_repository import save_runs_to_index
+    from tradingagents.service.run_service import RunService
     from tradingagents.service.runtime_context import build_runtime_context
 
     existing = RunState(

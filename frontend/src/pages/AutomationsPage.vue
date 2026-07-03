@@ -12,7 +12,7 @@
 
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
-    <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(320px,1fr))] uno-gap-4">
+    <div data-testid="automation-layout" class="uno-grid uno-gap-4">
       <Card>
         <template #title>{{ t('automations.createRule') }}</template>
         <template #content>

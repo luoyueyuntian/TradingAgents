@@ -725,6 +725,7 @@ def _build_artifact_library_items(
         artifacts = build_run_artifacts(
             report_path=run.report_path,
             state_log_path=run.state_log_path,
+            terminal_log_path=run.terminal_log_path,
         )
         if not artifacts:
             continue
@@ -3234,7 +3235,10 @@ async def create_analysis_run(req: AnalysisRequest, request: Request):
     """Create and start a new analysis run."""
     loop = asyncio.get_running_loop()
     tenant_id = _request_tenant_id(request)
-    result = create_run(req, loop, tenant_id)
+    try:
+        result = create_run(req, loop, tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if isinstance(result, str):
         if result == "busy":
             raise HTTPException(
@@ -3277,7 +3281,10 @@ async def create_batch_analysis_runs(payload: BatchAnalysisRequest, request: Req
             openai_reasoning_effort=payload.openai_reasoning_effort,
             anthropic_effort=payload.anthropic_effort,
         )
-        result = create_run(req, loop, tenant_id)
+        try:
+            result = create_run(req, loop, tenant_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if isinstance(result, str):
             raise HTTPException(status_code=500, detail=result)
         responses.append(_analysis_response_from_run(result))
@@ -5379,6 +5386,29 @@ async def get_run_timeline(run_id: str, request: Request):
     return list(run.event_history)
 
 
+def _read_run_terminal_output(run) -> str:
+    path_value = getattr(run, "terminal_log_path", None)
+    log_path = Path(path_value) if path_value else run.runtime_context.run_root / "terminal_output.log"
+    if not log_path.exists() or not log_path.is_file():
+        return ""
+    try:
+        return log_path.read_text(encoding="utf-8")
+    except OSError:
+        raise HTTPException(status_code=500, detail="Terminal output is not readable")
+
+
+@router.get("/api/runs/{run_id}/terminal-output")
+async def get_run_terminal_output(run_id: str, request: Request):
+    """Return the persisted terminal output for a run."""
+    run = get_run(run_id, _request_tenant_id(request))
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return Response(
+        content=_read_run_terminal_output(run),
+        media_type="text/plain",
+    )
+
+
 @router.get("/api/runs/{run_id}/events")
 async def stream_run_events(run_id: str, request: Request):
     """SSE endpoint for streaming analysis progress."""
@@ -5625,6 +5655,7 @@ async def list_run_artifacts(run_id: str, request: Request):
         for artifact in build_run_artifacts(
             report_path=run.report_path,
             state_log_path=run.state_log_path,
+            terminal_log_path=run.terminal_log_path,
         )
     ]
 
@@ -5639,12 +5670,18 @@ async def download_named_run_artifact(run_id: str, name: str, request: Request):
     artifact = resolve_run_artifact(
         report_path=run.report_path,
         state_log_path=run.state_log_path,
+        terminal_log_path=run.terminal_log_path,
         key=name,
     )
     if artifact is None:
         raise HTTPException(status_code=404, detail="Artifact not available")
 
-    media_type = "application/json" if artifact.path.suffix == ".json" else "text/markdown"
+    if artifact.path.suffix == ".json":
+        media_type = "application/json"
+    elif artifact.key == "terminal-output":
+        media_type = "text/plain"
+    else:
+        media_type = "text/markdown"
     return FileResponse(artifact.path, media_type=media_type, filename=artifact.path.name)
 
 
@@ -5658,6 +5695,7 @@ async def get_named_run_artifact_content(run_id: str, name: str, request: Reques
     artifact = resolve_run_artifact(
         report_path=run.report_path,
         state_log_path=run.state_log_path,
+        terminal_log_path=run.terminal_log_path,
         key=name,
     )
     if artifact is None:
@@ -5680,6 +5718,7 @@ async def download_run_report(run_id: str, request: Request):
     artifact = resolve_run_artifact(
         report_path=run.report_path,
         state_log_path=run.state_log_path,
+        terminal_log_path=run.terminal_log_path,
         key="complete-report",
     )
     if artifact is None:
@@ -5699,6 +5738,7 @@ async def download_run_full_state(run_id: str, request: Request):
     artifact = resolve_run_artifact(
         report_path=run.report_path,
         state_log_path=run.state_log_path,
+        terminal_log_path=run.terminal_log_path,
         key="full-state",
     )
     if artifact is None:

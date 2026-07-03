@@ -44,6 +44,7 @@ class RunState:
     error: str | None = None
     report_path: str | None = None
     state_log_path: str | None = None
+    terminal_log_path: str | None = None
     event_log_path: str | None = None
     event_history: list[dict[str, Any]] = field(default_factory=list)
     queue_sequence: int | None = None

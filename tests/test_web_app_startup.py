@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 import sys
 from pathlib import Path
@@ -63,3 +64,26 @@ def test_web_app_startup_bootstraps_first_admin_from_env(monkeypatch, tmp_path):
     assert user.role == "admin"
     assert user.tenant_id == "tenant-a"
     assert user.must_change_password is True
+
+
+def test_web_app_startup_restores_discovered_tenant_runs(monkeypatch, tmp_path):
+    import web.app as web_app
+
+    calls: list[tuple[str, str | None]] = []
+    monkeypatch.setenv("TRADINGAGENTS_WEB_AUTH_DB", str(tmp_path / "auth.db"))
+    monkeypatch.setenv("TRADINGAGENTS_WEB_RUN_MODE", "local_thread")
+    monkeypatch.setattr(web_app, "list_web_tenant_ids", lambda: ["default"], raising=False)
+    monkeypatch.setattr(web_app, "load_runs_index", lambda tenant_id=None: calls.append(("load", tenant_id)))
+    monkeypatch.setattr(web_app, "ensure_worker_started", lambda tenant_id=None: calls.append(("worker", tenant_id)))
+    monkeypatch.setattr(web_app, "resume_incomplete_runs", lambda tenant_id=None: calls.append(("resume", tenant_id)))
+
+    asyncio.run(web_app._load_persisted_runs())
+
+    assert calls == [
+        ("load", None),
+        ("worker", None),
+        ("resume", None),
+        ("load", "default"),
+        ("worker", "default"),
+        ("resume", "default"),
+    ]

@@ -29,6 +29,7 @@ def build_run_artifacts(
     *,
     report_path: str | None,
     state_log_path: str | None,
+    terminal_log_path: str | None = None,
 ) -> list[ArtifactDescriptor]:
     """Return downloadable artifacts for a run."""
     artifacts: list[ArtifactDescriptor] = []
@@ -60,6 +61,14 @@ def build_run_artifacts(
             path=state_file,
         ))
 
+    terminal_file = _existing_file(terminal_log_path)
+    if terminal_file is not None:
+        artifacts.append(ArtifactDescriptor(
+            key="terminal-output",
+            label="Terminal output",
+            path=terminal_file,
+        ))
+
     return artifacts
 
 
@@ -67,12 +76,14 @@ def resolve_run_artifact(
     *,
     report_path: str | None,
     state_log_path: str | None,
+    terminal_log_path: str | None = None,
     key: str,
 ) -> ArtifactDescriptor | None:
     """Resolve one artifact key to a concrete file."""
     for artifact in build_run_artifacts(
         report_path=report_path,
         state_log_path=state_log_path,
+        terminal_log_path=terminal_log_path,
     ):
         if artifact.key == key:
             return artifact
