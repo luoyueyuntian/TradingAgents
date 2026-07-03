@@ -38,6 +38,29 @@
             </label>
             <Button icon="pi pi-save" :label="t('automations.saveAutomation')" :disabled="!canWrite" @click="saveRule" />
           </div>
+          <details class="uno-mt-3 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3">
+            <summary class="uno-cursor-pointer uno-font-700 uno-text-[#243a3d]">{{ t('automations.analysisConfig') }}</summary>
+            <div class="uno-mt-3 uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+              <Select v-model="form.llm_provider" :options="providerOptions" option-label="label" option-value="value" :disabled="!canWrite" @change="syncProviderModels" />
+              <InputText v-model="form.quick_think_model" :placeholder="t('analysis.quickModel')" :disabled="!canWrite" />
+              <InputText v-model="form.deep_think_model" :placeholder="t('analysis.deepModel')" :disabled="!canWrite" />
+              <Select v-model="form.research_depth" :options="depthOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+              <Select v-model="form.output_language" :options="languageOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+              <Select v-model="form.market_profile" :options="marketProfileOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+              <InputText v-model="form.max_risk_discuss_rounds" type="number" :placeholder="t('settings.riskRounds')" :disabled="!canWrite" />
+              <InputText v-model="form.max_recur_limit" type="number" :placeholder="t('settings.maxRecurLimit')" :disabled="!canWrite" />
+              <InputText v-model="form.benchmark_ticker" :placeholder="t('settings.benchmarkTicker')" :disabled="!canWrite" />
+              <InputText v-model="form.backend_url" :placeholder="t('settings.backendUrl')" :disabled="!canWrite" />
+              <InputText v-model="form.temperature" type="number" :placeholder="t('settings.temperature')" :disabled="!canWrite" />
+              <Select v-model="form.google_thinking_level" :options="googleThinkingOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+              <Select v-model="form.openai_reasoning_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+              <Select v-model="form.anthropic_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+              <label class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+                <input v-model="form.checkpoint_enabled" type="checkbox" :disabled="!canWrite">
+                <span>{{ t('settings.enableCheckpoint') }}</span>
+              </label>
+            </div>
+          </details>
         </template>
       </Card>
 
@@ -84,6 +107,7 @@ import { buildAutomationPayload } from './automationPayload';
 
 const session = useSession();
 const canWrite = computed(() => session.canWrite.value);
+const providers = ref<JsonRecord[]>([]);
 const rules = ref<JsonRecord[]>([]);
 const error = ref('');
 const { t } = useI18n();
@@ -95,7 +119,58 @@ const form = reactive({
   time: '09:00',
   tickers: '',
   enabled: true,
+  llm_provider: 'openai',
+  quick_think_model: '',
+  deep_think_model: '',
+  research_depth: 1,
+  output_language: 'English',
+  market_profile: 'default',
+  max_risk_discuss_rounds: '1',
+  max_recur_limit: '100',
+  checkpoint_enabled: false,
+  benchmark_ticker: '',
+  backend_url: '',
+  temperature: '',
+  google_thinking_level: '',
+  openai_reasoning_effort: '',
+  anthropic_effort: '',
 });
+const providerOptions = computed(() => providers.value.map((provider) => ({
+  label: provider.display_name || provider.provider,
+  value: provider.provider,
+})));
+const selectedProvider = computed(() => providers.value.find((provider) => provider.provider === form.llm_provider));
+const depthOptions = computed(() => [
+  { label: t('analysis.depthShallow'), value: 1 },
+  { label: t('analysis.depthMedium'), value: 3 },
+  { label: t('analysis.depthDeep'), value: 5 },
+]);
+const languageOptions = computed(() => [
+  { label: t('analysis.languageEnglish'), value: 'English' },
+  { label: t('analysis.languageChinese'), value: 'Chinese' },
+  { label: t('analysis.languageJapanese'), value: 'Japanese' },
+  { label: t('analysis.languageKorean'), value: 'Korean' },
+  { label: t('analysis.languageSpanish'), value: 'Spanish' },
+  { label: t('analysis.languageFrench'), value: 'French' },
+  { label: t('analysis.languageGerman'), value: 'German' },
+]);
+const marketProfileOptions = computed(() => [
+  { label: t('analysis.marketDefault'), value: 'default' },
+  { label: t('analysis.marketChinaA'), value: 'cn_a' },
+]);
+const googleThinkingOptions = computed(() => [
+  { label: t('common.default'), value: '' },
+  { label: t('settings.effortHigh'), value: 'high' },
+  { label: t('settings.effortMedium'), value: 'medium' },
+  { label: t('settings.effortLow'), value: 'low' },
+  { label: t('settings.effortMinimal'), value: 'minimal' },
+]);
+const reasoningEffortOptions = computed(() => [
+  { label: t('common.default'), value: '' },
+  { label: t('settings.effortHigh'), value: 'high' },
+  { label: t('settings.effortMedium'), value: 'medium' },
+  { label: t('settings.effortLow'), value: 'low' },
+]);
 const sourceOptions = computed(() => [
   { label: t('automations.sourceWatchlist'), value: 'watchlist' },
   { label: t('automations.sourceManual'), value: 'manual' },
@@ -114,6 +189,45 @@ const weekdayOptions = computed(() => [
   { label: t('automations.sunday'), value: 'sun' },
 ]);
 
+function syncProviderModels() {
+  const provider = selectedProvider.value;
+  if (!form.quick_think_model) {
+    form.quick_think_model = provider?.quick_models?.[0]?.value || '';
+  }
+  if (!form.deep_think_model) {
+    form.deep_think_model = provider?.deep_models?.[0]?.value || '';
+  }
+}
+
+async function loadSettingsDefaults() {
+  const settings = await apiGet<JsonRecord>('/api/settings', session.apiContext.value);
+  const llm = settings.llm || {};
+  const analysis = settings.analysis || {};
+  form.llm_provider = String(llm.provider || form.llm_provider);
+  form.quick_think_model = String(llm.quick_think_model || form.quick_think_model);
+  form.deep_think_model = String(llm.deep_think_model || form.deep_think_model);
+  form.research_depth = Number(analysis.research_depth || form.research_depth);
+  form.output_language = String(analysis.output_language || form.output_language);
+  form.market_profile = String(analysis.market_profile || form.market_profile);
+  form.max_risk_discuss_rounds = String(analysis.max_risk_discuss_rounds ?? form.max_risk_discuss_rounds);
+  form.max_recur_limit = String(analysis.max_recur_limit ?? form.max_recur_limit);
+  form.checkpoint_enabled = Boolean(analysis.checkpoint_enabled);
+  form.benchmark_ticker = String(analysis.benchmark_ticker || '');
+  form.backend_url = String(llm.backend_url || '');
+  form.temperature = llm.temperature === null || llm.temperature === undefined ? '' : String(llm.temperature);
+  form.google_thinking_level = String(llm.google_thinking_level || '');
+  form.openai_reasoning_effort = String(llm.openai_reasoning_effort || '');
+  form.anthropic_effort = String(llm.anthropic_effort || '');
+}
+
+async function loadProviders() {
+  providers.value = await apiGet<JsonRecord[]>('/api/providers', session.apiContext.value);
+  if (!selectedProvider.value && providers.value.length) {
+    form.llm_provider = String(providers.value[0].provider);
+  }
+  syncProviderModels();
+}
+
 async function loadRules() {
   error.value = '';
   try {
@@ -126,7 +240,17 @@ async function loadRules() {
 async function saveRule() {
   if (!form.name.trim()) return;
   await apiPost('/api/automations', buildAutomationPayload(form), session.apiContext.value);
-  Object.assign(form, { name: '', source: 'watchlist', cadence: 'daily', weekday: 'fri', time: '09:00', tickers: '', enabled: true });
+  Object.assign(form, {
+    name: '',
+    source: 'watchlist',
+    cadence: 'daily',
+    weekday: 'fri',
+    time: '09:00',
+    tickers: '',
+    enabled: true,
+  });
+  await loadSettingsDefaults();
+  syncProviderModels();
   await loadRules();
 }
 
@@ -147,5 +271,8 @@ async function deleteRule(ruleId: string) {
   await loadRules();
 }
 
-onMounted(loadRules);
+onMounted(async () => {
+  await Promise.all([loadProviders(), loadSettingsDefaults()]);
+  await loadRules();
+});
 </script>

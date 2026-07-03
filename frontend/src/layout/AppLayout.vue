@@ -59,6 +59,19 @@
               </button>
             </div>
           </div>
+          <label class="uno-grid uno-min-w-[170px] uno-gap-[0.35rem] max-[900px]:uno-w-full">
+            <span class="uno-text-xs uno-font-700 uno-uppercase uno-text-[#6f8183]">{{ t('topbar.currentMember') }}</span>
+            <Select
+              v-model="currentMemberDraft"
+              data-testid="current-member-select"
+              :options="memberOptions"
+              option-label="label"
+              option-value="value"
+              :placeholder="t('topbar.memberPlaceholder')"
+              class="uno-w-full"
+              @change="session.setCurrentMemberId(currentMemberDraft)"
+            />
+          </label>
           <div
             data-testid="user-menu"
             class="uno-relative"
@@ -101,22 +114,31 @@
 
 <script setup lang="ts">
 import Button from 'primevue/button';
-import { computed, ref } from 'vue';
+import Select from 'primevue/select';
+import { computed, onMounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRouter } from 'vue-router';
 
 import { useI18n, type Locale } from '../i18n';
 import { navigationGroups } from '../router/pages';
+import { apiGet } from '../services/api';
 import { useSession } from '../stores/session';
+import type { JsonRecord } from '../utils/format';
 
 const router = useRouter();
 const session = useSession();
 const { locale, locales, t } = useI18n();
 const languageMenuOpen = ref(false);
 const userMenuOpen = ref(false);
+const currentMemberDraft = ref(session.state.currentMemberId);
+const members = ref<JsonRecord[]>([]);
 
 const visibleNavigationGroups = computed(() => navigationGroups.filter((item) => (
   item.minRole !== 'admin' || session.isAdmin.value
 )));
+const memberOptions = computed(() => members.value.map((member) => ({
+  label: String(member.name || member.id || ''),
+  value: String(member.id || ''),
+})));
 
 const roleLabelKey = computed(() => {
   const role = session.state.currentUser?.role;
@@ -149,8 +171,35 @@ function handleUserMenuFocusOut(event: FocusEvent) {
   userMenuOpen.value = false;
 }
 
+async function loadMembers() {
+  try {
+    members.value = await apiGet<JsonRecord[]>('/api/members', session.apiContext.value);
+    if (currentMemberDraft.value && !members.value.some((member) => String(member.id) === currentMemberDraft.value)) {
+      currentMemberDraft.value = '';
+      session.setCurrentMemberId('');
+    }
+  } catch {
+    members.value = [];
+  }
+}
+
 async function handleLogout() {
   await session.logout();
   await router.push('/login');
 }
+
+watch(() => session.state.tenantId, async (value) => {
+  currentMemberDraft.value = session.state.currentMemberId;
+  if (value) {
+    await loadMembers();
+    return;
+  }
+  members.value = [];
+});
+
+watch(() => session.state.currentMemberId, (value) => {
+  currentMemberDraft.value = value;
+});
+
+onMounted(loadMembers);
 </script>
