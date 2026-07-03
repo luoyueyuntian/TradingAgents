@@ -79,6 +79,7 @@ def test_build_default_config_reads_latest_settings(monkeypatch):
 
 def test_export_api_keys_to_env_overwrites_current_process_when_requested(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "old-openai")
+    monkeypatch.setenv("MIMO_API_KEY", "old-mimo")
     monkeypatch.setenv("FRED_API_KEY", "old-fred")
     monkeypatch.delenv("AWS_DEFAULT_REGION", raising=False)
     monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
@@ -86,6 +87,7 @@ def test_export_api_keys_to_env_overwrites_current_process_when_requested(monkey
     settings = {
         "api_keys": {
             "openai": "new-openai",
+            "mimo": "new-mimo",
             "FRED_API_KEY": "new-fred",
             "AWS_DEFAULT_REGION": "us-west-2",
             "OLLAMA_BASE_URL": "http://ollama.internal:11434/v1",
@@ -95,6 +97,7 @@ def test_export_api_keys_to_env_overwrites_current_process_when_requested(monkey
     settings_module.export_api_keys_to_env(settings, overwrite=True)
 
     assert settings_module.os.environ["OPENAI_API_KEY"] == "new-openai"
+    assert settings_module.os.environ["MIMO_API_KEY"] == "new-mimo"
     assert settings_module.os.environ["FRED_API_KEY"] == "new-fred"
     assert settings_module.os.environ["AWS_DEFAULT_REGION"] == "us-west-2"
     assert (

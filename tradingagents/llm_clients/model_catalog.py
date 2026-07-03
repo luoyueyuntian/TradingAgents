@@ -78,6 +78,20 @@ _MINIMAX_MODELS: dict[str, list[ModelOption]] = {
 }
 
 
+_MIMO_MODELS: dict[str, list[ModelOption]] = {
+    "quick": [
+        ("MiMo V2.5 - Full-modal, 1M ctx", "mimo-v2.5"),
+        ("MiMo V2.5 Pro - Flagship reasoning, 1M ctx", "mimo-v2.5-pro"),
+        ("Custom model ID", "custom"),
+    ],
+    "deep": [
+        ("MiMo V2.5 Pro - Flagship reasoning, 1M ctx", "mimo-v2.5-pro"),
+        ("MiMo V2.5 - Full-modal alternative, 1M ctx", "mimo-v2.5"),
+        ("Custom model ID", "custom"),
+    ],
+}
+
+
 MODEL_OPTIONS: ProviderModeOptions = {
     "openai": {
         "quick": [
@@ -153,6 +167,9 @@ MODEL_OPTIONS: ProviderModeOptions = {
     # so the two provider keys share one model list.
     "minimax": _MINIMAX_MODELS,
     "minimax-cn": _MINIMAX_MODELS,
+    # Xiaomi MiMo OpenAI-compatible API. V2 models were retired on
+    # 2026-06-30; expose the current V2.5 text-generation models only.
+    "mimo": _MIMO_MODELS,
     # OpenRouter: fetched dynamically. Azure: any deployed model name.
     # Ollama display labels intentionally omit a "local" marker — the
     # endpoint is now configurable via OLLAMA_BASE_URL, so the same labels

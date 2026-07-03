@@ -53,3 +53,11 @@ class ModelValidationTests(unittest.TestCase):
                     client.get_llm()
 
                 self.assertEqual(caught, [])
+
+    def test_mimo_catalog_exposes_current_v2_5_models(self):
+        known = get_known_models()
+
+        self.assertIn("mimo", known)
+        self.assertIn("mimo-v2.5-pro", known["mimo"])
+        self.assertIn("mimo-v2.5", known["mimo"])
+        self.assertTrue(validate_model("mimo", "mimo-v2.5-pro"))

@@ -33,6 +33,7 @@ PROVIDER_API_KEY_MAP: dict[str, str | None] = {
     "glm-cn": "ZHIPU_CN_API_KEY",
     "minimax": "MINIMAX_API_KEY",
     "minimax-cn": "MINIMAX_CN_API_KEY",
+    "mimo": "MIMO_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
     "mistral": "MISTRAL_API_KEY",
     "kimi": "MOONSHOT_API_KEY",
