@@ -94,6 +94,12 @@ export const routes: RouteRecordRaw[] = [
     meta: requiresAuth,
   },
   {
+    path: '/runs/:runId',
+    name: 'run-detail',
+    component: () => import('../pages/RunDetailPage.vue'),
+    meta: requiresAuth,
+  },
+  {
     path: '/portfolio',
     name: 'portfolio',
     component: () => import('../pages/PortfolioPage.vue'),

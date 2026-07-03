@@ -25,7 +25,7 @@ def test_root_serves_vue_spa_shell():
 def test_client_routes_fall_back_to_vue_spa_shell():
     client = TestClient(app)
 
-    for path in ("/analysis", "/runs", "/workspace/settings"):
+    for path in ("/analysis", "/runs", "/runs/run-123", "/workspace/settings"):
         response = client.get(path)
 
         assert response.status_code == 200
