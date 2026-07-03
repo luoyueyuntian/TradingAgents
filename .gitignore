@@ -220,6 +220,7 @@ __marimo__/
 
 # Frontend
 frontend/node_modules/
+web/static/spa/
 
 # Enterprise env file (secrets) and generated run reports
 .env.enterprise

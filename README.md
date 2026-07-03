@@ -271,7 +271,15 @@ The Web UI is the primary product surface. It serves the browser workspace, REST
 
 Start the web server after installing `.[web]`:
 ```bash
+npm --prefix frontend install
+npm --prefix frontend run build
 uvicorn web.app:app --host 0.0.0.0 --port 8000
+```
+
+If you run the backend directly from a source checkout without building the frontend first, the UI returns:
+
+```text
+Vue SPA assets are not built. Run `npm --prefix frontend run build`.
 ```
 
 The web API token is optional for local-only use, but strongly recommended
