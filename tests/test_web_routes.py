@@ -147,6 +147,22 @@ def test_list_runs_returns_history(monkeypatch):
     assert payload[0]["queue_position"] == 2
 
 
+def test_get_run_terminal_output_returns_saved_log(monkeypatch, tmp_path):
+    client = TestClient(app)
+    run = _make_run("log-run")
+    log_path = tmp_path / "terminal_output.log"
+    log_path.write_text("Starting analysis\nFinished\n", encoding="utf-8")
+    run.terminal_log_path = str(log_path)
+
+    monkeypatch.setattr(web_routes, "get_run", lambda run_id, tenant_id=None: run if run_id == "log-run" else None)
+
+    response = client.get("/api/runs/log-run/terminal-output")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert response.text == "Starting analysis\nFinished\n"
+
+
 def test_list_runs_can_filter_by_query_status_provider_and_asset(monkeypatch):
     client = TestClient(app)
 
@@ -319,6 +335,32 @@ def test_bulk_archive_and_restore_runs_update_archived_ids(monkeypatch, tmp_path
     assert state["archived_runs"]["ids"] == []
     assert restore.status_code == 200
     assert restore.json()["restored"] == 1
+
+
+def test_create_run_returns_400_for_missing_provider_api_key(monkeypatch):
+    client = TestClient(app)
+
+    def _reject(req, _loop=None, tenant_id=None):
+        raise ValueError(
+            "API key for provider 'deepseek' is not set. "
+            "Please configure deepseek in Settings > API Keys or set DEEPSEEK_API_KEY."
+        )
+
+    monkeypatch.setattr(web_routes, "create_run", _reject)
+
+    response = client.post(
+        "/api/runs",
+        json={
+            "ticker": "600941.SS",
+            "date": "2026-07-03",
+            "llm_provider": "deepseek",
+            "quick_think_model": "deepseek-v4-flash",
+            "deep_think_model": "deepseek-v4-pro",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "DEEPSEEK_API_KEY" in response.json()["detail"]
 
 
 def test_batch_run_endpoint_queues_manual_tickers(monkeypatch):
@@ -3966,7 +4008,7 @@ def test_artifact_library_returns_runs_with_download_links(monkeypatch):
     monkeypatch.setattr(
         web_routes,
         "build_run_artifacts",
-        lambda report_path=None, state_log_path=None: [
+        lambda report_path=None, state_log_path=None, terminal_log_path=None: [
             type("Artifact", (), {"key": "complete-report", "label": "Complete report", "path": None})(),
             type("Artifact", (), {"key": "full-state", "label": "Full state JSON", "path": None})(),
             type("Artifact", (), {"key": "report-tree/1_analysts/market.md", "label": "market.md", "path": None})(),
@@ -4001,7 +4043,7 @@ def test_artifact_library_export_csv_returns_filtered_rows(monkeypatch):
     monkeypatch.setattr(
         web_routes,
         "build_run_artifacts",
-        lambda report_path=None, state_log_path=None: [
+        lambda report_path=None, state_log_path=None, terminal_log_path=None: [
             type("Artifact", (), {"key": "complete-report", "label": "Complete report", "path": None})(),
         ],
     )

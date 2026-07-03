@@ -214,7 +214,7 @@ class ChunkProcessor:
                 messages.append(str(content)[:200])
             if hasattr(message, "tool_calls") and message.tool_calls:
                 for tc in message.tool_calls:
-                    name = tc.get("name", tc.name) if isinstance(tc, dict) else getattr(tc, "name", "")
+                    name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
                     if name:
                         tools.append(name)
         return messages, tools

@@ -13,7 +13,7 @@
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <Message v-if="notice" severity="success" :closable="false">{{ notice }}</Message>
 
-    <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(320px,1fr))] uno-gap-4">
+    <div data-testid="analysis-layout" class="uno-grid uno-gap-4">
       <Card>
         <template #title>{{ t('analysis.configuration') }}</template>
         <template #content>
@@ -138,7 +138,7 @@
           </div>
 
           <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3" :open="!liveReportText && !agentProgress.length">
-            <summary class="uno-cursor-pointer uno-font-700 uno-text-[#243a3d]">{{ t('analysis.eventLog') }}</summary>
+            <summary class="uno-cursor-pointer uno-font-700 uno-text-[#243a3d]">{{ t('analysis.terminalOutput') }}</summary>
             <pre class="uno-m-0 uno-mt-3 uno-max-h-[520px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#101b1d] uno-p-[0.85rem] uno-text-[#d8f3ee]">{{ logText || t('analysis.noActiveRun') }}</pre>
           </details>
         </template>
@@ -360,7 +360,7 @@ function startEvents(runId: string) {
   eventSource?.close();
   const url = buildApiUrl(`/api/runs/${encodeURIComponent(runId)}/events`, session.apiContext.value);
   eventSource = new EventSource(url);
-  for (const name of ['queued', 'progress', 'agent_status', 'report_update', 'complete', 'cancelled', 'error']) {
+  for (const name of ['queued', 'progress', 'terminal_output', 'agent_status', 'report_update', 'complete', 'cancelled', 'error']) {
     eventSource.addEventListener(name, (event) => {
       const payload = 'data' in event ? String((event as MessageEvent).data || '') : '';
       liveState.value = applyRunStreamEvent(

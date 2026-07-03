@@ -4,25 +4,161 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 import queue
+import sys
 import threading
+import time
+import traceback
 import uuid
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from copy import deepcopy
 from pathlib import Path
-import time
-from typing import Any
+from typing import Any, TextIO
 
 from tradingagents.default_config import apply_settings_payload
 from tradingagents.graph.event_processor import build_run_config
 from tradingagents.graph.trading_graph import TradingAgentsGraph
+from tradingagents.llm_clients.api_key_env import get_api_key_env
 from tradingagents.service.execution_lock import PROCESS_EXECUTION_LOCK
-from tradingagents.service.models import RunCancelledError, RunState, TERMINAL_RUN_STATUSES
-from tradingagents.service.state_backend import StateBackendAdapter, get_state_backend_adapter
+from tradingagents.service.models import TERMINAL_RUN_STATUSES, RunCancelledError, RunState
 from tradingagents.service.runtime_context import RuntimeContext, build_runtime_context
+from tradingagents.service.state_backend import StateBackendAdapter, get_state_backend_adapter
 from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import export_api_keys_to_env, load_settings
 
 logger = logging.getLogger(__name__)
+
+_KEY_OPTIONAL_PROVIDERS = {"bedrock", "ollama", "openai_compatible"}
+_RUN_CONFIG_LOG_KEYS = (
+    "llm_provider",
+    "quick_think_llm",
+    "deep_think_llm",
+    "output_language",
+    "market_profile",
+    "max_debate_rounds",
+    "max_risk_discuss_rounds",
+    "max_recur_limit",
+    "checkpoint_enabled",
+    "benchmark_ticker",
+    "temperature",
+    "google_thinking_level",
+    "openai_reasoning_effort",
+    "anthropic_effort",
+)
+
+
+class _TerminalOutputRecorder:
+    """Thread-safe tee for run-scoped terminal output."""
+
+    def __init__(self, service: "RunService", run: RunState, handle: TextIO) -> None:
+        self._service = service
+        self._run = run
+        self._handle = handle
+        self._lock = threading.RLock()
+
+    def write_chunk(self, stream_name: str, text: str, passthrough: TextIO | None = None) -> None:
+        with self._lock:
+            self._handle.write(text)
+            self._handle.flush()
+        if passthrough is not None:
+            try:
+                passthrough.write(text)
+                passthrough.flush()
+            except Exception:
+                pass
+
+    def emit_line(self, stream_name: str, line: str) -> None:
+        if not line:
+            return
+        self._service._put_event(
+            self._run,
+            {
+                "event": "terminal_output",
+                "data": {
+                    "stream": stream_name,
+                    "line": line,
+                },
+            },
+        )
+
+    def flush(self) -> None:
+        with self._lock:
+            self._handle.flush()
+
+
+class _TerminalStreamWriter:
+    """File-like stream that records full text and emits complete lines."""
+
+    def __init__(
+        self,
+        recorder: _TerminalOutputRecorder,
+        stream_name: str,
+        passthrough: TextIO | None,
+    ) -> None:
+        self._recorder = recorder
+        self._stream_name = stream_name
+        self._passthrough = passthrough
+        self._buffer = ""
+
+    @property
+    def encoding(self) -> str:
+        return str(getattr(self._passthrough, "encoding", "utf-8") or "utf-8")
+
+    def write(self, text: str) -> int:
+        if not text:
+            return 0
+        value = str(text)
+        self._recorder.write_chunk(self._stream_name, value, self._passthrough)
+        self._buffer += value.replace("\r", "\n")
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            self._recorder.emit_line(self._stream_name, line)
+        return len(value)
+
+    def flush(self) -> None:
+        if self._buffer:
+            self._recorder.emit_line(self._stream_name, self._buffer)
+            self._buffer = ""
+        self._recorder.flush()
+        if self._passthrough is not None:
+            try:
+                self._passthrough.flush()
+            except Exception:
+                pass
+
+    def isatty(self) -> bool:
+        return bool(getattr(self._passthrough, "isatty", lambda: False)())
+
+
+def _settings_api_key(settings: dict[str, Any] | None, provider: str) -> str:
+    api_keys = settings.get("api_keys", {}) if isinstance(settings, dict) else {}
+    if not isinstance(api_keys, dict):
+        return ""
+    value = api_keys.get(provider, "")
+    return str(value).strip() if value is not None else ""
+
+
+def _ensure_provider_api_key_available(config: dict[str, Any], settings: dict[str, Any] | None) -> None:
+    provider = str(config.get("llm_provider") or "").strip().lower()
+    if not provider or provider in _KEY_OPTIONAL_PROVIDERS:
+        return
+
+    api_key_env = get_api_key_env(provider)
+    if not api_key_env:
+        return
+
+    if settings:
+        has_key = bool(_settings_api_key(settings, provider))
+    else:
+        has_key = bool(os.environ.get(api_key_env))
+    if has_key:
+        return
+
+    raise ValueError(
+        f"API key for provider '{provider}' is not set. "
+        f"Please configure {provider} in Settings > API Keys or set {api_key_env}."
+    )
 
 class RunService:
     """Owns run state, local queue/worker execution, and persistence."""
@@ -56,7 +192,93 @@ class RunService:
         self._queued_run_ids: list[str] = []
         self._worker_thread: threading.Thread | None = None
         self._worker_lock = threading.Lock()
+        self._terminal_log_lock = threading.Lock()
         self._next_queue_sequence = 1
+
+    def _terminal_log_path(self, run: RunState) -> Path:
+        """Return the durable terminal output path for a run."""
+        if run.terminal_log_path:
+            return Path(run.terminal_log_path)
+        return run.runtime_context.run_root / "terminal_output.log"
+
+    def _ensure_terminal_log(self, run: RunState) -> Path:
+        """Create the per-run terminal output file if needed."""
+        path = self._terminal_log_path(run)
+        run.terminal_log_path = str(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch(exist_ok=True)
+        return path
+
+    def _terminal_log_has_content(self, run: RunState) -> bool:
+        path = self._ensure_terminal_log(run)
+        try:
+            return path.stat().st_size > 0
+        except OSError:
+            return False
+
+    def _write_terminal_line(self, run: RunState, stream_name: str, line: str) -> None:
+        if not line:
+            return
+        path = self._ensure_terminal_log(run)
+        timestamp = datetime.datetime.now().isoformat(timespec="seconds")
+        rendered = f"{timestamp} [run:{run.run_id}] {line}"
+        with self._terminal_log_lock:
+            try:
+                with path.open("a", encoding="utf-8") as handle:
+                    handle.write(rendered + "\n")
+            except OSError:
+                logger.warning("Failed to write terminal output for run %s", run.run_id)
+        self._put_event(
+            run,
+            {
+                "event": "terminal_output",
+                "data": {
+                    "stream": stream_name,
+                    "line": rendered,
+                },
+            },
+        )
+
+    def _log_run_phase(self, run: RunState, message: str, *, stream_name: str = "stdout") -> None:
+        self._write_terminal_line(run, stream_name, f"Phase: {message}")
+
+    def _log_run_configuration(self, run: RunState) -> None:
+        self._write_terminal_line(run, "stdout", "Run configuration")
+        self._write_terminal_line(run, "stdout", f"ticker: {run.ticker}")
+        self._write_terminal_line(run, "stdout", f"date: {run.date}")
+        self._write_terminal_line(run, "stdout", f"asset_type: {run.asset_type}")
+        self._write_terminal_line(
+            run,
+            "stdout",
+            f"selected_analysts: {', '.join(run.selected_analysts)}",
+        )
+        for key in _RUN_CONFIG_LOG_KEYS:
+            value = run.config.get(key)
+            if value is None or value == "":
+                continue
+            self._write_terminal_line(run, "stdout", f"{key}: {value}")
+
+    @contextmanager
+    def _capture_terminal_output(self, run: RunState):
+        """Tee stdout/stderr and root logging into the run terminal log."""
+        path = self._ensure_terminal_log(run)
+        stdout = sys.stdout
+        stderr = sys.stderr
+        with path.open("a", encoding="utf-8") as handle:
+            recorder = _TerminalOutputRecorder(self, run, handle)
+            stdout_writer = _TerminalStreamWriter(recorder, "stdout", stdout)
+            stderr_writer = _TerminalStreamWriter(recorder, "stderr", stderr)
+            log_handler = logging.StreamHandler(stderr_writer)
+            log_handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+            root_logger = logging.getLogger()
+            root_logger.addHandler(log_handler)
+            try:
+                with redirect_stdout(stdout_writer), redirect_stderr(stderr_writer):
+                    yield
+            finally:
+                root_logger.removeHandler(log_handler)
+                stdout_writer.flush()
+                stderr_writer.flush()
 
     def load_tenant_settings(self) -> dict[str, Any]:
         """Load persisted settings for this service's tenant scope."""
@@ -381,6 +603,9 @@ class RunService:
             status="queued",
             queue_sequence=self._next_queue_sequence,
         )
+        self._ensure_terminal_log(run)
+        self._log_run_configuration(run)
+        self._log_run_phase(run, f"queued retry from {source.run_id}")
         self._next_queue_sequence += 1
         with self._runs_lock:
             self._runs[new_run_id] = run
@@ -401,67 +626,93 @@ class RunService:
 
     def _run_analysis_thread(self, run: RunState) -> None:
         """Execute the analysis in a background thread."""
+        self._ensure_terminal_log(run)
+        if not self._terminal_log_has_content(run):
+            self._log_run_configuration(run)
+        self._log_run_phase(run, "waiting for execution lock")
         try:
             with PROCESS_EXECUTION_LOCK:
-                self.apply_tenant_api_keys()
-                run.status = "running"
-                run.started_at = datetime.datetime.now().isoformat()
-                run.queue_sequence = None
-                self._put_event(run, {"event": "progress", "data": {"message": f"Starting analysis for {run.ticker} on {run.date}"}})
-                self.save_runs_index()
-                if run.cancel_requested.is_set():
-                    raise RunCancelledError()
+                self._log_run_phase(run, "acquired execution lock")
+                with self._capture_terminal_output(run):
+                    self._log_run_phase(run, "applying tenant API keys")
+                    self.apply_tenant_api_keys()
+                    run.status = "running"
+                    run.started_at = datetime.datetime.now().isoformat()
+                    run.queue_sequence = None
+                    self._log_run_phase(run, "status set to running")
+                    self._put_event(run, {"event": "progress", "data": {"message": f"Starting analysis for {run.ticker} on {run.date}"}})
+                    self._log_run_phase(run, "persisting run start")
+                    self.save_runs_index()
+                    if run.cancel_requested.is_set():
+                        raise RunCancelledError()
 
-                graph = self._graph_factory(
-                    run.selected_analysts,
-                    config=run.config,
-                    debug=False,
-                )
+                    self._log_run_phase(run, "initializing trading graph")
+                    graph = self._graph_factory(
+                        run.selected_analysts,
+                        config=run.config,
+                        debug=False,
+                    )
 
-                stream = graph.stream_propagate(
-                    run.ticker,
-                    run.date,
-                    asset_type=run.asset_type,
-                )
-                try:
-                    for chunk in stream:
-                        self._process_chunk(run, chunk)
-                        if run.cancel_requested.is_set():
-                            raise RunCancelledError()
-                finally:
-                    close = getattr(stream, "close", None)
-                    if callable(close):
-                        close()
+                    self._log_run_phase(run, "starting graph stream")
+                    stream = graph.stream_propagate(
+                        run.ticker,
+                        run.date,
+                        asset_type=run.asset_type,
+                    )
+                    chunk_count = 0
+                    try:
+                        for chunk in stream:
+                            chunk_count += 1
+                            chunk_keys = ", ".join(sorted(str(key) for key in chunk.keys())[:8]) or "none"
+                            self._log_run_phase(
+                                run,
+                                f"processed graph chunk {chunk_count}: keys={chunk_keys}",
+                            )
+                            self._process_chunk(run, chunk)
+                            if run.cancel_requested.is_set():
+                                raise RunCancelledError()
+                    finally:
+                        close = getattr(stream, "close", None)
+                        if callable(close):
+                            close()
+                    self._log_run_phase(run, f"graph stream finished after {chunk_count} chunk(s)")
 
-                final_state = graph.curr_state or {}
-                run.final_state = final_state
-                run.signal = graph.last_signal or graph.process_signal(
-                    final_state.get("final_trade_decision", "")
-                )
-                if graph.last_state_log_path is not None:
-                    run.state_log_path = str(graph.last_state_log_path)
-                if final_state:
-                    report_path = graph.save_reports(final_state, run.ticker)
-                    run.report_path = str(report_path)
+                    final_state = graph.curr_state or {}
+                    run.final_state = final_state
+                    final_state_keys = ", ".join(sorted(str(key) for key in final_state.keys())[:12]) or "none"
+                    self._log_run_phase(run, f"final state collected: keys={final_state_keys}")
+                    run.signal = graph.last_signal or graph.process_signal(
+                        final_state.get("final_trade_decision", "")
+                    )
+                    if graph.last_state_log_path is not None:
+                        run.state_log_path = str(graph.last_state_log_path)
+                    if final_state:
+                        self._log_run_phase(run, "saving reports")
+                        report_path = graph.save_reports(final_state, run.ticker)
+                        run.report_path = str(report_path)
 
-                for section in run.report_sections:
-                    if section in final_state and final_state[section]:
-                        run.report_sections[section] = final_state[section]
-                self._update_final_report(run)
+                    self._log_run_phase(run, "updating report sections")
+                    for section in run.report_sections:
+                        if section in final_state and final_state[section]:
+                            run.report_sections[section] = final_state[section]
+                    self._update_final_report(run)
 
-                run._chunk_processor.finalize()
-                for agent in run.agents:
-                    run.agents[agent] = "completed"
+                    self._log_run_phase(run, "finalizing run state")
+                    run._chunk_processor.finalize()
+                    for agent in run.agents:
+                        run.agents[agent] = "completed"
 
-                run.status = "completed"
-                run.completed_at = datetime.datetime.now().isoformat()
-                terminal_event = self.build_terminal_event(run)
-                if terminal_event is not None:
-                    self._put_event(run, terminal_event)
-                self._persist_run(run)
+                    run.status = "completed"
+                    run.completed_at = datetime.datetime.now().isoformat()
+                    self._log_run_phase(run, "completed analysis")
+                    terminal_event = self.build_terminal_event(run)
+                    if terminal_event is not None:
+                        self._put_event(run, terminal_event)
+                    self._persist_run(run)
 
         except RunCancelledError:
             logger.info("Analysis cancelled for run %s", run.run_id)
+            self._log_run_phase(run, "cancelled analysis")
             run.status = "cancelled"
             run.error = None
             run.completed_at = datetime.datetime.now().isoformat()
@@ -472,6 +723,9 @@ class RunService:
             self._persist_run(run)
         except Exception as e:
             logger.exception("Analysis failed for run %s", run.run_id)
+            self._log_run_phase(run, f"failed analysis: {e}", stream_name="stderr")
+            for line in traceback.format_exc().splitlines():
+                self._write_terminal_line(run, "stderr", line)
             run.status = "failed"
             run.error = str(e)
             run.completed_at = datetime.datetime.now().isoformat()
@@ -488,6 +742,36 @@ class RunService:
                 self._queued_run_ids.append(run_id)
         self._run_queue.put(run_id)
 
+    def _process_queued_run_id(self, run_id: str) -> bool:
+        """Process one queued run id that has already been pulled from the queue."""
+        run = self.get_run(run_id)
+        with self._runs_lock:
+            if run_id in self._queued_run_ids:
+                self._queued_run_ids.remove(run_id)
+        if run is None:
+            return False
+        if run.status in TERMINAL_RUN_STATUSES:
+            return False
+        claim = self._state_backend.acquire_claim(run_id, claims_dir=self._claims_dir)
+        if claim is None:
+            return False
+        run.queue_sequence = None
+        if run.cancel_requested.is_set():
+            run.status = "cancelled"
+            run.completed_at = run.completed_at or datetime.datetime.now().isoformat()
+            terminal_event = self.build_terminal_event(run)
+            if terminal_event is not None:
+                self._put_event(run, terminal_event)
+            self._persist_run(run)
+            self._state_backend.release_claim(claim)
+            return True
+        run.status = "running"
+        try:
+            self._run_analysis_thread(run)
+            return True
+        finally:
+            self._state_backend.release_claim(claim)
+
     def process_next_queued_run(self) -> bool:
         """Process a single queued run if one exists."""
         try:
@@ -496,33 +780,7 @@ class RunService:
             return False
 
         try:
-            run = self.get_run(run_id)
-            with self._runs_lock:
-                if run_id in self._queued_run_ids:
-                    self._queued_run_ids.remove(run_id)
-            if run is None:
-                return False
-            if run.status in TERMINAL_RUN_STATUSES:
-                return False
-            claim = self._state_backend.acquire_claim(run_id, claims_dir=self._claims_dir)
-            if claim is None:
-                return False
-            run.queue_sequence = None
-            if run.cancel_requested.is_set():
-                run.status = "cancelled"
-                run.completed_at = run.completed_at or datetime.datetime.now().isoformat()
-                terminal_event = self.build_terminal_event(run)
-                if terminal_event is not None:
-                    self._put_event(run, terminal_event)
-                self._persist_run(run)
-                self._state_backend.release_claim(claim)
-                return True
-            run.status = "running"
-            try:
-                self._run_analysis_thread(run)
-                return True
-            finally:
-                self._state_backend.release_claim(claim)
+            return self._process_queued_run_id(run_id)
         finally:
             self._run_queue.task_done()
 
@@ -531,12 +789,9 @@ class RunService:
             self._state_backend.write_worker_status("local_thread", path=self._worker_status_path)
             run_id = self._run_queue.get()
             try:
-                with self._runs_lock:
-                    if run_id not in self._queued_run_ids:
-                        self._queued_run_ids.append(run_id)
-                self.process_next_queued_run()
-            except queue.Empty:
-                continue
+                self._process_queued_run_id(run_id)
+            finally:
+                self._run_queue.task_done()
 
     def run_worker_forever(self, *, poll_interval: float = 1.0) -> None:
         """Poll persisted runs and process queued work in the current process."""
@@ -572,6 +827,7 @@ class RunService:
         run_id = str(uuid.uuid4())
         runtime_context = build_runtime_context(run_id, base_dir=self._runs_root_dir)
         config = self.build_run_request_config(req, runtime_context=runtime_context, settings=effective_settings)
+        _ensure_provider_api_key_available(config, effective_settings)
         run = RunState(
             run_id=run_id,
             ticker=req.ticker.upper(),
@@ -583,6 +839,9 @@ class RunService:
             status="queued",
             queue_sequence=self._next_queue_sequence,
         )
+        self._ensure_terminal_log(run)
+        self._log_run_configuration(run)
+        self._log_run_phase(run, "queued analysis")
         self._next_queue_sequence += 1
         with self._runs_lock:
             self._runs[run_id] = run

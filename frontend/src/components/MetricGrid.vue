@@ -1,5 +1,5 @@
 <template>
-  <div class="uno-mb-4 uno-grid uno-grid-cols-[repeat(auto-fit,minmax(170px,1fr))] uno-gap-3">
+  <div :class="gridClasses">
     <Card
       v-for="item in items"
       :key="item.label"
@@ -16,12 +16,23 @@
 
 <script setup lang="ts">
 import Card from 'primevue/card';
+import { computed } from 'vue';
 
-defineProps<{
+const props = withDefaults(defineProps<{
   items: Array<{
     label: string;
     value: string | number;
     detail?: string;
   }>;
-}>();
+  layout?: 'default' | 'dashboard';
+}>(), {
+  layout: 'default',
+});
+
+const gridClasses = computed(() => [
+  'uno-mb-4 uno-grid uno-gap-3',
+  props.layout === 'dashboard'
+    ? 'uno-grid-cols-4 max-[1100px]:uno-grid-cols-2 max-[640px]:uno-grid-cols-1'
+    : 'uno-grid-cols-4 max-[1100px]:uno-grid-cols-2 max-[640px]:uno-grid-cols-1',
+]);
 </script>

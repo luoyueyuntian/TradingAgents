@@ -18,26 +18,26 @@
       <Card>
         <template #title>{{ t('settings.llmConfiguration') }}</template>
         <template #content>
-          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+          <div data-testid="llm-settings-grid" class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] uno-gap-[0.8rem]">
             <label class="uno-grid uno-gap-[0.35rem]">
               <span class="uno-text-[#6f8183]">{{ t('common.provider') }}</span>
-              <Select v-model="form.llm.provider" :options="providerOptions" option-label="label" option-value="value" />
+              <Select v-model="form.llm.provider" :options="providerOptions" option-label="label" option-value="value" class="uno-w-full" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
               <span class="uno-text-[#6f8183]">{{ t('analysis.quickModel') }}</span>
-              <InputText v-model="form.llm.quick_think_model" />
+              <InputText v-model="form.llm.quick_think_model" class="uno-w-full" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
               <span class="uno-text-[#6f8183]">{{ t('analysis.deepModel') }}</span>
-              <InputText v-model="form.llm.deep_think_model" />
+              <InputText v-model="form.llm.deep_think_model" class="uno-w-full" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
               <span class="uno-text-[#6f8183]">{{ t('settings.temperature') }}</span>
-              <InputText v-model="form.llm.temperature" type="number" :placeholder="t('common.default')" />
+              <InputText v-model="form.llm.temperature" type="number" :placeholder="t('common.default')" class="uno-w-full" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
               <span class="uno-text-[#6f8183]">{{ t('settings.backendUrl') }}</span>
-              <InputText v-model="form.llm.backend_url" :placeholder="t('common.providerDefault')" />
+              <InputText v-model="form.llm.backend_url" :placeholder="t('common.providerDefault')" class="uno-w-full" />
             </label>
           </div>
         </template>
@@ -46,10 +46,10 @@
       <Card>
         <template #title>{{ t('settings.apiKeys') }}</template>
         <template #content>
-          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+          <div data-testid="api-key-settings-grid" class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] uno-gap-[0.8rem]">
             <label v-for="keyName in apiKeyNames" :key="keyName" class="uno-grid uno-gap-[0.35rem]">
               <span class="uno-text-[#6f8183]">{{ keyName }}</span>
-              <InputText v-model="form.api_keys[keyName]" type="password" :placeholder="t('common.notSet')" />
+              <InputText v-model="form.api_keys[keyName]" type="password" :placeholder="t('common.notSet')" class="uno-w-full" />
             </label>
           </div>
         </template>

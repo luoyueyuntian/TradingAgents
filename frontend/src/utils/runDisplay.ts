@@ -120,6 +120,18 @@ export function applyRunStreamEvent(
     return next;
   }
 
+  if (eventName === 'terminal_output') {
+    const stream = stringValue(payload.stream) || 'stdout';
+    const line = stringValue(payload.line);
+    if (!next.status || next.status === 'queued' || next.status === 'pending') {
+      next.status = 'running';
+    }
+    if (line) {
+      next.logLines.push(`${timestamp} ${stream}: ${line}`);
+    }
+    return next;
+  }
+
   next.logLines.push(`${timestamp} ${eventName}: ${rawPayload}`);
   return next;
 }

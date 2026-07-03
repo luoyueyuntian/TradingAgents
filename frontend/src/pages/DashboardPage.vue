@@ -12,7 +12,7 @@
 
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
-    <MetricGrid :items="metrics" />
+    <MetricGrid :items="metrics" layout="dashboard" />
 
     <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(320px,1fr))] uno-gap-4">
       <Card>

@@ -136,11 +136,15 @@ def test_app_layout_exposes_page_navigation_and_session_context():
     assert "navigationGroups" in layout_source
     assert "RouterLink" in layout_source
     assert "useI18n" in layout_source
-    assert 'v-model="locale"' in layout_source
-    assert ':options="locales"' in layout_source
+    assert 'data-testid="language-trigger"' in layout_source
+    assert "currentLocaleLabel" in layout_source
+    assert "changeLocale(option.value)" in layout_source
+    assert ":data-testid=\"`language-option-${option.value}`\"" in layout_source
     assert "t(item.labelKey)" in layout_source
     assert "session.state.currentUser?.display_name" in layout_source
     assert "session.state.currentUser?.tenant_id" in layout_source
+    assert 'data-testid="user-menu"' in layout_source
+    assert "@mouseenter=\"userMenuOpen = true\"" in layout_source
     assert "visibleNavigationGroups" in layout_source
     assert "session.isAdmin.value" in layout_source
     assert "handleLogout" in layout_source
