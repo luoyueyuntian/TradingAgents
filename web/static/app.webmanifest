@@ -1,0 +1,18 @@
+{
+  "name": "TradingAgents Web",
+  "short_name": "TradingAgents",
+  "description": "A web workspace for running, reviewing, and organizing TradingAgents research.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#4fd1c5",
+  "icons": [
+    {
+      "src": "/static/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

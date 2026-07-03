@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
+from tradingagents.dataflows.errors import NoMarketDataError, VendorNotConfiguredError
 
 
 @pytest.mark.unit
@@ -42,15 +43,15 @@ def test_china_macro_unknown_alias_returns_guidance():
 @pytest.mark.unit
 def test_china_macro_vendor_unavailable_is_explicit(monkeypatch):
     from tradingagents.dataflows import china_macro
+    from tradingagents.dataflows.errors import VendorNotConfiguredError
 
     monkeypatch.setattr(
         china_macro,
         "_load_akshare",
         lambda: (_ for _ in ()).throw(ImportError("akshare missing")),
     )
-    out = china_macro.get_china_macro_data("cpi", "2026-05-31", 90)
-    assert "DATA_UNAVAILABLE" in out
-    assert "akshare missing" in out
+    with pytest.raises(VendorNotConfiguredError, match="akshare missing"):
+        china_macro.get_china_macro_data("cpi", "2026-05-31", 90)
 
 
 @pytest.mark.unit
@@ -70,7 +71,5 @@ def test_china_macro_does_not_fall_back_to_stale_rows(monkeypatch):
             return stale_df
 
     monkeypatch.setattr(china_macro, "_load_akshare", lambda: FakeAK)
-    out = china_macro.get_china_macro_data("cpi", "2026-06-27", 120)
-
-    assert "DATA_UNAVAILABLE" in out
-    assert "latest available observation is 2024-02-01" in out
+    with pytest.raises(NoMarketDataError, match="latest available observation is 2024-02-01"):
+        china_macro.get_china_macro_data("cpi", "2026-06-27", 120)

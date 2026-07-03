@@ -9,6 +9,7 @@ from tradingagents.agents.utils.agent_utils import (
     get_news,
     get_prediction_markets,
 )
+from tradingagents.agents.utils.factories import _ANALYST_SYSTEM_PREAMBLE
 from tradingagents.dataflows.market_profiles import get_market_profile, is_china_a_profile
 
 
@@ -34,18 +35,18 @@ def _build_news_tool_guidance(asset_label: str) -> str:
 
 
 def create_news_analyst(llm):
+    tools = [
+        get_news,
+        get_global_news,
+        get_macro_indicators,
+        get_prediction_markets,
+    ]
+
     def news_analyst_node(state):
         current_date = state["trade_date"]
         asset_type = state.get("asset_type", "stock")
         asset_label = "company" if asset_type == "stock" else "asset"
         instrument_context = get_instrument_context_from_state(state)
-
-        tools = [
-            get_news,
-            get_global_news,
-            get_macro_indicators,
-            get_prediction_markets,
-        ]
 
         system_message = (
             f"You are a news researcher tasked with analyzing recent news and trends over the past week. Please write a comprehensive report of the current state of the world that is relevant for trading and macroeconomics. {_build_news_tool_guidance(asset_label)} Provide specific, actionable insights with supporting evidence to help traders make informed decisions."
@@ -56,34 +57,20 @@ def create_news_analyst(llm):
 
         prompt = ChatPromptTemplate.from_messages(
             [
-                (
-                    "system",
-                    "You are a helpful AI assistant, collaborating with other assistants."
-                    " Use the provided tools to progress towards answering the question."
-                    " If you are unable to fully answer, that's OK; another assistant with different tools"
-                    " will help where you left off. Execute what you can to make progress."
-                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
-                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
-                    " You have access to the following tools: {tool_names}."
-                    " Today's date is {current_date}; treat it as 'now' for all analysis and tool-call date ranges. {instrument_context}\n"
-                    "{system_message}",
-                ),
+                ("system", _ANALYST_SYSTEM_PREAMBLE),
                 MessagesPlaceholder(variable_name="messages"),
             ]
         )
 
         prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
+        prompt = prompt.partial(tool_names=", ".join(t.name for t in tools))
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(instrument_context=instrument_context)
 
         chain = prompt | llm.bind_tools(tools)
         result = chain.invoke(state["messages"])
 
-        report = ""
-
-        if len(result.tool_calls) == 0:
-            report = result.content
+        report = result.content if len(result.tool_calls) == 0 else ""
 
         return {
             "messages": [result],
