@@ -70,6 +70,114 @@
             </div>
           </div>
 
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(280px,1fr))] uno-gap-4">
+            <Card>
+              <template #title>{{ t('runs.pinnedAction') }}</template>
+              <template #content>
+                <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(180px,1fr))] uno-gap-[0.8rem]">
+                  <label class="uno-grid uno-gap-[0.35rem]">
+                    <span class="uno-text-[#6f8183]">{{ t('runs.pinCategory') }}</span>
+                    <Select v-model="pinForm.category" :options="categoryOptions" option-label="label" option-value="value" />
+                  </label>
+                  <label class="uno-grid uno-gap-[0.35rem]">
+                    <span class="uno-text-[#6f8183]">{{ t('runs.pinPriority') }}</span>
+                    <Select v-model="pinForm.priority" :options="priorityOptions" option-label="label" option-value="value" />
+                  </label>
+                  <label class="uno-grid uno-gap-[0.35rem]">
+                    <span class="uno-text-[#6f8183]">{{ t('runs.pinStatus') }}</span>
+                    <Select v-model="pinForm.action_status" :options="actionStatusOptions" option-label="label" option-value="value" />
+                  </label>
+                  <label class="uno-grid uno-gap-[0.35rem]">
+                    <span class="uno-text-[#6f8183]">{{ t('runs.pinAssignee') }}</span>
+                    <Select v-model="pinForm.assignee" :options="memberOptions" option-label="label" option-value="value" :placeholder="t('common.optional')" />
+                  </label>
+                  <label class="uno-grid uno-gap-[0.35rem]">
+                    <span class="uno-text-[#6f8183]">{{ t('runs.pinNextAction') }}</span>
+                    <InputText v-model="pinForm.next_action" :placeholder="t('runs.pinNextAction')" />
+                  </label>
+                  <label class="uno-grid uno-gap-[0.35rem]">
+                    <span class="uno-text-[#6f8183]">{{ t('runs.pinDueDate') }}</span>
+                    <InputText v-model="pinForm.due_date" type="date" />
+                  </label>
+                </div>
+                <Textarea v-model="pinForm.note" rows="3" auto-resize :placeholder="t('runs.pinNote')" class="uno-mt-3 uno-w-full" />
+                <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+                  <Button icon="pi pi-bookmark" :label="t('runs.savePinnedAction')" severity="secondary" @click="savePinnedRun" />
+                  <Button v-if="currentPinnedRun" icon="pi pi-times" :label="t('runs.removePinnedAction')" severity="danger" outlined @click="deletePinnedRun" />
+                </div>
+              </template>
+            </Card>
+
+            <Card>
+              <template #title>{{ t('runs.comments') }}</template>
+              <template #content>
+                <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+                  <Select v-model="commentAuthor" :options="memberOptions" option-label="label" option-value="value" :placeholder="t('runs.commentAuthor')" />
+                </div>
+                <Textarea v-model="commentBody" rows="3" auto-resize :placeholder="t('runs.commentPlaceholder')" class="uno-mt-3 uno-w-full" />
+                <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+                  <Button icon="pi pi-comment" :label="t('runs.addComment')" severity="secondary" @click="addRunComment" />
+                </div>
+                <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
+                  <div v-for="comment in comments" :key="comment.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+                    <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
+                      <span>{{ comment.author }}</span>
+                      <Tag :value="comment.resolved ? t('common.completed') : t('common.pending')" :severity="comment.resolved ? 'success' : 'warn'" />
+                    </div>
+                    <small class="uno-text-[#6f8183]">{{ compactText(comment.created_at) }}</small>
+                    <p class="uno-mb-0 uno-mt-2">{{ comment.content }}</p>
+                    <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+                      <Button
+                        icon="pi pi-check"
+                        :label="comment.resolved ? t('runs.reopenComment') : t('runs.resolveComment')"
+                        severity="secondary"
+                        @click="toggleComment(comment)"
+                      />
+                      <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined @click="deleteRunComment(comment.id)" />
+                    </div>
+                  </div>
+                  <p v-if="!comments.length" class="uno-text-[#6f8183]">{{ t('runs.noComments') }}</p>
+                </div>
+              </template>
+            </Card>
+
+            <Card>
+              <template #title>{{ t('runs.publicShare') }}</template>
+              <template #content>
+                <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(180px,1fr))] uno-gap-[0.8rem]">
+                  <label class="uno-grid uno-gap-[0.35rem]">
+                    <span class="uno-text-[#6f8183]">{{ t('runs.shareTitle') }}</span>
+                    <InputText v-model="shareForm.share_title" :placeholder="t('common.optional')" />
+                  </label>
+                  <label class="uno-grid uno-gap-[0.35rem]">
+                    <span class="uno-text-[#6f8183]">{{ t('runs.shareExpiryDays') }}</span>
+                    <InputText v-model="shareForm.expires_in_days" type="number" :placeholder="t('common.optional')" />
+                  </label>
+                </div>
+                <Textarea v-model="shareForm.share_summary" rows="3" auto-resize :placeholder="t('runs.shareSummary')" class="uno-mt-3 uno-w-full" />
+                <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+                  <Button
+                    icon="pi pi-share-alt"
+                    :label="currentPublicShare ? t('runs.updatePublicShare') : t('runs.createPublicShare')"
+                    severity="secondary"
+                    @click="savePublicShare"
+                  />
+                  <Button v-if="currentPublicShare" icon="pi pi-external-link" :label="t('common.open')" severity="secondary" @click="openPublicShare" />
+                  <Button v-if="currentPublicShare" icon="pi pi-trash" :label="t('runs.deletePublicShare')" severity="danger" outlined @click="deletePublicShare" />
+                </div>
+                <div v-if="currentPublicShare" class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
+                  <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+                    <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
+                      <span class="uno-break-all">{{ currentPublicShare.url }}</span>
+                      <Tag :value="String(currentPublicShare.view_count || 0)" severity="info" />
+                    </div>
+                    <small class="uno-text-[#6f8183]">{{ currentPublicShare.expires_at || t('common.na') }}</small>
+                  </div>
+                </div>
+              </template>
+            </Card>
+          </div>
+
           <ReportMarkdown :content="selectedSectionText" :empty-text="t('runs.noReport')" />
 
           <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
@@ -97,16 +205,19 @@
 <script setup lang="ts">
 import Button from 'primevue/button';
 import Card from 'primevue/card';
+import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
+import Select from 'primevue/select';
 import Tag from 'primevue/tag';
-import { computed, ref, watch } from 'vue';
+import Textarea from 'primevue/textarea';
+import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import MetricGrid from '../components/MetricGrid.vue';
 import PageHeader from '../components/PageHeader.vue';
 import ReportMarkdown from '../components/ReportMarkdown.vue';
 import { useI18n } from '../i18n';
-import { apiDelete, apiGet, apiPost, buildApiUrl } from '../services/api';
+import { apiDelete, apiGet, apiPatch, apiPost, buildApiUrl } from '../services/api';
 import { useSession } from '../stores/session';
 import { compactText, signalSeverity, type JsonRecord } from '../utils/format';
 import { buildDecisionHighlights, buildInsightPanels } from '../utils/runDisplay';
@@ -127,8 +238,13 @@ const router = useRouter();
 const canWrite = computed(() => session.canWrite.value);
 const selectedRun = ref<JsonRecord | null>(null);
 const artifacts = ref<JsonRecord[]>([]);
+const members = ref<JsonRecord[]>([]);
+const pinnedRuns = ref<JsonRecord[]>([]);
+const comments = ref<JsonRecord[]>([]);
 const terminalOutput = ref('');
 const selectedSectionKey = ref('');
+const commentBody = ref('');
+const commentAuthor = ref('');
 const error = ref('');
 const { t } = useI18n();
 
@@ -208,6 +324,42 @@ const insightPanels = computed(() => buildInsightPanels(
   selectedRun.value?.report_sections || {},
   insightActionLabels.value,
 ));
+const memberOptions = computed(() => members.value.map((member) => ({
+  label: String(member.name || member.id || ''),
+  value: String(member.name || ''),
+})));
+const categoryOptions = computed(() => [
+  { label: t('runs.pinCategoryHighConviction'), value: 'high-conviction' },
+  { label: t('runs.pinCategoryFollowUp'), value: 'follow-up' },
+  { label: t('runs.pinCategoryRisk'), value: 'risk' },
+  { label: t('runs.pinCategoryArchive'), value: 'archive' },
+]);
+const priorityOptions = computed(() => [
+  { label: 'P1', value: 'p1' },
+  { label: 'P2', value: 'p2' },
+  { label: 'P3', value: 'p3' },
+]);
+const actionStatusOptions = computed(() => [
+  { label: t('runs.actionTodo'), value: 'todo' },
+  { label: t('runs.actionDoing'), value: 'doing' },
+  { label: t('runs.actionDone'), value: 'done' },
+]);
+const currentPinnedRun = computed(() => pinnedRuns.value.find((item) => item.run_id === selectedRun.value?.run_id) || null);
+const currentPublicShare = computed(() => selectedRun.value?.public_share || null);
+const pinForm = reactive({
+  note: '',
+  category: 'follow-up',
+  priority: 'p2',
+  next_action: '',
+  action_status: 'todo',
+  assignee: '',
+  due_date: '',
+});
+const shareForm = reactive({
+  expires_in_days: '',
+  share_title: '',
+  share_summary: '',
+});
 
 function sectionLabel(key: string): string {
   switch (key) {
@@ -255,15 +407,60 @@ async function loadRunDetail() {
     selectedRun.value = await apiGet<JsonRecord>(`/api/runs/${encodedRunId}`, session.apiContext.value);
     const hasOverview = Boolean(selectedRun.value.final_report || selectedRun.value.current_report);
     selectedSectionKey.value = hasOverview ? 'overview' : orderedReportKeys.value[0] || '';
-    const [artifactRows, output] = await Promise.all([
+    const [artifactRows, output, pinnedItems, commentItems, memberItems] = await Promise.all([
       apiGet<JsonRecord[]>(`/api/runs/${encodedRunId}/artifacts`, session.apiContext.value),
       loadTerminalOutput(encodedRunId),
+      apiGet<JsonRecord[]>('/api/pinned-runs', session.apiContext.value),
+      apiGet<JsonRecord[]>(`/api/runs/${encodedRunId}/comments`, session.apiContext.value),
+      apiGet<JsonRecord[]>('/api/members', session.apiContext.value),
     ]);
     artifacts.value = artifactRows;
     terminalOutput.value = output;
+    pinnedRuns.value = pinnedItems;
+    comments.value = commentItems;
+    members.value = memberItems;
+    commentAuthor.value = session.state.currentMemberId
+      ? (memberItems.find((item) => item.id === session.state.currentMemberId)?.name || '')
+      : '';
+    hydratePinForm();
+    hydrateShareForm();
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('runs.loadError');
   }
+}
+
+function hydratePinForm() {
+  const current = currentPinnedRun.value;
+  if (!current) {
+    Object.assign(pinForm, {
+      note: '',
+      category: 'follow-up',
+      priority: 'p2',
+      next_action: '',
+      action_status: 'todo',
+      assignee: '',
+      due_date: '',
+    });
+    return;
+  }
+  Object.assign(pinForm, {
+    note: current.note || '',
+    category: current.category || 'follow-up',
+    priority: current.priority || 'p2',
+    next_action: current.next_action || '',
+    action_status: current.action_status || 'todo',
+    assignee: current.assignee || '',
+    due_date: current.due_date || '',
+  });
+}
+
+function hydrateShareForm() {
+  const current = currentPublicShare.value;
+  Object.assign(shareForm, {
+    expires_in_days: '',
+    share_title: current?.share_title || '',
+    share_summary: current?.share_summary || '',
+  });
 }
 
 async function loadTerminalOutput(encodedRunId: string) {
@@ -295,6 +492,115 @@ async function deleteRun() {
   if (!selectedRun.value?.run_id) return;
   await apiDelete(`/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}`, session.apiContext.value);
   await router.push('/runs');
+}
+
+async function savePinnedRun() {
+  if (!selectedRun.value?.run_id) return;
+  await apiPost<JsonRecord>('/api/pinned-runs', {
+    run_id: selectedRun.value.run_id,
+    note: pinForm.note || null,
+    category: pinForm.category || null,
+    priority: pinForm.priority || null,
+    next_action: pinForm.next_action || null,
+    action_status: pinForm.action_status || null,
+    assignee: pinForm.assignee || null,
+    due_date: pinForm.due_date || null,
+  }, session.apiContext.value);
+  pinnedRuns.value = await apiGet<JsonRecord[]>('/api/pinned-runs', session.apiContext.value);
+  hydratePinForm();
+}
+
+async function deletePinnedRun() {
+  if (!selectedRun.value?.run_id) return;
+  await apiDelete(`/api/pinned-runs/${encodeURIComponent(String(selectedRun.value.run_id))}`, session.apiContext.value);
+  pinnedRuns.value = await apiGet<JsonRecord[]>('/api/pinned-runs', session.apiContext.value);
+  hydratePinForm();
+}
+
+async function savePublicShare() {
+  if (!selectedRun.value?.run_id) return;
+  const runId = encodeURIComponent(String(selectedRun.value.run_id));
+  if (!currentPublicShare.value) {
+    await apiPost<JsonRecord>(`/api/runs/${runId}/public-share`, {}, session.apiContext.value);
+  }
+  const updatedShare = await apiPatch<JsonRecord>(
+    `/api/runs/${runId}/public-share`,
+    {
+      expires_in_days: shareForm.expires_in_days === '' ? null : Number(shareForm.expires_in_days),
+      share_title: shareForm.share_title || null,
+      share_summary: shareForm.share_summary || null,
+    },
+    session.apiContext.value,
+  );
+  selectedRun.value = {
+    ...selectedRun.value,
+    public_share: updatedShare,
+  };
+  hydrateShareForm();
+}
+
+function openPublicShare() {
+  if (!currentPublicShare.value?.url) return;
+  window.open(currentPublicShare.value.url, '_blank', 'noopener');
+}
+
+async function deletePublicShare() {
+  if (!selectedRun.value?.run_id) return;
+  await apiDelete(
+    `/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}/public-share`,
+    session.apiContext.value,
+  );
+  selectedRun.value = await apiGet<JsonRecord>(
+    `/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}`,
+    session.apiContext.value,
+  );
+  hydrateShareForm();
+}
+
+async function addRunComment() {
+  if (!selectedRun.value?.run_id || !commentAuthor.value || !commentBody.value.trim()) return;
+  await apiPost<JsonRecord>(
+    `/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}/comments`,
+    {
+      author: commentAuthor.value,
+      content: commentBody.value.trim(),
+    },
+    session.apiContext.value,
+  );
+  commentBody.value = '';
+  comments.value = await apiGet<JsonRecord[]>(
+    `/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}/comments`,
+    session.apiContext.value,
+  );
+}
+
+async function toggleComment(comment: JsonRecord) {
+  if (!selectedRun.value?.run_id) return;
+  const resolver = comment.resolved ? null : (commentAuthor.value || comment.author);
+  await apiPatch<JsonRecord>(
+    `/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}/comments/${encodeURIComponent(String(comment.id))}`,
+    {
+      resolved: !comment.resolved,
+      resolved_by: resolver,
+    },
+    session.apiContext.value,
+  );
+  comments.value = await apiGet<JsonRecord[]>(
+    `/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}/comments`,
+    session.apiContext.value,
+  );
+}
+
+async function deleteRunComment(commentId: string) {
+  if (!selectedRun.value?.run_id) return;
+  await apiDelete(
+    `/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}/comments/${encodeURIComponent(commentId)}`,
+    session.apiContext.value,
+  );
+  comments.value = await apiGet<JsonRecord[]>(
+    `/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}/comments`,
+    session.apiContext.value,
+  );
 }
 
 function goBack() {

@@ -17,83 +17,168 @@
       <Card>
         <template #title>{{ t('analysis.configuration') }}</template>
         <template #content>
-          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
-            <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.stockMarket') }}</span>
-              <Select
-                v-model="form.stock_market"
-                :options="stockMarketOptions"
-                option-label="label"
-                option-value="value"
-                @change="handleStockMarketChange"
-              />
-            </label>
-            <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('common.ticker') }}</span>
-              <Select
-                v-model="form.ticker"
-                :options="stockOptions"
-                option-label="label"
-                option-value="symbol"
-                :placeholder="t('analysis.stockPlaceholder')"
-                :loading="stockLoading"
-                filter
-                show-clear
-                @filter="onStockFilter"
-              />
-            </label>
-            <div class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.stockCatalog') }}</span>
-              <Button
-                icon="pi pi-sync"
-                :label="t('analysis.refreshStocks')"
-                severity="secondary"
-                :loading="refreshingStocks"
-                :disabled="!canWrite"
-                @click="refreshStockCatalog"
-              />
+          <div class="uno-grid uno-gap-4">
+            <div
+              data-testid="analysis-form-row-primary"
+              class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] uno-gap-[0.8rem]"
+            >
+              <label class="uno-grid uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('analysis.stockMarket') }}</span>
+                <Select
+                  v-model="form.stock_market"
+                  :options="stockMarketOptions"
+                  option-label="label"
+                  option-value="value"
+                  class="uno-w-full"
+                  @change="handleStockMarketChange"
+                />
+              </label>
+              <label class="uno-grid uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('common.ticker') }}</span>
+                <AutoComplete
+                  v-model="selectedStock"
+                  :suggestions="stockOptions"
+                  option-label="label"
+                  :placeholder="t('analysis.stockPlaceholder')"
+                  :loading="stockLoading"
+                  dropdown
+                  complete-on-focus
+                  force-selection
+                  show-clear
+                  fluid
+                  class="uno-w-full"
+                  @complete="onStockComplete"
+                  @clear="clearSelectedStock"
+                >
+                  <template #option="{ option }">
+                    <div class="uno-grid uno-min-w-0 uno-gap-0.5">
+                      <strong class="uno-truncate uno-text-[#132a2d]">{{ option.symbol }}</strong>
+                      <small class="uno-truncate uno-text-[#6f8183]">{{ [option.name, option.exchange].filter(Boolean).join(' · ') }}</small>
+                    </div>
+                  </template>
+                </AutoComplete>
+              </label>
+              <label class="uno-grid uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('analysis.marketProfile') }}</span>
+                <Select
+                  v-model="form.market_profile"
+                  :options="marketProfileOptions"
+                  option-label="label"
+                  option-value="value"
+                  class="uno-w-full"
+                  disabled
+                />
+              </label>
+              <label class="uno-grid uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('analysis.analysisDate') }}</span>
+                <DatePicker
+                  v-model="analysisDate"
+                  date-format="yy-mm-dd"
+                  show-icon
+                  icon-display="input"
+                  :manual-input="false"
+                  fluid
+                  input-class="uno-w-full"
+                />
+              </label>
             </div>
-            <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.analysisDate') }}</span>
-              <InputText v-model="form.date" type="date" />
-            </label>
-            <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('common.provider') }}</span>
-              <Select
-                v-model="form.llm_provider"
-                :options="providerOptions"
-                option-label="label"
-                option-value="value"
-                :placeholder="t('common.provider')"
-                @change="syncProviderModels"
-              />
-            </label>
-            <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.quickModel') }}</span>
-              <Select v-model="form.quick_think_model" :options="quickModelOptions" option-label="label" option-value="value" />
-            </label>
-            <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.deepModel') }}</span>
-              <Select v-model="form.deep_think_model" :options="deepModelOptions" option-label="label" option-value="value" />
-            </label>
-            <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.depth') }}</span>
-              <Select v-model="form.research_depth" :options="depthOptions" option-label="label" option-value="value" />
-            </label>
-            <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('common.language') }}</span>
-              <Select v-model="form.output_language" :options="languageOptions" option-label="label" option-value="value" />
-            </label>
-            <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.marketProfile') }}</span>
-              <Select
-                v-model="form.market_profile"
-                :options="marketProfileOptions"
-                option-label="label"
-                option-value="value"
-                disabled
-              />
-            </label>
+
+            <div
+              data-testid="analysis-form-row-models"
+              class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] uno-gap-[0.8rem]"
+            >
+              <label class="uno-grid uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('common.provider') }}</span>
+                <Select
+                  v-model="form.llm_provider"
+                  :options="providerOptions"
+                  option-label="label"
+                  option-value="value"
+                  :placeholder="t('common.provider')"
+                  class="uno-w-full"
+                  @change="syncProviderModels"
+                />
+              </label>
+              <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('analysis.quickModel') }}</span>
+                <Select
+                  v-model="form.quick_think_model"
+                  :options="quickModelOptions"
+                  option-label="label"
+                  option-value="value"
+                  class="uno-w-full"
+                  :pt="modelSelectPt"
+                />
+              </label>
+              <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('analysis.deepModel') }}</span>
+                <Select
+                  v-model="form.deep_think_model"
+                  :options="deepModelOptions"
+                  option-label="label"
+                  option-value="value"
+                  class="uno-w-full"
+                  :pt="modelSelectPt"
+                />
+              </label>
+              <label class="uno-grid uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('analysis.depth') }}</span>
+                <Select v-model="form.research_depth" :options="depthOptions" option-label="label" option-value="value" class="uno-w-full" />
+              </label>
+            </div>
+
+            <div
+              data-testid="analysis-form-row-actions"
+              class="uno-flex uno-flex-wrap uno-items-end uno-gap-[0.8rem]"
+            >
+              <label class="uno-grid uno-min-w-[220px] uno-flex-1 uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('common.language') }}</span>
+                <Select v-model="form.output_language" :options="languageOptions" option-label="label" option-value="value" class="uno-w-full" />
+              </label>
+              <Button icon="pi pi-play" :label="t('analysis.startAnalysis')" :loading="submitting" :disabled="!canWrite" @click="startRun" />
+            </div>
+
+            <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3">
+              <summary class="uno-cursor-pointer uno-font-700 uno-text-[#243a3d]">{{ t('analysis.advancedOverrides') }}</summary>
+              <div class="uno-mt-3 uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] uno-gap-[0.8rem]">
+                <label class="uno-grid uno-gap-[0.35rem]">
+                  <span class="uno-text-[#6f8183]">{{ t('settings.riskRounds') }}</span>
+                  <InputText v-model="form.max_risk_discuss_rounds" type="number" class="uno-w-full" />
+                </label>
+                <label class="uno-grid uno-gap-[0.35rem]">
+                  <span class="uno-text-[#6f8183]">{{ t('settings.maxRecurLimit') }}</span>
+                  <InputText v-model="form.max_recur_limit" type="number" class="uno-w-full" />
+                </label>
+                <label class="uno-grid uno-gap-[0.35rem]">
+                  <span class="uno-text-[#6f8183]">{{ t('settings.benchmarkTicker') }}</span>
+                  <InputText v-model="form.benchmark_ticker" :placeholder="t('common.auto')" class="uno-w-full" />
+                </label>
+                <label class="uno-grid uno-gap-[0.35rem]">
+                  <span class="uno-text-[#6f8183]">{{ t('settings.temperature') }}</span>
+                  <InputText v-model="form.temperature" type="number" :placeholder="t('common.default')" class="uno-w-full" />
+                </label>
+                <label class="uno-grid uno-gap-[0.35rem]">
+                  <span class="uno-text-[#6f8183]">{{ t('settings.backendUrl') }}</span>
+                  <InputText v-model="form.backend_url" :placeholder="t('common.providerDefault')" class="uno-w-full" />
+                </label>
+                <label class="uno-grid uno-gap-[0.35rem]">
+                  <span class="uno-text-[#6f8183]">{{ t('settings.googleThinkingLevel') }}</span>
+                  <Select v-model="form.google_thinking_level" :options="googleThinkingOptions" option-label="label" option-value="value" class="uno-w-full" />
+                </label>
+                <label class="uno-grid uno-gap-[0.35rem]">
+                  <span class="uno-text-[#6f8183]">{{ t('settings.openaiReasoningEffort') }}</span>
+                  <Select v-model="form.openai_reasoning_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" class="uno-w-full" />
+                </label>
+                <label class="uno-grid uno-gap-[0.35rem]">
+                  <span class="uno-text-[#6f8183]">{{ t('settings.anthropicEffort') }}</span>
+                  <Select v-model="form.anthropic_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" class="uno-w-full" />
+                </label>
+                <label class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+                  <input v-model="form.checkpoint_enabled" type="checkbox">
+                  <span>{{ t('settings.enableCheckpoint') }}</span>
+                </label>
+              </div>
+            </details>
           </div>
 
           <div class="uno-mt-4 uno-grid uno-gap-[0.35rem]">
@@ -106,10 +191,6 @@
             </div>
           </div>
 
-          <div class="uno-mt-4 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-            <Button icon="pi pi-play" :label="t('analysis.startAnalysis')" :loading="submitting" :disabled="!canWrite" @click="startRun" />
-            <Button icon="pi pi-list" :label="t('analysis.openRuns')" severity="secondary" @click="$router.push('/runs')" />
-          </div>
         </template>
       </Card>
 
@@ -150,42 +231,47 @@
 <script setup lang="ts">
 import Button from 'primevue/button';
 import Card from 'primevue/card';
-import InputText from 'primevue/inputtext';
+import AutoComplete from 'primevue/autocomplete';
+import DatePicker from 'primevue/datepicker';
 import Message from 'primevue/message';
 import Select from 'primevue/select';
 import Tag from 'primevue/tag';
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
 import MetricGrid from '../components/MetricGrid.vue';
 import PageHeader from '../components/PageHeader.vue';
 import ReportMarkdown from '../components/ReportMarkdown.vue';
 import { useI18n } from '../i18n';
-import { apiGet, apiPost, buildApiUrl } from '../services/api';
+import { apiGet, apiPost } from '../services/api';
 import { useSession } from '../stores/session';
 import { signalSeverity, type JsonRecord } from '../utils/format';
-import { applyRunStreamEvent, createLiveRunViewState, type LiveRunViewState } from '../utils/runDisplay';
+import { createLiveRunViewState, type LiveRunViewState } from '../utils/runDisplay';
 import {
   buildAnalysisRequestPayload,
   buildStockSearchPath,
+  formatAnalysisDate,
   marketProfileForStockMarket,
   normalizeStockOptions,
+  parseAnalysisDate,
   type StockCatalogOption,
   type StockMarketOption,
 } from './analyzeStockSelection';
 
+const router = useRouter();
 const session = useSession();
 const canWrite = computed(() => session.canWrite.value);
 const providers = ref<JsonRecord[]>([]);
 const stockMarkets = ref<StockMarketOption[]>([]);
 const stocks = ref<Required<StockCatalogOption>[]>([]);
+const selectedStock = ref<Required<StockCatalogOption> | string | null>(null);
 const currentRun = ref<JsonRecord | null>(null);
 const error = ref('');
 const notice = ref('');
 const submitting = ref(false);
 const stockLoading = ref(false);
-const refreshingStocks = ref(false);
 const liveState = ref<LiveRunViewState>(createLiveRunViewState());
-let eventSource: EventSource | null = null;
+const lastStockQuery = ref('');
 const { t } = useI18n();
 
 const today = new Date().toISOString().slice(0, 10);
@@ -200,6 +286,15 @@ const form = reactive({
   output_language: 'English',
   market_profile: 'default',
   analysts: ['market', 'social', 'news', 'fundamentals'],
+  max_risk_discuss_rounds: '1',
+  max_recur_limit: '100',
+  checkpoint_enabled: false,
+  benchmark_ticker: '',
+  backend_url: '',
+  temperature: '',
+  google_thinking_level: '',
+  openai_reasoning_effort: '',
+  anthropic_effort: '',
 });
 
 const analystOptions = computed(() => [
@@ -222,6 +317,19 @@ const languageOptions = computed(() => [
   { label: t('analysis.languageFrench'), value: 'French' },
   { label: t('analysis.languageGerman'), value: 'German' },
 ]);
+const googleThinkingOptions = computed(() => [
+  { label: t('common.default'), value: '' },
+  { label: t('settings.effortHigh'), value: 'high' },
+  { label: t('settings.effortMedium'), value: 'medium' },
+  { label: t('settings.effortLow'), value: 'low' },
+  { label: t('settings.effortMinimal'), value: 'minimal' },
+]);
+const reasoningEffortOptions = computed(() => [
+  { label: t('common.default'), value: '' },
+  { label: t('settings.effortHigh'), value: 'high' },
+  { label: t('settings.effortMedium'), value: 'medium' },
+  { label: t('settings.effortLow'), value: 'low' },
+]);
 const marketProfileOptions = computed(() => [
   { label: t('analysis.marketDefault'), value: 'default' },
   { label: t('analysis.marketChinaA'), value: 'cn_a' },
@@ -238,6 +346,10 @@ const stockMarketOptions = computed(() => (
   label: stockMarketLabel(option.value, option.label),
 })));
 const stockOptions = computed(() => stocks.value);
+const modelSelectPt = {
+  label: { class: 'uno-block uno-max-w-full uno-overflow-hidden uno-text-ellipsis uno-whitespace-nowrap' },
+  optionLabel: { class: 'uno-block uno-max-w-full uno-overflow-hidden uno-text-ellipsis uno-whitespace-nowrap' },
+};
 
 const providerOptions = computed(() => providers.value.map((provider) => ({
   label: provider.display_name || provider.provider,
@@ -255,11 +367,21 @@ const runMetrics = computed(() => [
   { label: t('common.status'), value: liveState.value.status || currentRun.value?.status || t('common.idle') },
   { label: t('common.signal'), value: liveState.value.signal || currentRun.value?.signal || t('common.pending') },
 ]);
+const analysisDate = computed<Date | null>({
+  get: () => parseAnalysisDate(form.date),
+  set: (value) => {
+    form.date = formatAnalysisDate(value) || today;
+  },
+});
 
 function syncProviderModels() {
   const provider = selectedProvider.value;
-  form.quick_think_model = provider?.quick_models?.[0]?.value || '';
-  form.deep_think_model = provider?.deep_models?.[0]?.value || '';
+  if (!form.quick_think_model) {
+    form.quick_think_model = provider?.quick_models?.[0]?.value || '';
+  }
+  if (!form.deep_think_model) {
+    form.deep_think_model = provider?.deep_models?.[0]?.value || '';
+  }
 }
 
 async function loadProviders() {
@@ -272,6 +394,31 @@ async function loadProviders() {
     syncProviderModels();
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('analysis.providersLoadError');
+  }
+}
+
+async function loadSettingsDefaults() {
+  try {
+    const settings = await apiGet<JsonRecord>('/api/settings', session.apiContext.value);
+    const llm = settings.llm || {};
+    const analysis = settings.analysis || {};
+    form.llm_provider = String(llm.provider || form.llm_provider);
+    form.quick_think_model = String(llm.quick_think_model || form.quick_think_model);
+    form.deep_think_model = String(llm.deep_think_model || form.deep_think_model);
+    form.output_language = String(analysis.output_language || form.output_language);
+    form.market_profile = String(analysis.market_profile || form.market_profile);
+    form.research_depth = Number(analysis.research_depth || form.research_depth);
+    form.max_risk_discuss_rounds = String(analysis.max_risk_discuss_rounds ?? form.max_risk_discuss_rounds);
+    form.max_recur_limit = String(analysis.max_recur_limit ?? form.max_recur_limit);
+    form.checkpoint_enabled = Boolean(analysis.checkpoint_enabled);
+    form.benchmark_ticker = String(analysis.benchmark_ticker || '');
+    form.backend_url = String(llm.backend_url || '');
+    form.temperature = llm.temperature === null || llm.temperature === undefined ? '' : String(llm.temperature);
+    form.google_thinking_level = String(llm.google_thinking_level || '');
+    form.openai_reasoning_effort = String(llm.openai_reasoning_effort || '');
+    form.anthropic_effort = String(llm.anthropic_effort || '');
+  } catch (exc) {
+    error.value = exc instanceof Error ? exc.message : t('settings.loadError');
   }
 }
 
@@ -288,6 +435,7 @@ async function loadStockMarkets() {
 }
 
 async function loadStocks(query = '') {
+  lastStockQuery.value = query;
   stockLoading.value = true;
   try {
     const rows = await apiGet<StockCatalogOption[]>(
@@ -295,6 +443,12 @@ async function loadStocks(query = '') {
       session.apiContext.value,
     );
     stocks.value = normalizeStockOptions(rows);
+    if (form.ticker) {
+      const exactMatch = stocks.value.find((item) => item.symbol === form.ticker);
+      if (exactMatch) {
+        selectedStock.value = exactMatch;
+      }
+    }
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('analysis.stocksLoadError');
   } finally {
@@ -306,26 +460,31 @@ async function handleStockMarketChange() {
   form.ticker = '';
   form.market_profile = marketProfileForStockMarket(form.stock_market);
   stocks.value = [];
+  selectedStock.value = null;
+  lastStockQuery.value = '';
   await loadStocks();
 }
 
-async function onStockFilter(event: { value?: string }) {
-  await loadStocks(event.value || '');
+async function onStockComplete(event: { query?: string }) {
+  await loadStocks(event.query || '');
 }
 
-async function refreshStockCatalog() {
+function clearSelectedStock() {
+  selectedStock.value = null;
+  form.ticker = '';
+}
+
+async function handleExternalStockCatalogRefresh() {
   error.value = '';
+  notice.value = t('analysis.stocksRefreshed');
+  await loadStocks(lastStockQuery.value);
+}
+
+function handleExternalStockCatalogRefreshFailure(event: Event) {
   notice.value = '';
-  refreshingStocks.value = true;
-  try {
-    await apiPost<JsonRecord>('/api/stocks/refresh', { force: true }, session.apiContext.value);
-    notice.value = t('analysis.stocksRefreshed');
-    await loadStocks();
-  } catch (exc) {
-    error.value = exc instanceof Error ? exc.message : t('analysis.stocksLoadError');
-  } finally {
-    refreshingStocks.value = false;
-  }
+  error.value = event instanceof CustomEvent && typeof event.detail === 'string' && event.detail
+    ? event.detail
+    : t('analysis.stocksLoadError');
 }
 
 function buildRequest() {
@@ -342,44 +501,22 @@ async function startRun() {
   submitting.value = true;
   try {
     currentRun.value = await apiPost<JsonRecord>('/api/runs', buildRequest(), session.apiContext.value);
-    notice.value = t('analysis.queuedNotice', { ticker: String(currentRun.value.ticker) });
     liveState.value = {
       ...createLiveRunViewState(),
       status: String(currentRun.value.status || 'queued'),
       logLines: [t('analysis.runCreated', { runId: String(currentRun.value.run_id) })],
     };
-    startEvents(String(currentRun.value.run_id));
+    await router.push({
+      name: 'runs',
+      query: {
+        market: form.stock_market,
+        ticker: form.ticker,
+      },
+    });
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('analysis.startError');
   } finally {
     submitting.value = false;
-  }
-}
-
-function startEvents(runId: string) {
-  eventSource?.close();
-  const url = buildApiUrl(`/api/runs/${encodeURIComponent(runId)}/events`, session.apiContext.value);
-  eventSource = new EventSource(url);
-  for (const name of ['queued', 'progress', 'terminal_output', 'agent_status', 'report_update', 'complete', 'cancelled', 'error']) {
-    eventSource.addEventListener(name, (event) => {
-      const payload = 'data' in event ? String((event as MessageEvent).data || '') : '';
-      liveState.value = applyRunStreamEvent(
-        liveState.value,
-        name,
-        payload,
-        new Date().toLocaleTimeString(),
-      );
-      if (currentRun.value && liveState.value.status) {
-        currentRun.value = {
-          ...currentRun.value,
-          status: liveState.value.status,
-          signal: liveState.value.signal || currentRun.value.signal,
-        };
-      }
-      if (name === 'complete' || name === 'cancelled' || name === 'error') {
-        eventSource?.close();
-      }
-    });
   }
 }
 
@@ -400,12 +537,29 @@ async function cancelRun() {
 }
 
 async function loadInitialData() {
-  await Promise.all([loadProviders(), loadStockMarkets()]);
+  await Promise.all([loadProviders(), loadStockMarkets(), loadSettingsDefaults()]);
   await loadStocks();
 }
 
-onMounted(loadInitialData);
-onBeforeUnmount(() => eventSource?.close());
+watch(selectedStock, (value) => {
+  if (!value) {
+    form.ticker = '';
+    return;
+  }
+  if (typeof value === 'object') {
+    form.ticker = value.symbol;
+  }
+});
+
+onMounted(() => {
+  window.addEventListener('tradingagents:stock-catalog-refreshed', handleExternalStockCatalogRefresh);
+  window.addEventListener('tradingagents:stock-catalog-refresh-failed', handleExternalStockCatalogRefreshFailure);
+  void loadInitialData();
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('tradingagents:stock-catalog-refreshed', handleExternalStockCatalogRefresh);
+  window.removeEventListener('tradingagents:stock-catalog-refresh-failed', handleExternalStockCatalogRefreshFailure);
+});
 
 function stockMarketLabel(value: string, fallback: string): string {
   switch (value) {

@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAnalysisRequestPayload,
   buildStockSearchPath,
+  formatAnalysisDate,
   marketProfileForStockMarket,
   normalizeStockOptions,
+  parseAnalysisDate,
 } from './analyzeStockSelection';
 
 describe('analyze stock selection helpers', () => {
@@ -53,9 +55,36 @@ describe('analyze stock selection helpers', () => {
       research_depth: 3,
       output_language: 'Chinese',
       market_profile: 'default',
+      max_risk_discuss_rounds: 2,
+      max_recur_limit: 150,
+      checkpoint_enabled: true,
+      benchmark_ticker: 'QQQ',
+      backend_url: 'https://example.invalid/v1',
+      temperature: 0.2,
+      google_thinking_level: 'high',
+      openai_reasoning_effort: 'medium',
+      anthropic_effort: 'low',
     });
 
     expect(payload.market_profile).toBe('cn_a');
     expect(payload.ticker).toBe('600519.SS');
+    expect(payload.max_risk_discuss_rounds).toBe(2);
+    expect(payload.max_recur_limit).toBe(150);
+    expect(payload.checkpoint_enabled).toBe(true);
+    expect(payload.benchmark_ticker).toBe('QQQ');
+    expect(payload.backend_url).toBe('https://example.invalid/v1');
+    expect(payload.temperature).toBe(0.2);
+    expect(payload.google_thinking_level).toBe('high');
+    expect(payload.openai_reasoning_effort).toBe('medium');
+    expect(payload.anthropic_effort).toBe('low');
+  });
+
+  it('round-trips date picker values as yyyy-mm-dd strings', () => {
+    const parsed = parseAnalysisDate('2026-07-03');
+
+    expect(parsed).toBeInstanceOf(Date);
+    expect(formatAnalysisDate(parsed)).toBe('2026-07-03');
+    expect(parseAnalysisDate('')).toBeNull();
+    expect(formatAnalysisDate(null)).toBe('');
   });
 });
