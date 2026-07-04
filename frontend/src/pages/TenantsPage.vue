@@ -58,6 +58,15 @@
     <Card>
       <template #title>{{ t('tenants.directory') }}</template>
       <template #content>
+        <label class="uno-mb-3 uno-inline-flex uno-items-center uno-gap-2 uno-text-sm uno-text-[#486266]">
+          <input
+            data-testid="show-archived-toggle"
+            v-model="showArchived"
+            type="checkbox"
+            @change="loadTenants"
+          >
+          <span>{{ t('tenants.showArchived') }}</span>
+        </label>
         <div class="uno-overflow-x-auto">
           <table class="uno-min-w-full uno-border-collapse uno-text-sm">
             <thead>
@@ -100,13 +109,12 @@
                     />
                     <Button
                       :data-testid="`archive-tenant-${tenant.tenant_id}`"
-                      icon="pi pi-box"
-                      :label="t('tenants.archiveTenant')"
-                      severity="danger"
+                      :icon="tenant.archived ? 'pi pi-history' : 'pi pi-box'"
+                      :label="tenant.archived ? t('tenants.unarchiveTenant') : t('tenants.archiveTenant')"
+                      :severity="tenant.archived ? 'secondary' : 'danger'"
                       outlined
-                      :disabled="tenant.archived"
                       :loading="tenant.archiving"
-                      @click="archiveTenant(tenant)"
+                      @click="toggleTenantArchived(tenant)"
                     />
                     <Message v-if="tenant.error" severity="error" :closable="false">{{ tenant.error }}</Message>
                   </div>
@@ -158,6 +166,7 @@ const pageError = ref('');
 const createError = ref('');
 const notice = ref('');
 const tenants = ref<ManagedTenant[]>([]);
+const showArchived = ref(false);
 const createForm = reactive({
   tenant_id: '',
   display_name: '',
@@ -205,7 +214,8 @@ async function loadTenants() {
   loading.value = true;
   pageError.value = '';
   try {
-    const payload = await apiGet<{ tenants: AdminTenantResponse[] }>('/api/admin/tenants');
+    const path = showArchived.value ? '/api/admin/tenants?include_archived=true' : '/api/admin/tenants';
+    const payload = await apiGet<{ tenants: AdminTenantResponse[] }>(path);
     tenants.value = payload.tenants.map(decorateTenant);
   } catch (exc) {
     pageError.value = exc instanceof Error ? exc.message : t('tenants.loadError');
@@ -264,16 +274,19 @@ async function toggleTenantDisabled(tenant: ManagedTenant) {
   }
 }
 
-async function archiveTenant(tenant: ManagedTenant) {
+async function toggleTenantArchived(tenant: ManagedTenant) {
   tenant.archiving = true;
   tenant.error = '';
   notice.value = '';
   try {
+    const archived = !tenant.archived;
     const payload = await apiPatch<{ tenant: AdminTenantResponse }>(
       `/api/admin/tenants/${encodeURIComponent(tenant.tenant_id)}`,
-      { archived: true },
+      { archived },
     );
-    notice.value = t('tenants.tenantArchived', { tenantId: payload.tenant.tenant_id });
+    notice.value = archived
+      ? t('tenants.tenantArchived', { tenantId: payload.tenant.tenant_id })
+      : t('tenants.tenantUnarchived', { tenantId: payload.tenant.tenant_id });
     await loadTenants();
   } catch (exc) {
     tenant.error = exc instanceof Error ? exc.message : t('tenants.updateError');

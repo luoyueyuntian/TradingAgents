@@ -327,6 +327,32 @@ def test_disable_and_archive_tenant(monkeypatch, tmp_path):
     assert [tenant["tenant_id"] for tenant in listed.json()["tenants"]] == ["tenant-a"]
 
 
+def test_list_tenants_can_include_archived_records(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store)
+    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
+    _create_user(
+        store,
+        username="admin-b",
+        email="admin-b@example.com",
+        display_name="Admin B",
+        role="admin",
+        tenant_id="tenant-b",
+    )
+    store.update_tenant("tenant-b", archived=True)
+    _login(client)
+
+    default_response = client.get("/api/admin/tenants")
+    assert default_response.status_code == 200
+    assert [tenant["tenant_id"] for tenant in default_response.json()["tenants"]] == ["tenant-a"]
+
+    archived_response = client.get("/api/admin/tenants?include_archived=true")
+    assert archived_response.status_code == 200
+    archived_payload = archived_response.json()["tenants"]
+    assert [tenant["tenant_id"] for tenant in archived_payload] == ["tenant-a", "tenant-b"]
+    assert archived_payload[1]["archived"] is True
+
+
 @pytest.mark.parametrize(
     ("update_payload", "expected_detail"),
     [

@@ -84,10 +84,10 @@ def _map_store_error(exc: ValueError) -> HTTPException:
 
 
 @router.get("", response_model=dict[str, list[AdminTenantResponse]])
-def list_tenants(request: Request) -> dict[str, list[AdminTenantResponse]]:
+def list_tenants(request: Request, include_archived: bool = False) -> dict[str, list[AdminTenantResponse]]:
     _require_admin_user(request)
     store = _get_store()
-    tenants = store.list_tenants()
+    tenants = store.list_tenants(include_archived=include_archived)
     return {"tenants": [_build_tenant_response(store, tenant) for tenant in tenants]}
 
 

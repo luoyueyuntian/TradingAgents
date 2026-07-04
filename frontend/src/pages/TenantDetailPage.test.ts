@@ -249,4 +249,42 @@ describe('TenantDetailPage', () => {
 
     expect(apiPatch).toHaveBeenCalledWith('/api/admin/tenants/tenant-a', { disabled: true });
   });
+
+  it('sends archived false when unarchiving from the tenant detail page', async () => {
+    apiGet.mockResolvedValue({
+      tenant: {
+        id: 'tenant-row-1',
+        tenant_id: 'tenant-a',
+        display_name: 'Tenant A',
+        disabled: false,
+        archived: true,
+        user_count: 2,
+        active_admin_count: 1,
+        created_at: '2026-07-04T08:00:00Z',
+        updated_at: '2026-07-04T09:00:00Z',
+      },
+    });
+    apiPatch.mockResolvedValue({
+      tenant: {
+        id: 'tenant-row-1',
+        tenant_id: 'tenant-a',
+        display_name: 'Tenant A',
+        disabled: false,
+        archived: false,
+        user_count: 2,
+        active_admin_count: 1,
+        created_at: '2026-07-04T08:00:00Z',
+        updated_at: '2026-07-04T09:30:00Z',
+      },
+    });
+
+    const wrapper = mountPage();
+    mountedWrapper = wrapper;
+    await flushPromises();
+
+    await wrapper.get('[data-testid="archive-tenant"]').trigger('click');
+    await flushPromises();
+
+    expect(apiPatch).toHaveBeenCalledWith('/api/admin/tenants/tenant-a', { archived: false });
+  });
 });
