@@ -637,7 +637,10 @@ class StockGroup(BaseModel):
     @field_validator("tickers", mode="before")
     @classmethod
     def _normalize_tickers(cls, value) -> list[str]:
-        return _normalize_ticker_list(value)
+        tickers = _normalize_ticker_list(value)
+        if not tickers:
+            raise ValueError("tickers must not be empty")
+        return tickers
 
 
 class ManualStockSelection(BaseModel):

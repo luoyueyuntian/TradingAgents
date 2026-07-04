@@ -33,6 +33,11 @@ def test_stock_group_update_normalizes_name_and_tickers():
     assert group.tickers == ["NVDA", "MSFT", "AAPL"]
 
 
+def test_stock_group_saved_model_rejects_empty_ticker_list():
+    with pytest.raises(ValidationError, match="tickers.*must not be empty"):
+        StockGroup(id="group-1", name="AI Leaders", tickers=[], created_at="2026-07-01T12:00:00", updated_at="2026-07-01T12:00:00")
+
+
 def test_stock_group_create_rejects_blank_name():
     with pytest.raises(ValidationError, match="name.*must not be blank"):
         StockGroupCreate(name="   ", tickers=["NVDA"])
