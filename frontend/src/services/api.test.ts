@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { apiGet, buildApiUrl, createApiError } from './api';
+import { apiGet, buildApiUrl, createApiError, registerApiAuthInvalidationHandler } from './api';
 
 describe('api service', () => {
   it('adds tenant and token query parameters for browser APIs that cannot send headers', () => {
@@ -56,6 +56,53 @@ describe('api service', () => {
       message: 'Unauthorized',
       status: 401,
     });
+  });
+
+  it.each([
+    'Tenant is disabled',
+    'Tenant is archived',
+  ])('runs auth invalidation handlers for tenant-state 403 responses on non-auth requests: %s', async (detail) => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail }), {
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const invalidationHandler = vi.fn();
+    const unregister = registerApiAuthInvalidationHandler(invalidationHandler);
+
+    try {
+      await expect(apiGet('/api/runs', { fetchImpl: fetchMock })).rejects.toMatchObject({
+        message: detail,
+        status: 403,
+      });
+      expect(invalidationHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      unregister();
+    }
+  });
+
+  it('does not run auth invalidation handlers for unrelated 403 responses', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'Forbidden' }), {
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const invalidationHandler = vi.fn();
+    const unregister = registerApiAuthInvalidationHandler(invalidationHandler);
+
+    try {
+      await expect(apiGet('/api/runs', { fetchImpl: fetchMock })).rejects.toMatchObject({
+        message: 'Forbidden',
+        status: 403,
+      });
+      expect(invalidationHandler).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
   });
 
   it('sends tenant and token headers for JSON fetch requests', async () => {
