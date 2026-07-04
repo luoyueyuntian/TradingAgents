@@ -9,7 +9,9 @@ from copy import deepcopy
 from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import load_settings, save_settings
 
+from .runner import TERMINAL_RUN_STATUSES, get_service
 from .schemas import (
+    AnalysisRequest,
     ManualStockSelection,
     OneTimeTask,
     OneTimeTaskCreate,
@@ -32,6 +34,11 @@ def _now(now: datetime.datetime | None = None) -> datetime.datetime:
 
 def _now_iso(now: datetime.datetime | None = None) -> str:
     return _now(now).isoformat(timespec="seconds")
+
+
+def _infer_asset_type(ticker: str) -> str:
+    normalized = ticker.strip().upper()
+    return "crypto" if "-USD" in normalized else "stock"
 
 
 def _load_settings_for_update(settings_path) -> dict:
@@ -222,3 +229,112 @@ def get_one_time_task_page(
     start = max(page - 1, 0) * page_size
     end = start + page_size
     return OneTimeTaskPage(items=tasks[start:end], page=page, page_size=page_size, total_count=len(tasks))
+
+
+def refresh_one_time_tasks(
+    tenant_id: str | None = None,
+    *,
+    now: datetime.datetime | None = None,
+) -> None:
+    tasks = _load_one_time_tasks_raw(tenant_id)
+    service = get_service(tenant_id)
+    timestamp = _now_iso(now)
+    changed = False
+
+    for index, task in enumerate(tasks):
+        if task.status not in {"queued", "running"} or not task.run_ids:
+            continue
+
+        statuses = {str(run.status) for run in (service.get_run(run_id) for run_id in task.run_ids) if run is not None}
+        next_status = task.status
+        if "running" in statuses:
+            next_status = "running"
+        elif statuses and statuses <= TERMINAL_RUN_STATUSES:
+            next_status = "completed"
+        elif "queued" in statuses:
+            next_status = "queued"
+
+        if next_status == task.status and (next_status != "completed" or task.completed_at is not None):
+            continue
+
+        tasks[index] = task.model_copy(
+            update={
+                "status": next_status,
+                "completed_at": timestamp if next_status == "completed" else task.completed_at,
+                "updated_at": timestamp,
+            }
+        )
+        changed = True
+
+    if changed:
+        _save_one_time_tasks_raw(tenant_id, tasks)
+
+
+def process_due_one_time_tasks(
+    tenant_id: str | None = None,
+    *,
+    now: datetime.datetime | None = None,
+    start_worker: bool = True,
+) -> int:
+    tasks = _load_one_time_tasks_raw(tenant_id)
+    service = get_service(tenant_id)
+    resolved_now = _now(now)
+    timestamp = _now_iso(resolved_now)
+    current_slot = resolved_now.strftime("%Y-%m-%d %H:%M")
+    changed = False
+    queued_total = 0
+    settings = service.load_tenant_settings()
+
+    for index, task in enumerate(tasks):
+        if task.status != "scheduled":
+            continue
+
+        if task.scheduled_for < current_slot:
+            tasks[index] = task.model_copy(update={"status": "missed", "updated_at": timestamp})
+            changed = True
+            continue
+
+        if task.scheduled_for != current_slot:
+            continue
+
+        run_ids: list[str] = []
+        for ticker in task.selection_snapshot.resolved_tickers:
+            request = AnalysisRequest(
+                ticker=ticker,
+                date=task.analysis_date,
+                asset_type=_infer_asset_type(ticker),
+                analysts=task.analysis_config.analysts,
+                llm_provider=task.analysis_config.llm_provider,
+                deep_think_model=task.analysis_config.deep_think_model,
+                quick_think_model=task.analysis_config.quick_think_model,
+                research_depth=task.analysis_config.research_depth,
+                output_language=task.analysis_config.output_language,
+                market_profile=task.analysis_config.market_profile,
+                max_risk_discuss_rounds=task.analysis_config.max_risk_discuss_rounds,
+                max_recur_limit=task.analysis_config.max_recur_limit,
+                checkpoint_enabled=task.analysis_config.checkpoint_enabled,
+                benchmark_ticker=task.analysis_config.benchmark_ticker,
+                backend_url=task.analysis_config.backend_url,
+                temperature=task.analysis_config.temperature,
+                google_thinking_level=task.analysis_config.google_thinking_level,
+                openai_reasoning_effort=task.analysis_config.openai_reasoning_effort,
+                anthropic_effort=task.analysis_config.anthropic_effort,
+            )
+            run = service.create_run(request, start_worker=start_worker, settings=settings)
+            run_ids.append(run.run_id)
+
+        tasks[index] = task.model_copy(
+            update={
+                "status": "queued",
+                "triggered_at": timestamp,
+                "updated_at": timestamp,
+                "last_queued_count": len(run_ids),
+                "run_ids": run_ids,
+            }
+        )
+        queued_total += len(run_ids)
+        changed = True
+
+    if changed:
+        _save_one_time_tasks_raw(tenant_id, tasks)
+    return queued_total
