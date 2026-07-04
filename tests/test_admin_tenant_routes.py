@@ -569,6 +569,39 @@ def test_tenant_scoped_user_delete_protects_last_active_admin(monkeypatch, tmp_p
     assert response.json()["detail"] == "Cannot remove the last active admin from tenant"
 
 
+def test_tenant_scoped_user_delete_allows_last_admin_cleanup_for_disabled_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    _create_user(
+        store,
+        username="tenant-c-admin",
+        email="tenant-c-admin@example.com",
+        display_name="Tenant C Admin",
+        role="admin",
+        tenant_id="tenant-c",
+        must_change_password=False,
+    )
+    sole_tenant_b_admin = _create_user(
+        store,
+        username="tenant-b-admin",
+        email="tenant-b-admin@example.com",
+        display_name="Tenant B Admin",
+        role="admin",
+        tenant_id="tenant-b",
+        must_change_password=False,
+    )
+    store.update_tenant("tenant-b", disabled=True)
+    _login(client)
+
+    response = client.delete(f"/api/admin/tenants/tenant-b/users/{sole_tenant_b_admin.id}")
+
+    assert response.status_code == 200
+    assert response.json()["user"]["disabled"] is True
+    refreshed = store.get_user(sole_tenant_b_admin.id)
+    assert refreshed is not None
+    assert refreshed.disabled is True
+
+
 def test_tenant_scoped_user_update_rejects_archived_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", must_change_password=False)

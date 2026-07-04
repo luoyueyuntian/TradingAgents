@@ -944,6 +944,60 @@ def test_delete_user_transactionally_protects_last_active_admin(tmp_path):
     assert refreshed.disabled is False
 
 
+@pytest.mark.parametrize("tenant_updates", [{"disabled": True}, {"archived": True}])
+def test_update_user_allows_last_admin_cleanup_when_tenant_is_unavailable(tmp_path, tenant_updates):
+    store = UserStore(tmp_path / "auth.db")
+    _create_user(
+        store,
+        username="other-admin",
+        email="other-admin@example.com",
+        role="admin",
+        tenant_id="tenant-b",
+    )
+    sole_admin = _create_user(
+        store,
+        username="sole-admin",
+        email="sole-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+    store.update_tenant("tenant-a", **tenant_updates)
+
+    updated = store.update_user(sole_admin.id, role="viewer")
+
+    assert updated.role == "viewer"
+    refreshed = store.get_user(sole_admin.id)
+    assert refreshed is not None
+    assert refreshed.role == "viewer"
+
+
+@pytest.mark.parametrize("tenant_updates", [{"disabled": True}, {"archived": True}])
+def test_delete_user_allows_last_admin_cleanup_when_tenant_is_unavailable(tmp_path, tenant_updates):
+    store = UserStore(tmp_path / "auth.db")
+    _create_user(
+        store,
+        username="other-admin",
+        email="other-admin@example.com",
+        role="admin",
+        tenant_id="tenant-b",
+    )
+    sole_admin = _create_user(
+        store,
+        username="sole-admin",
+        email="sole-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+    store.update_tenant("tenant-a", **tenant_updates)
+
+    deleted = store.delete_user(sole_admin.id)
+
+    assert deleted.disabled is True
+    refreshed = store.get_user(sole_admin.id)
+    assert refreshed is not None
+    assert refreshed.disabled is True
+
+
 def test_archive_tenant_lifecycle_create_update_and_list(tmp_path):
     store = UserStore(tmp_path / "auth.db")
 
