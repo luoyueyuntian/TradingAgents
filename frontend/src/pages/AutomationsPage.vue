@@ -211,6 +211,25 @@
                 </label>
                 <p v-if="!stockGroups.length" class="uno-text-[#6f8183]">No stock groups available yet.</p>
               </div>
+              <div v-if="selectedGroups.length" class="uno-mt-3 uno-flex uno-flex-wrap uno-gap-2">
+                <span
+                  v-for="group in selectedGroups"
+                  :key="group.id"
+                  :data-testid="`selected-group-chip-${group.id}`"
+                  class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
+                >
+                  {{ group.name }}
+                  <button
+                    type="button"
+                    :data-testid="`remove-selected-group-${group.id}`"
+                    class="uno-bg-transparent uno-p-0 uno-text-[#5f7376]"
+                    :disabled="!canWrite"
+                    @click="removeSelectedGroup(group.id)"
+                  >
+                    x
+                  </button>
+                </span>
+              </div>
               <label class="uno-mt-3 uno-flex uno-items-center uno-gap-[0.55rem]">
                 <input
                   v-model="oneTimeForm.includeWatchlist"
@@ -227,18 +246,30 @@
               data-testid="one-time-section-resolved-universe"
               class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3"
             >
-              <div class="uno-mb-2 uno-font-700">{{ t('automations.resolvedUniverse') }}</div>
+              <div class="uno-mb-2 uno-flex uno-items-center uno-justify-between uno-gap-3">
+                <span class="uno-font-700">{{ t('automations.resolvedUniverse') }}</span>
+                <span class="uno-text-sm uno-font-700 uno-text-[#5f7376]">{{ resolvedUniverseCountLabel }}</span>
+              </div>
               <div class="uno-flex uno-flex-wrap uno-gap-2">
                 <span
-                  v-for="ticker in resolvedTickers"
+                  v-for="ticker in visibleResolvedTickers"
                   :key="ticker"
                   :data-testid="`resolved-ticker-${ticker}`"
-                  class="uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
+                  class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
                 >
                   {{ ticker }}
+                  <button
+                    type="button"
+                    :data-testid="`remove-resolved-ticker-${ticker}`"
+                    class="uno-bg-transparent uno-p-0 uno-text-[#5f7376]"
+                    :disabled="!canWrite"
+                    @click="removeResolvedTicker(ticker)"
+                  >
+                    x
+                  </button>
                 </span>
               </div>
-              <p v-if="!resolvedTickers.length" class="uno-mt-2 uno-text-[#6f8183]">No stocks resolved yet.</p>
+              <p v-if="!visibleResolvedTickers.length" class="uno-mt-2 uno-text-[#6f8183]">No stocks resolved yet.</p>
             </section>
 
             <section
@@ -272,9 +303,9 @@
               <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                 <Button
                   icon="pi pi-save"
-                  :label="t('common.save')"
+                  :label="editingOneTimeTaskId ? 'Update' : t('common.save')"
                   data-testid="one-time-save"
-                  :disabled="!canWrite || !resolvedTickers.length"
+                  :disabled="!canWrite || !visibleResolvedTickers.length"
                   @click="saveOneTimeTask"
                 />
               </div>
@@ -299,6 +330,9 @@
               <small class="uno-text-[#6f8183]">
                 {{ task.scheduled_for || t('common.na') }} · {{ task.analysis_date || t('common.na') }}
               </small>
+              <div class="uno-mt-2 uno-text-sm uno-text-[#5f7376]">
+                {{ oneTimeTaskSourceSummary(task) }} · {{ oneTimeTaskFinalCount(task) }} stocks
+              </div>
               <div class="uno-mt-2 uno-flex uno-flex-wrap uno-gap-2">
                 <span
                   v-for="ticker in oneTimeTaskTickers(task)"
@@ -307,6 +341,28 @@
                 >
                   {{ ticker }}
                 </span>
+              </div>
+              <div
+                v-if="String(task.status || '').toLowerCase() === 'scheduled'"
+                class="uno-mt-[0.6rem] uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]"
+              >
+                <Button
+                  icon="pi pi-pencil"
+                  label="Edit"
+                  severity="secondary"
+                  :disabled="!canWrite"
+                  :data-testid="`edit-one-time-task-${task.id}`"
+                  @click="editOneTimeTask(task)"
+                />
+                <Button
+                  icon="pi pi-ban"
+                  label="Cancel"
+                  severity="secondary"
+                  outlined
+                  :disabled="!canWrite"
+                  :data-testid="`cancel-one-time-task-${task.id}`"
+                  @click="cancelOneTimeTask(task)"
+                />
               </div>
             </div>
           </div>
@@ -357,6 +413,8 @@ const watchlist = ref<JsonRecord[]>([]);
 const manualStockOptions = ref<Required<StockCatalogOption>[]>([]);
 const manualStockMarket = ref('us');
 const selectedManualStockSymbol = ref('');
+const editingOneTimeTaskId = ref('');
+const excludedResolvedTickers = ref<string[]>([]);
 const error = ref('');
 const { t } = useI18n();
 const form = reactive({
@@ -473,6 +531,8 @@ const resolvedTickers = computed(() => mergeResolvedTickers({
   includeWatchlist: oneTimeForm.includeWatchlist,
   watchlistTickers: watchlistTickers.value,
 }));
+const visibleResolvedTickers = computed(() => resolvedTickers.value.filter((ticker) => !excludedResolvedTickers.value.includes(ticker)));
+const resolvedUniverseCountLabel = computed(() => `${visibleResolvedTickers.value.length} stocks`);
 
 function syncProviderModels() {
   const provider = selectedProvider.value;
@@ -584,6 +644,7 @@ function addManualStock() {
 
 function removeManualStockItem(symbol: string) {
   oneTimeForm.manualStocks = removeManualStock(oneTimeForm.manualStocks, symbol);
+  excludedResolvedTickers.value = excludedResolvedTickers.value.filter((ticker) => ticker !== symbol.trim().toUpperCase());
 }
 
 function toggleSelectedGroup(groupId: string, checked: boolean) {
@@ -594,6 +655,42 @@ function toggleSelectedGroup(groupId: string, checked: boolean) {
     next.delete(groupId);
   }
   oneTimeForm.selectedGroupIds = [...next];
+}
+
+function removeSelectedGroup(groupId: string) {
+  toggleSelectedGroup(groupId, false);
+}
+
+function removeResolvedTicker(ticker: string) {
+  const normalizedTicker = ticker.trim().toUpperCase();
+  if (!normalizedTicker || excludedResolvedTickers.value.includes(normalizedTicker)) {
+    return;
+  }
+  oneTimeForm.manualStocks = removeManualStock(oneTimeForm.manualStocks, normalizedTicker);
+  const groupWithTicker = selectedGroups.value.find((group) => group.tickers.map((value) => value.trim().toUpperCase()).includes(normalizedTicker));
+  if (groupWithTicker) {
+    removeSelectedGroup(groupWithTicker.id);
+  }
+  if (oneTimeForm.includeWatchlist && watchlistTickers.value.map((value) => value.trim().toUpperCase()).includes(normalizedTicker)) {
+    oneTimeForm.includeWatchlist = false;
+  }
+  if (!excludedResolvedTickers.value.includes(normalizedTicker)) {
+    excludedResolvedTickers.value = [...excludedResolvedTickers.value, normalizedTicker];
+  }
+}
+
+function resetOneTimeBuilderState() {
+  Object.assign(oneTimeForm, {
+    name: '',
+    scheduledFor: '',
+    analysisDate: '',
+    manualStocks: [],
+    selectedGroupIds: [],
+    includeWatchlist: false,
+  });
+  editingOneTimeTaskId.value = '';
+  excludedResolvedTickers.value = [];
+  selectedManualStockSymbol.value = '';
 }
 
 async function saveRule() {
@@ -614,7 +711,7 @@ async function saveRule() {
 }
 
 async function saveOneTimeTask() {
-  if (!oneTimeForm.name.trim() || !oneTimeForm.scheduledFor.trim() || !oneTimeForm.analysisDate || !resolvedTickers.value.length) {
+  if (!oneTimeForm.name.trim() || !oneTimeForm.scheduledFor.trim() || !oneTimeForm.analysisDate || !visibleResolvedTickers.value.length) {
     return;
   }
   const payloadForm = {
@@ -622,17 +719,15 @@ async function saveOneTimeTask() {
     analysts: [...oneTimeForm.analysts],
     manualStocks: oneTimeForm.manualStocks.map((stock) => ({ ...stock })),
     selectedGroupIds: [...oneTimeForm.selectedGroupIds],
+    ...(editingOneTimeTaskId.value ? { id: editingOneTimeTaskId.value } : {}),
   };
-  await apiPost('/api/one-time-tasks', buildOneTimeTaskPayload(payloadForm), session.apiContext.value);
-  Object.assign(oneTimeForm, {
-    name: '',
-    scheduledFor: '',
-    analysisDate: '',
-    manualStocks: [],
-    selectedGroupIds: [],
-    includeWatchlist: false,
-  });
-  selectedManualStockSymbol.value = '';
+  const requestBody = buildOneTimeTaskPayload(payloadForm as typeof oneTimeForm);
+  if (editingOneTimeTaskId.value) {
+    await apiPatch(`/api/one-time-tasks/${encodeURIComponent(editingOneTimeTaskId.value)}`, requestBody, session.apiContext.value);
+  } else {
+    await apiPost('/api/one-time-tasks', requestBody, session.apiContext.value);
+  }
+  resetOneTimeBuilderState();
   await loadOneTimeTasks();
 }
 
@@ -689,6 +784,47 @@ function oneTimeTaskTickers(task: JsonRecord) {
     return ((snapshot as JsonRecord).resolved_tickers as unknown[]).map((item) => String(item));
   }
   return [];
+}
+
+function oneTimeTaskSourceSummary(task: JsonRecord) {
+  const snapshot = typeof task.selection_snapshot === 'object' && task.selection_snapshot ? task.selection_snapshot as JsonRecord : null;
+  const manualCount = Array.isArray(snapshot?.manual_stocks) ? snapshot.manual_stocks.length : Array.isArray(task.manual_stocks) ? task.manual_stocks.length : 0;
+  const groupCount = Array.isArray(snapshot?.group_snapshots) ? snapshot.group_snapshots.length : Array.isArray(task.group_ids) ? task.group_ids.length : 0;
+  const includeWatchlist = snapshot?.include_watchlist === true || task.include_watchlist === true;
+  const parts = [`Manual ${manualCount}`, `Groups ${groupCount}`];
+  parts.push(includeWatchlist ? 'Watchlist included' : 'Watchlist off');
+  return parts.join(' · ');
+}
+
+function oneTimeTaskFinalCount(task: JsonRecord) {
+  return oneTimeTaskTickers(task).length;
+}
+
+function editOneTimeTask(task: JsonRecord) {
+  const snapshot = typeof task.selection_snapshot === 'object' && task.selection_snapshot ? task.selection_snapshot as JsonRecord : null;
+  editingOneTimeTaskId.value = String(task.id || '');
+  excludedResolvedTickers.value = [];
+  Object.assign(oneTimeForm, {
+    name: String(task.name || ''),
+    scheduledFor: String(task.scheduled_for || ''),
+    analysisDate: String(task.analysis_date || ''),
+    manualStocks: Array.isArray(snapshot?.manual_stocks)
+      ? (snapshot.manual_stocks as ManualStockPick[]).map((stock) => ({ ...stock }))
+      : Array.isArray(task.manual_stocks)
+        ? (task.manual_stocks as ManualStockPick[]).map((stock) => ({ ...stock }))
+        : [],
+    selectedGroupIds: Array.isArray(snapshot?.group_snapshots)
+      ? (snapshot.group_snapshots as JsonRecord[]).map((group) => String(group.id || ''))
+      : Array.isArray(task.group_ids)
+        ? (task.group_ids as unknown[]).map((groupId) => String(groupId))
+        : [],
+    includeWatchlist: snapshot?.include_watchlist === true || task.include_watchlist === true,
+  });
+}
+
+async function cancelOneTimeTask(task: JsonRecord) {
+  await apiPost(`/api/one-time-tasks/${encodeURIComponent(String(task.id || ''))}/cancel`, {}, session.apiContext.value);
+  await loadOneTimeTasks();
 }
 
 onMounted(async () => {

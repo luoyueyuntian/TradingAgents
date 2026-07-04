@@ -11,6 +11,7 @@ const { apiGet, apiPost, apiPatch, apiDelete } = vi.hoisted(() => ({
 }));
 
 const buildOneTimeTaskPayload = vi.hoisted(() => vi.fn((form) => ({
+  id: form.id,
   builtFromName: form.name,
   manualStocks: form.manualStocks,
   selectedGroupIds: form.selectedGroupIds,
@@ -182,7 +183,13 @@ describe('AutomationsPage', () => {
               status: 'scheduled',
               scheduled_for: '2026-07-10 21:30',
               analysis_date: '2026-07-11',
+              manual_stocks: [{ market: 'us', symbol: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ' }],
+              group_ids: ['group-1'],
+              include_watchlist: true,
               selection_snapshot: {
+                manual_stocks: [{ market: 'us', symbol: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ' }],
+                group_snapshots: [{ id: 'group-1', name: 'AI Leaders', tickers: ['NVDA', 'MSFT'] }],
+                include_watchlist: true,
                 resolved_tickers: ['AAPL', 'NVDA', 'MSFT'],
               },
             },
@@ -228,12 +235,19 @@ describe('AutomationsPage', () => {
     expect(wrapper.text()).toContain('Night basket');
     expect(wrapper.text()).toContain('AAPL');
     expect(wrapper.text()).toContain('Scheduled');
+    expect(wrapper.text()).toContain('Manual 1');
+    expect(wrapper.text()).toContain('Groups 1');
+    expect(wrapper.text()).toContain('Watchlist included');
+    expect(wrapper.text()).toContain('3 stocks');
     expect(wrapper.find('[data-testid="one-time-task-builder"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="one-time-task-list"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="edit-one-time-task-task-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="cancel-one-time-task-task-1"]').exists()).toBe(true);
   });
 
-  it('keeps manual picks when switching markets and posts the builder payload for one-time tasks', async () => {
+  it('shows selected-group tokens, supports universe removals, and saves or edits one-time tasks', async () => {
     apiPost.mockResolvedValue({ id: 'task-2' });
+    apiPatch.mockResolvedValue({ id: 'task-1' });
 
     const wrapper = mountPage();
     await flushPromises();
@@ -267,11 +281,24 @@ describe('AutomationsPage', () => {
     await wrapper.get('[data-testid="one-time-include-watchlist"]').setValue(true);
     await flushPromises();
 
+    expect(wrapper.find('[data-testid="selected-group-chip-group-1"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('5 stocks');
     expect(wrapper.find('[data-testid="resolved-ticker-AAPL"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="resolved-ticker-0700.HK"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="resolved-ticker-NVDA"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="resolved-ticker-MSFT"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="resolved-ticker-TSLA"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="remove-resolved-ticker-TSLA"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="resolved-ticker-TSLA"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('4 stocks');
+
+    await wrapper.get('[data-testid="remove-selected-group-group-1"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="selected-group-chip-group-1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="resolved-ticker-NVDA"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="resolved-ticker-MSFT"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('2 stocks');
 
     await wrapper.get('[data-testid="one-time-save"]').trigger('click');
     await flushPromises();
@@ -281,8 +308,8 @@ describe('AutomationsPage', () => {
       name: 'Night basket',
       scheduledFor: '2026-07-10 21:30',
       analysisDate: '2026-07-11',
-      selectedGroupIds: ['group-1'],
-      includeWatchlist: true,
+      selectedGroupIds: [],
+      includeWatchlist: false,
       manualStocks: [
         expect.objectContaining({ market: 'us', symbol: 'AAPL' }),
         expect.objectContaining({ market: 'hk', symbol: '0700.HK' }),
@@ -294,8 +321,34 @@ describe('AutomationsPage', () => {
         expect.objectContaining({ market: 'us', symbol: 'AAPL' }),
         expect.objectContaining({ market: 'hk', symbol: '0700.HK' }),
       ],
+      selectedGroupIds: [],
+      includeWatchlist: false,
+    }, { tenantId: 'tenant-a', apiToken: 'token-a' });
+
+    await wrapper.get('[data-testid="edit-one-time-task-task-1"]').trigger('click');
+    await flushPromises();
+    expect((wrapper.get('[data-testid="one-time-name"]').element as HTMLInputElement).value).toBe('Night basket');
+    expect((wrapper.get('[data-testid="one-time-scheduled-for"]').element as HTMLInputElement).value).toBe('2026-07-10 21:30');
+    expect((wrapper.get('[data-testid="one-time-analysis-date"]').element as HTMLInputElement).value).toBe('2026-07-11');
+    expect(wrapper.find('[data-testid="selected-group-chip-group-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="resolved-ticker-AAPL"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="resolved-ticker-NVDA"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="resolved-ticker-MSFT"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="one-time-name"]').setValue('Night basket updated');
+    await wrapper.get('[data-testid="one-time-save"]').trigger('click');
+    await flushPromises();
+
+    expect(apiPatch).toHaveBeenCalledWith('/api/one-time-tasks/task-1', {
+      id: 'task-1',
+      builtFromName: 'Night basket updated',
+      manualStocks: [expect.objectContaining({ symbol: 'AAPL' })],
       selectedGroupIds: ['group-1'],
       includeWatchlist: true,
     }, { tenantId: 'tenant-a', apiToken: 'token-a' });
+
+    await wrapper.get('[data-testid="cancel-one-time-task-task-1"]').trigger('click');
+    await flushPromises();
+    expect(apiPost).toHaveBeenCalledWith('/api/one-time-tasks/task-1/cancel', {}, { tenantId: 'tenant-a', apiToken: 'token-a' });
   });
 });
