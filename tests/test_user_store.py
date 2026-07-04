@@ -81,6 +81,22 @@ def _table_info_by_column(db_path, table_name):
     return {row[1]: row for row in rows}
 
 
+def _ensure_tenant(store, tenant_id, display_name=None):
+    if tenant_id is None:
+        return None
+    try:
+        normalized_tenant_id = web_state_module.normalize_web_tenant_id(tenant_id)
+    except ValueError:
+        return None
+    tenant = store.get_tenant(normalized_tenant_id)
+    if tenant is None:
+        tenant = store.create_tenant(
+            normalized_tenant_id,
+            display_name=display_name or normalized_tenant_id,
+        )
+    return tenant
+
+
 def _create_user(store, **overrides):
     values = {
         "username": "alice",
@@ -93,6 +109,7 @@ def _create_user(store, **overrides):
         "must_change_password": False,
     }
     values.update(overrides)
+    _ensure_tenant(store, values["tenant_id"])
     return store.create_user(**values)
 
 
@@ -182,7 +199,29 @@ def test_ensure_schema_creates_tenants_table(tmp_path):
 def test_ensure_schema_backfills_tenants_from_existing_user_rows(tmp_path):
     db_path = tmp_path / "auth.db"
     store = UserStore(db_path)
-    store.ensure_schema()
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                password_salt TEXT NOT NULL,
+                password_updated_at TEXT,
+                must_change_password INTEGER NOT NULL DEFAULT 1,
+                expires_at TEXT,
+                disabled INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_login_at TEXT
+            )
+            """
+        )
     _insert_user_direct(
         db_path,
         id="user-a",
@@ -892,10 +931,32 @@ def test_archive_tenant_lifecycle_create_update_and_list(tmp_path):
         store.update_tenant("tenant-a", display_name=" ")
     with pytest.raises(ValueError, match="tenant_id"):
         store.create_tenant("../escape", display_name="Nope")
+    with pytest.raises(ValueError, match="disabled"):
+        store.update_tenant("tenant-a", disabled=2)
+    with pytest.raises(ValueError, match="archived"):
+        store.update_tenant("tenant-a", archived=-1)
     with pytest.raises(ValueError, match="no fields to update"):
         store.update_tenant("tenant-a")
     with pytest.raises(ValueError, match="tenant not found"):
         store.update_tenant("missing-tenant", display_name="Missing")
+
+
+def test_list_tenants_sorts_by_tenant_id_and_hides_archived_by_default(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    store.create_tenant("tenant-b", display_name="Tenant B")
+    store.create_tenant("tenant-a", display_name="Tenant A")
+    store.create_tenant("tenant-c", display_name="Tenant C")
+    store.update_tenant("tenant-b", archived=True)
+
+    assert [tenant.tenant_id for tenant in store.list_tenants()] == [
+        "tenant-a",
+        "tenant-c",
+    ]
+    assert [tenant.tenant_id for tenant in store.list_tenants(include_archived=True)] == [
+        "tenant-a",
+        "tenant-b",
+        "tenant-c",
+    ]
 
 
 def test_tenant_user_counts_are_scoped_to_target_tenant(tmp_path):
@@ -948,6 +1009,30 @@ def test_tenant_user_counts_are_scoped_to_target_tenant(tmp_path):
         "user_count": 1,
         "active_admin_count": 1,
     }
+
+
+def test_user_writes_reject_unknown_tenants_and_do_not_create_registry_rows(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    _ensure_tenant(store, "tenant-a")
+
+    with pytest.raises(ValueError, match="tenant not found"):
+        store.create_user(
+            username="unknown-tenant-user",
+            email="unknown-tenant-user@example.com",
+            display_name="Unknown Tenant User",
+            role="analyst",
+            tenant_id="tenant-missing",
+            password_hash="hash-missing",
+            password_salt="salt-missing",
+            must_change_password=False,
+        )
+    assert store.get_tenant("tenant-missing") is None
+
+    user = _create_user(store, tenant_id="tenant-a")
+
+    with pytest.raises(ValueError, match="tenant not found"):
+        store.update_user(user.id, tenant_id="tenant-other")
+    assert store.get_tenant("tenant-other") is None
 
 
 def test_record_audit_event_persists_normalized_tenant_and_metadata(tmp_path):
