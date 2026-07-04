@@ -57,6 +57,12 @@ from .automation import (
     run_automation_rule_now,
     update_automation_rule_enabled,
 )
+from .stock_groups import (
+    create_stock_group,
+    delete_stock_group,
+    list_stock_groups,
+    update_stock_group,
+)
 from .runner import (
     TERMINAL_RUN_STATUSES,
     build_terminal_event,
@@ -174,6 +180,9 @@ from .schemas import (
     StockCatalogRefreshRequest,
     StockCatalogRefreshResponse,
     StockMarketInfo,
+    StockGroup,
+    StockGroupCreate,
+    StockGroupUpdate,
     TenantInfo,
     TickerOverview,
     ToolVendorSettings,
@@ -5385,6 +5394,35 @@ async def get_run_timeline(run_id: str, request: Request):
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return list(run.event_history)
+
+
+@router.get("/api/stock-groups", response_model=list[StockGroup])
+async def get_stock_groups(request: Request):
+    return list_stock_groups(_request_tenant_id(request))
+
+
+@router.post("/api/stock-groups", response_model=StockGroup, status_code=201)
+async def add_stock_group(payload: StockGroupCreate, request: Request):
+    try:
+        return create_stock_group(payload, _request_tenant_id(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.patch("/api/stock-groups/{group_id}", response_model=StockGroup)
+async def patch_stock_group(group_id: str, payload: StockGroupUpdate, request: Request):
+    try:
+        updated = update_stock_group(group_id, payload, _request_tenant_id(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Stock group not found")
+    return updated
+
+
+@router.delete("/api/stock-groups/{group_id}", response_model=DeleteResult)
+async def remove_stock_group(group_id: str, request: Request):
+    return DeleteResult(deleted=delete_stock_group(group_id, _request_tenant_id(request)))
 
 
 def _read_run_terminal_output(run) -> str:
