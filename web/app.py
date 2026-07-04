@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from tradingagents.service.web_state import get_web_auth_db_path, list_web_tenant_ids
 
+from .admin_tenant_routes import router as admin_tenant_router
 from .admin_user_routes import router as admin_user_router
 from .auth import (
     get_presented_api_token,
@@ -68,6 +69,7 @@ app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 # Include API routes
 app.include_router(auth_router)
+app.include_router(admin_tenant_router)
 app.include_router(admin_user_router)
 app.include_router(router)
 

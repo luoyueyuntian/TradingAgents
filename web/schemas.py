@@ -370,6 +370,68 @@ class AdminUserResponse(BaseModel):
     last_login_at: str | None = None
 
 
+class TenantAdminCreate(BaseModel):
+    username: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=1)
+    display_name: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def _normalize_username(cls, value: str) -> str:
+        return _normalize_username(value)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _normalize_email(cls, value: str) -> str:
+        return _normalize_email(value)
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def _normalize_display_name(cls, value: str) -> str:
+        return _normalize_display_name(value)
+
+
+class AdminTenantCreate(BaseModel):
+    tenant_id: str = Field(..., min_length=1)
+    display_name: str = Field(..., min_length=1)
+    admin: TenantAdminCreate
+
+    @field_validator("tenant_id", mode="before")
+    @classmethod
+    def _normalize_tenant_id(cls, value: str) -> str:
+        return _normalize_required_text(value, "tenant_id")
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def _normalize_display_name(cls, value: str) -> str:
+        return _normalize_display_name(value)
+
+
+class AdminTenantUpdate(BaseModel):
+    display_name: str | None = None
+    disabled: bool | None = None
+    archived: bool | None = None
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def _normalize_display_name(cls, value: str | None) -> str | None:
+        normalized = _normalize_blank_optional_string(value)
+        return _normalize_display_name(normalized) if normalized is not None else None
+
+
+class AdminTenantResponse(BaseModel):
+    id: str
+    tenant_id: str
+    display_name: str
+    disabled: bool
+    archived: bool
+    user_count: int
+    active_admin_count: int
+    created_at: str
+    updated_at: str
+
+
 class RunBulkAction(BaseModel):
     """Bulk lifecycle action for selected saved runs."""
 
