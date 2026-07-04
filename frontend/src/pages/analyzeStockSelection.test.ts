@@ -47,6 +47,7 @@ describe('analyze stock selection helpers', () => {
     const payload = buildAnalysisRequestPayload({
       stock_market: 'cn_a',
       ticker: '600519.SS',
+      company_name: '',
       date: '2026-06-30',
       analysts: ['market'],
       llm_provider: 'openai',
@@ -83,6 +84,7 @@ describe('analyze stock selection helpers', () => {
     const payload = buildAnalysisRequestPayload({
       stock_market: 'us',
       ticker: 'NVDA',
+      company_name: '',
       date: '2026-06-30',
       analysts: ['market'],
       llm_provider: 'openai',
@@ -106,6 +108,33 @@ describe('analyze stock selection helpers', () => {
     expect(payload.max_risk_discuss_rounds).toBeNull();
     expect(payload.max_recur_limit).toBeNull();
     expect(payload.temperature).toBeNull();
+  });
+
+  it('includes company_name when the selected stock provides one', () => {
+    const payload = buildAnalysisRequestPayload({
+      stock_market: 'us',
+      ticker: 'AAPL',
+      company_name: 'Apple Inc.',
+      date: '2026-06-30',
+      analysts: ['market'],
+      llm_provider: 'openai',
+      quick_think_model: 'quick-model',
+      deep_think_model: 'deep-model',
+      research_depth: 3,
+      output_language: 'English',
+      market_profile: 'default',
+      max_risk_discuss_rounds: '',
+      max_recur_limit: '',
+      checkpoint_enabled: false,
+      benchmark_ticker: '',
+      backend_url: '',
+      temperature: '',
+      google_thinking_level: '',
+      openai_reasoning_effort: '',
+      anthropic_effort: '',
+    });
+
+    expect(payload.company_name).toBe('Apple Inc.');
   });
 
   it('round-trips date picker values as yyyy-mm-dd strings', () => {
