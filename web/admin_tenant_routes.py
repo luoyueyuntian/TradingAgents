@@ -31,6 +31,7 @@ router = APIRouter(prefix="/api/admin/tenants", tags=["admin-tenants"])
 _LAST_LOGIN_CAPABLE_ADMIN_TENANT_ERROR = (
     "Cannot disable or archive the last tenant with a login-capable admin"
 )
+_ARCHIVED_TENANT_READ_ONLY_ERROR = "Archived tenants are read-only"
 
 
 def _get_store() -> UserStore:
@@ -66,6 +67,13 @@ def _get_existing_tenant(store: UserStore, tenant_id: str) -> TenantRecord:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    return tenant
+
+
+def _get_writable_tenant(store: UserStore, tenant_id: str) -> TenantRecord:
+    tenant = _get_existing_tenant(store, tenant_id)
+    if tenant.archived:
+        raise HTTPException(status_code=400, detail=_ARCHIVED_TENANT_READ_ONLY_ERROR)
     return tenant
 
 
@@ -177,7 +185,7 @@ def create_tenant_user(
 ) -> dict[str, AdminUserResponse]:
     _require_admin_user(request)
     store = _get_store()
-    _get_existing_tenant(store, tenant_id)
+    _get_writable_tenant(store, tenant_id)
     return create_user_for_tenant(store, tenant_id, payload)
 
 
@@ -190,7 +198,7 @@ def update_tenant_user(
 ) -> dict[str, AdminUserResponse]:
     _require_admin_user(request)
     store = _get_store()
-    _get_existing_tenant(store, tenant_id)
+    _get_writable_tenant(store, tenant_id)
     return update_user_for_tenant(store, tenant_id, user_id, payload)
 
 
@@ -198,5 +206,5 @@ def update_tenant_user(
 def delete_tenant_user(tenant_id: str, user_id: str, request: Request) -> dict[str, AdminUserResponse]:
     _require_admin_user(request)
     store = _get_store()
-    _get_existing_tenant(store, tenant_id)
+    _get_writable_tenant(store, tenant_id)
     return delete_user_for_tenant(store, tenant_id, user_id)
