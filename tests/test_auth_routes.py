@@ -136,6 +136,19 @@ def test_login_rejects_disabled_user_with_clear_403(monkeypatch, tmp_path):
     assert response.json()["detail"] == "User account is disabled"
 
 
+def test_login_hides_disabled_user_state_for_wrong_password(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, disabled=True)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid credentials"
+
+
 def test_login_rejects_expired_user_with_clear_403(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(
@@ -152,6 +165,22 @@ def test_login_rejects_expired_user_with_clear_403(monkeypatch, tmp_path):
     assert response.json()["detail"] == "User account has expired"
 
 
+def test_login_hides_expired_user_state_for_wrong_password(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(
+        store,
+        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+    )
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice@example.com", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid credentials"
+
+
 def test_login_rejects_disabled_tenant_with_clear_403(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
@@ -165,6 +194,36 @@ def test_login_rejects_disabled_tenant_with_clear_403(monkeypatch, tmp_path):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Tenant is disabled"
+
+
+def test_login_hides_disabled_tenant_state_for_wrong_password(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
+    _create_user(store, tenant_id="tenant-disabled")
+    store.update_tenant("tenant-disabled", disabled=True)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid credentials"
+
+
+def test_login_hides_archived_tenant_state_for_wrong_password(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-archived", display_name="Tenant Archived")
+    _create_user(store, tenant_id="tenant-archived")
+    store.update_tenant("tenant-archived", archived=True)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid credentials"
 
 
 def test_login_rejects_archived_tenant_with_clear_403(monkeypatch, tmp_path):
