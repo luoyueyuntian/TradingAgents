@@ -937,7 +937,7 @@ def test_process_due_one_time_tasks_passes_frozen_task_settings_not_live_analysi
     ]
 
 
-def test_process_due_one_time_tasks_does_not_mark_all_failed_attempts_as_missed_on_next_poll(monkeypatch):
+def test_process_due_one_time_tasks_marks_all_failed_attempts_non_scheduled_and_not_retried(monkeypatch):
     state = {
         "one_time_tasks": {
             "items": [
@@ -1009,8 +1009,37 @@ def test_process_due_one_time_tasks_does_not_mark_all_failed_attempts_as_missed_
     assert second_queued == 0
     assert attempted == ["AAPL", "MSFT"]
     task = saved[-1]["one_time_tasks"]["items"][0]
-    assert task["status"] == "scheduled"
+    assert task["status"] == "completed"
     assert task["run_ids"] == []
     assert task["last_queued_count"] == 0
     assert task["last_error"] == "queue failed for MSFT"
     assert task["triggered_at"] == "2026-07-10T21:30:05"
+    assert task["completed_at"] == "2026-07-10T21:30:05"
+
+    with pytest.raises(ValueError, match="Only scheduled tasks can be edited"):
+        task_module.update_one_time_task(
+            "all-failed",
+            OneTimeTaskUpdate(
+                name="All failed",
+                scheduled_for="2026-07-10 21:32",
+                analysis_date="2026-07-11",
+                manual_stocks=[{"market": "us", "symbol": "AAPL"}],
+                group_ids=[],
+                include_watchlist=False,
+                analysis_config=AutomationAnalysisConfig(
+                    analysts=["market"],
+                    llm_provider="openai",
+                    quick_think_model="gpt-5.4-mini",
+                    deep_think_model="gpt-5.5",
+                    research_depth=1,
+                    output_language="English",
+                ),
+            ),
+            now=datetime.datetime(2026, 7, 10, 21, 31, 5),
+        )
+
+    with pytest.raises(ValueError, match="Only scheduled tasks can be cancelled"):
+        task_module.cancel_one_time_task(
+            "all-failed",
+            now=datetime.datetime(2026, 7, 10, 21, 31, 5),
+        )

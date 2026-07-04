@@ -372,13 +372,14 @@ def process_due_one_time_tasks(
                 continue
             run_ids.append(run.run_id)
 
-        status = "queued" if run_ids else "scheduled"
+        status = "queued" if run_ids else "completed"
         triggered_at = timestamp
         tasks[index] = task.model_copy(
             update={
                 "status": status,
                 "triggered_at": triggered_at,
                 "updated_at": timestamp,
+                "completed_at": timestamp if not run_ids else task.completed_at,
                 "last_queued_count": len(run_ids),
                 "last_error": last_error,
                 "run_ids": run_ids,
