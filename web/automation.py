@@ -7,6 +7,7 @@ import threading
 import uuid
 from copy import deepcopy
 
+from tradingagents.service.timestamps import current_timestamp_ms, timestamp_ms_to_datetime
 from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import load_settings, save_settings
 
@@ -37,8 +38,8 @@ def _now(now: datetime.datetime | None = None) -> datetime.datetime:
     return now or datetime.datetime.now()
 
 
-def _now_iso(now: datetime.datetime | None = None) -> str:
-    return _now(now).isoformat()
+def _now_ts(now: datetime.datetime | None = None) -> int:
+    return current_timestamp_ms(_now(now))
 
 
 def _infer_asset_type(ticker: str) -> str:
@@ -121,12 +122,7 @@ def _combine_date_and_time(day: datetime.date, time_of_day: str) -> datetime.dat
 
 
 def _parse_last_triggered(rule: AutomationRule) -> datetime.datetime | None:
-    if not rule.last_triggered_at:
-        return None
-    try:
-        return datetime.datetime.fromisoformat(rule.last_triggered_at)
-    except ValueError:
-        return None
+    return timestamp_ms_to_datetime(rule.last_triggered_at)
 
 
 def _current_slot(rule: AutomationRule, now: datetime.datetime) -> datetime.datetime | None:
@@ -141,14 +137,14 @@ def _current_slot(rule: AutomationRule, now: datetime.datetime) -> datetime.date
     return slot if now >= slot else None
 
 
-def _next_run_at(rule: AutomationRule, now: datetime.datetime) -> str | None:
+def _next_run_at(rule: AutomationRule, now: datetime.datetime) -> int | None:
     if not rule.enabled:
         return None
 
     if rule.cadence == "daily":
         today_slot = _combine_date_and_time(now.date(), rule.time_of_day)
         next_slot = today_slot if now < today_slot else today_slot + datetime.timedelta(days=1)
-        return next_slot.isoformat()
+        return current_timestamp_ms(next_slot)
 
     weekday = _WEEKDAY_INDEX.get(rule.weekday or "")
     if weekday is None:
@@ -161,7 +157,7 @@ def _next_run_at(rule: AutomationRule, now: datetime.datetime) -> str | None:
         next_slot = today_slot
     else:
         next_slot = _combine_date_and_time(now.date() + datetime.timedelta(days=days_ahead), rule.time_of_day)
-    return next_slot.isoformat()
+    return current_timestamp_ms(next_slot)
 
 
 def _decorate_rule(rule: AutomationRule, now: datetime.datetime | None = None) -> AutomationRule:
@@ -175,7 +171,7 @@ def list_automation_rules(tenant_id: str | None = None, *, now: datetime.datetim
 
 
 def create_automation_rule(payload: AutomationRuleCreate, tenant_id: str | None = None, *, now: datetime.datetime | None = None) -> AutomationRule:
-    timestamp = _now_iso(now)
+    timestamp = _now_ts(now)
     rule = AutomationRule(
         id=str(uuid.uuid4()),
         name=payload.name,
@@ -213,7 +209,7 @@ def update_automation_rule_enabled(
 ) -> AutomationRule | None:
     rules = _load_automation_rules_raw(tenant_id)
     updated_rule: AutomationRule | None = None
-    timestamp = _now_iso(now)
+    timestamp = _now_ts(now)
     for index, rule in enumerate(rules):
         if rule.id != rule_id:
             continue
@@ -280,9 +276,9 @@ def _queue_rule_runs(
         runs.append(_analysis_response_from_run(run))
 
     updated_rule = rule.model_copy(update={
-        "last_triggered_at": resolved_now.isoformat(),
+        "last_triggered_at": current_timestamp_ms(resolved_now),
         "last_queued_count": len(runs),
-        "updated_at": resolved_now.isoformat(),
+        "updated_at": current_timestamp_ms(resolved_now),
     })
     response = AutomationRunResponse(
         rule_id=rule.id,

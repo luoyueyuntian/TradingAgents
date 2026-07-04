@@ -72,6 +72,7 @@ def test_web_app_startup_restores_discovered_tenant_runs(monkeypatch, tmp_path):
     calls: list[tuple[str, str | None]] = []
     monkeypatch.setenv("TRADINGAGENTS_WEB_AUTH_DB", str(tmp_path / "auth.db"))
     monkeypatch.setenv("TRADINGAGENTS_WEB_RUN_MODE", "local_thread")
+    monkeypatch.setattr(web_app, "migrate_all_web_settings_timestamps_to_ms", lambda: calls.append(("migrate", None)))
     monkeypatch.setattr(web_app, "list_web_tenant_ids", lambda: ["default"], raising=False)
     monkeypatch.setattr(web_app, "load_runs_index", lambda tenant_id=None: calls.append(("load", tenant_id)))
     monkeypatch.setattr(web_app, "ensure_worker_started", lambda tenant_id=None: calls.append(("worker", tenant_id)))
@@ -80,6 +81,7 @@ def test_web_app_startup_restores_discovered_tenant_runs(monkeypatch, tmp_path):
     asyncio.run(web_app._load_persisted_runs())
 
     assert calls == [
+        ("migrate", None),
         ("load", None),
         ("worker", None),
         ("resume", None),

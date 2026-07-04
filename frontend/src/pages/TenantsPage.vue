@@ -89,7 +89,7 @@
                 <td class="uno-px-3 uno-py-3 uno-align-top">{{ tenantStatusLabel(tenant) }}</td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">{{ tenant.user_count }}</td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">{{ tenant.active_admin_count }}</td>
-                <td class="uno-px-3 uno-py-3 uno-align-top">{{ tenant.created_at }}</td>
+                <td class="uno-px-3 uno-py-3 uno-align-top">{{ formatDateTime(tenant.created_at) }}</td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">
                   <div class="uno-grid uno-gap-2">
                     <Button
@@ -140,6 +140,7 @@ import { useRouter } from 'vue-router';
 import PageHeader from '../components/PageHeader.vue';
 import { useI18n } from '../i18n';
 import { apiGet, apiPatch, apiPost } from '../services/api';
+import { formatDateTime } from '../utils/format';
 
 type AdminTenantResponse = {
   id: string;
@@ -149,8 +150,8 @@ type AdminTenantResponse = {
   archived: boolean;
   user_count: number;
   active_admin_count: number;
-  created_at: string;
-  updated_at: string;
+  created_at: number;
+  updated_at: number;
 };
 
 type ManagedTenant = AdminTenantResponse & {

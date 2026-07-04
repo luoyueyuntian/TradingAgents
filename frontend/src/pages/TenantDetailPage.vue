@@ -40,11 +40,11 @@
             </div>
             <div>
               <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('common.created') }}</dt>
-              <dd class="uno-mt-1">{{ tenant.created_at }}</dd>
+              <dd class="uno-mt-1">{{ formatDateTime(tenant.created_at) }}</dd>
             </div>
             <div>
               <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('tenants.lastUpdated') }}</dt>
-              <dd class="uno-mt-1">{{ tenant.updated_at }}</dd>
+              <dd class="uno-mt-1">{{ formatDateTime(tenant.updated_at) }}</dd>
             </div>
           </dl>
 
@@ -95,6 +95,7 @@ import AdminUserDirectory from '../components/AdminUserDirectory.vue';
 import PageHeader from '../components/PageHeader.vue';
 import { useI18n } from '../i18n';
 import { apiGet, apiPatch } from '../services/api';
+import { formatDateTime } from '../utils/format';
 
 type AdminTenantResponse = {
   id: string;
@@ -104,8 +105,8 @@ type AdminTenantResponse = {
   archived: boolean;
   user_count: number;
   active_admin_count: number;
-  created_at: string;
-  updated_at: string;
+  created_at: number;
+  updated_at: number;
 };
 
 const route = useRoute();

@@ -29,13 +29,13 @@ type AuthUser = {
   display_name: string;
   role: string;
   tenant_id: string;
-  expires_at: string | null;
+  expires_at: number | null;
   must_change_password: boolean;
 };
 
 type AuthSessionResponse = {
   user: AuthUser;
-  session_expires_at: string;
+  session_expires_at: number;
   password_reset: {
     available: boolean;
     reset_id?: string | null;
@@ -65,7 +65,7 @@ function makeAuthResponse(overrides: Partial<AuthSessionResponse> = {}): AuthSes
   delete restOverrides.password_reset;
   return {
     user: makeUser(userOverrides),
-    session_expires_at: '2026-07-03T00:00:00Z',
+    session_expires_at: 1_751_500_800_000,
     password_reset: {
       available: true,
       reset_id: null,
@@ -101,7 +101,7 @@ describe('session store', () => {
 
     expect(apiGetMock).toHaveBeenCalledWith('/api/auth/me', {});
     expect(session.state.currentUser?.username).toBe('alice');
-    expect(session.state.sessionExpiresAt).toBe('2026-07-03T00:00:00Z');
+    expect(session.state.sessionExpiresAt).toBe(1_751_500_800_000);
     expect(session.state.passwordReset.available).toBe(true);
     expect(session.mustChangePassword.value).toBe(true);
     expect(session.isAdmin.value).toBe(true);
@@ -158,11 +158,11 @@ describe('session store', () => {
 
     const session = useSession();
     session.state.currentUser = makeAuthResponse().user;
-    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+    session.state.sessionExpiresAt = 1_751_500_800_000;
 
     await expect(session.loadCurrentUser()).rejects.toThrow('Unauthorized');
     expect(session.state.currentUser).toBeNull();
-    expect(session.state.sessionExpiresAt).toBe('');
+    expect(session.state.sessionExpiresAt).toBe(0);
     expect(session.state.error).toBe('');
   });
 
@@ -172,12 +172,12 @@ describe('session store', () => {
 
     const session = useSession();
     session.state.currentUser = makeAuthResponse().user;
-    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+    session.state.sessionExpiresAt = 1_751_500_800_000;
     session.state.passwordReset = { available: true, reset_id: 'reset-1', detail: 'Reset is available' };
 
     await expect(session.loadCurrentUser()).rejects.toThrow('Tenant is disabled');
     expect(session.state.currentUser).toBeNull();
-    expect(session.state.sessionExpiresAt).toBe('');
+    expect(session.state.sessionExpiresAt).toBe(0);
     expect(session.state.passwordReset).toEqual({ available: false, reset_id: null, detail: null });
     expect(session.state.error).toBe('');
   });
@@ -188,11 +188,11 @@ describe('session store', () => {
 
     const session = useSession();
     session.state.currentUser = makeAuthResponse().user;
-    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+    session.state.sessionExpiresAt = 1_751_500_800_000;
 
     await expect(session.loadCurrentUser()).rejects.toThrow('Forbidden');
     expect(session.state.currentUser?.username).toBe('alice');
-    expect(session.state.sessionExpiresAt).toBe('2026-07-03T00:00:00Z');
+    expect(session.state.sessionExpiresAt).toBe(1_751_500_800_000);
     expect(session.state.error).toBe('Forbidden');
   });
 
@@ -200,7 +200,7 @@ describe('session store', () => {
     const { useSession } = await loadSessionModule();
     const session = useSession();
     session.state.currentUser = makeAuthResponse().user;
-    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+    session.state.sessionExpiresAt = 1_751_500_800_000;
     session.state.passwordReset = { available: true, reset_id: 'reset-1', detail: 'Reset is available' };
 
     expect(registerApiAuthInvalidationHandlerMock).toHaveBeenCalledTimes(1);
@@ -209,7 +209,7 @@ describe('session store', () => {
     registeredAuthInvalidationHandler?.();
 
     expect(session.state.currentUser).toBeNull();
-    expect(session.state.sessionExpiresAt).toBe('');
+    expect(session.state.sessionExpiresAt).toBe(0);
     expect(session.state.passwordReset).toEqual({ available: false, reset_id: null, detail: null });
     expect(session.state.error).toBe('');
   });
@@ -234,14 +234,14 @@ describe('session store', () => {
 
     const session = useSession();
     session.state.currentUser = makeAuthResponse().user;
-    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+    session.state.sessionExpiresAt = 1_751_500_800_000;
     session.state.passwordReset = { available: true, reset_id: 'reset-1', detail: null };
 
     await session.logout();
 
     expect(apiPostMock).toHaveBeenCalledWith('/api/auth/logout', {}, {});
     expect(session.state.currentUser).toBeNull();
-    expect(session.state.sessionExpiresAt).toBe('');
+    expect(session.state.sessionExpiresAt).toBe(0);
     expect(session.state.passwordReset).toEqual({ available: false, reset_id: null, detail: null });
   });
 

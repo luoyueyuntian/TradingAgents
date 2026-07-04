@@ -11,6 +11,7 @@ from functools import lru_cache
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 
+from tradingagents.service.timestamps import current_timestamp_ms
 from tradingagents.service.web_state import get_web_auth_db_path
 
 from .mail import (
@@ -50,9 +51,7 @@ def _get_store() -> UserStore:
 
 
 def _is_user_expired(user: UserRecord) -> bool:
-    return user.expires_at is not None and datetime.fromisoformat(user.expires_at) <= datetime.now(
-        timezone.utc
-    )
+    return user.expires_at is not None and user.expires_at <= current_timestamp_ms(datetime.now(timezone.utc))
 
 
 def _ensure_user_can_login(user: UserRecord) -> None:
@@ -119,7 +118,7 @@ def _build_auth_user(user: UserRecord) -> AuthUser:
     )
 
 
-def _build_me_response(user: UserRecord, session_expires_at: str) -> AuthMeResponse:
+def _build_me_response(user: UserRecord, session_expires_at: int) -> AuthMeResponse:
     return AuthMeResponse(
         user=_build_auth_user(user),
         session_expires_at=session_expires_at,
@@ -226,7 +225,7 @@ def change_password(
         user.id,
         password_hash=password_record.encoded_hash,
         password_salt=password_record.salt,
-        password_updated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        password_updated_at=current_timestamp_ms(datetime.now(timezone.utc)),
         must_change_password=False,
     )
     store.record_audit_event(
@@ -281,7 +280,7 @@ def password_reset_confirm(payload: PasswordResetConfirm) -> dict[str, str]:
     if row["used_at"] is not None:
         _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
-    if datetime.fromisoformat(row["expires_at"]) <= datetime.now(timezone.utc):
+    if int(row["expires_at"]) <= current_timestamp_ms(datetime.now(timezone.utc)):
         _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
     if int(row["attempt_count"]) >= PASSWORD_RESET_MAX_ATTEMPTS:
@@ -325,7 +324,7 @@ def password_reset_confirm(payload: PasswordResetConfirm) -> dict[str, str]:
         user.id,
         password_hash=password_record.encoded_hash,
         password_salt=password_record.salt,
-        password_updated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        password_updated_at=current_timestamp_ms(datetime.now(timezone.utc)),
         must_change_password=False,
     )
     store.record_audit_event(

@@ -32,15 +32,18 @@ def test_serialize_and_deserialize_run_round_trip(tmp_path):
     run = _make_run("run-1")
     run.status = "completed"
     run.signal = "Buy"
+    run.company_name = "Apple Inc."
     run.queue_sequence = 7
     run.report_sections["market_report"] = "report"
 
     payload = serialize_run_state(run)
     restored = deserialize_run_state(payload, runs_root_dir=tmp_path)
 
+    assert isinstance(payload["created_at"], int)
     assert restored.run_id == run.run_id
     assert restored.status == "completed"
     assert restored.signal == "Buy"
+    assert restored.company_name == "Apple Inc."
     assert restored.queue_sequence == 7
     assert restored.report_sections["market_report"] == "report"
 
@@ -65,8 +68,8 @@ def test_load_runs_from_index_preserves_incomplete_status(tmp_path):
         "report_path": None,
         "state_log_path": None,
         "event_log_path": None,
-        "created_at": "2026-01-15T00:00:00",
-        "started_at": "2026-01-15T00:01:00",
+        "created_at": 1_768_435_200_000,
+        "started_at": 1_768_435_260_000,
         "completed_at": None,
     }]
     index_path.write_text(__import__("json").dumps(payload), encoding="utf-8")
@@ -79,9 +82,9 @@ def test_load_runs_from_index_preserves_incomplete_status(tmp_path):
 
 def test_save_runs_to_index_writes_ordered_payload(tmp_path):
     old_run = _make_run("old")
-    old_run.created_at = "2026-01-15T00:00:00"
+    old_run.created_at = 1_768_435_200_000
     new_run = _make_run("new")
-    new_run.created_at = "2026-01-15T01:00:00"
+    new_run.created_at = 1_768_438_800_000
 
     save_runs_to_index(
         [old_run, new_run],

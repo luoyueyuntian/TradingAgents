@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from tradingagents.service.timestamps import coerce_timestamp_ms, current_timestamp_ms
 from tradingagents.service.web_state import normalize_web_tenant_id
 from web.passwords import hash_password, hash_secret, validate_password_policy
 
@@ -33,8 +34,8 @@ class TenantRecord:
     display_name: str
     disabled: bool
     archived: bool
-    created_at: str
-    updated_at: str
+    created_at: int
+    updated_at: int
 
 
 @dataclass(frozen=True)
@@ -47,22 +48,22 @@ class UserRecord:
     tenant_id: str
     password_hash: str
     password_salt: str
-    password_updated_at: str | None
+    password_updated_at: int | None
     must_change_password: bool
-    expires_at: str | None
+    expires_at: int | None
     disabled: bool
-    created_at: str
-    updated_at: str
-    last_login_at: str | None
+    created_at: int
+    updated_at: int
+    last_login_at: int | None
 
 
 @dataclass(frozen=True)
 class SessionRecord:
     id_hash: str
     user_id: str
-    created_at: str
-    last_seen_at: str
-    expires_at: str
+    created_at: int
+    last_seen_at: int
+    expires_at: int
 
 
 @dataclass(frozen=True)
@@ -70,9 +71,9 @@ class PasswordResetTokenRecord:
     id: str
     user_id: str
     code_hash: str
-    created_at: str
-    expires_at: str
-    used_at: str | None
+    created_at: int
+    expires_at: int
+    used_at: int | None
     attempt_count: int
 
 
@@ -83,32 +84,66 @@ class BootstrapResult:
     reason: str | None = None
 
 
-def _utc_now() -> str:
-    return _utc_now_dt().isoformat()
+def _utc_now() -> int:
+    return current_timestamp_ms(_utc_now_dt())
 
 
 def _utc_now_dt() -> datetime:
     return datetime.now(timezone.utc).replace(microsecond=0)
 
 
-def _format_timestamp(value: datetime) -> str:
-    return value.isoformat()
+def _format_timestamp(value: datetime) -> int:
+    return current_timestamp_ms(value)
 
 
-def _is_expired(expires_at: str) -> bool:
-    return datetime.fromisoformat(expires_at) <= _utc_now_dt()
+def _is_expired(expires_at: int) -> bool:
+    return expires_at <= _utc_now()
 
 
-def _validate_optional_expires_at(expires_at: str | None) -> str | None:
+def _validate_optional_expires_at(expires_at: int | str | None) -> int | None:
     if expires_at is None:
         return None
-    try:
-        parsed = datetime.fromisoformat(expires_at)
-    except ValueError as exc:
-        raise ValueError("expires_at must be an offset-aware ISO timestamp") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ValueError("expires_at must be an offset-aware ISO timestamp")
-    return expires_at
+    normalized = coerce_timestamp_ms(expires_at)
+    if normalized is None:
+        raise ValueError("expires_at must be a Unix millisecond timestamp")
+    return normalized
+
+
+def _timestamp_column_type_map(conn: sqlite3.Connection, table_name: str) -> dict[str, str]:
+    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {str(row["name"]): str(row["type"]).upper() for row in rows}
+
+
+def _migrate_table_with_integer_timestamps(
+    conn: sqlite3.Connection,
+    *,
+    table_name: str,
+    create_sql: str,
+    column_names: list[str],
+    timestamp_columns: set[str],
+) -> None:
+    column_types = _timestamp_column_type_map(conn, table_name)
+    if column_types and all(column_types.get(name) == "INTEGER" for name in timestamp_columns):
+        return
+
+    legacy_name = f"{table_name}__legacy_timestamps"
+    conn.execute(f"DROP TABLE IF EXISTS {legacy_name}")
+    rows = conn.execute(f"SELECT * FROM {table_name}").fetchall()
+    conn.execute(f"ALTER TABLE {table_name} RENAME TO {legacy_name}")
+    conn.execute(create_sql)
+
+    placeholders = ", ".join("?" for _ in column_names)
+    insert_sql = f"INSERT INTO {table_name} ({', '.join(column_names)}) VALUES ({placeholders})"
+    for row in rows:
+        values = []
+        for column_name in column_names:
+            value = row[column_name]
+            if column_name in timestamp_columns:
+                value = coerce_timestamp_ms(value)
+            values.append(value)
+        conn.execute(insert_sql, tuple(values))
+
+    conn.execute(f"DROP TABLE {legacy_name}")
 
 
 def _require_text(value: str, field_name: str) -> str:
@@ -165,13 +200,13 @@ def _user_from_row(row: sqlite3.Row) -> UserRecord:
         tenant_id=row["tenant_id"],
         password_hash=row["password_hash"],
         password_salt=row["password_salt"],
-        password_updated_at=row["password_updated_at"],
+        password_updated_at=coerce_timestamp_ms(row["password_updated_at"]),
         must_change_password=bool(row["must_change_password"]),
-        expires_at=row["expires_at"],
+        expires_at=coerce_timestamp_ms(row["expires_at"]),
         disabled=bool(row["disabled"]),
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
-        last_login_at=row["last_login_at"],
+        created_at=coerce_timestamp_ms(row["created_at"]) or 0,
+        updated_at=coerce_timestamp_ms(row["updated_at"]) or 0,
+        last_login_at=coerce_timestamp_ms(row["last_login_at"]),
     )
 
 
@@ -182,8 +217,8 @@ def _tenant_from_row(row: sqlite3.Row) -> TenantRecord:
         display_name=row["display_name"],
         disabled=bool(row["disabled"]),
         archived=bool(row["archived"]),
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
+        created_at=coerce_timestamp_ms(row["created_at"]) or 0,
+        updated_at=coerce_timestamp_ms(row["updated_at"]) or 0,
     )
 
 
@@ -191,9 +226,9 @@ def _session_from_row(row: sqlite3.Row) -> SessionRecord:
     return SessionRecord(
         id_hash=row["id_hash"],
         user_id=row["user_id"],
-        created_at=row["created_at"],
-        last_seen_at=row["last_seen_at"],
-        expires_at=row["expires_at"],
+        created_at=coerce_timestamp_ms(row["created_at"]) or 0,
+        last_seen_at=coerce_timestamp_ms(row["last_seen_at"]) or 0,
+        expires_at=coerce_timestamp_ms(row["expires_at"]) or 0,
     )
 
 
@@ -202,9 +237,9 @@ def _password_reset_token_from_row(row: sqlite3.Row) -> PasswordResetTokenRecord
         id=row["id"],
         user_id=row["user_id"],
         code_hash=row["code_hash"],
-        created_at=row["created_at"],
-        expires_at=row["expires_at"],
-        used_at=row["used_at"],
+        created_at=coerce_timestamp_ms(row["created_at"]) or 0,
+        expires_at=coerce_timestamp_ms(row["expires_at"]) or 0,
+        used_at=coerce_timestamp_ms(row["used_at"]),
         attempt_count=int(row["attempt_count"]),
     )
 
@@ -253,8 +288,8 @@ class UserStore:
                 display_name TEXT NOT NULL,
                 disabled INTEGER NOT NULL DEFAULT 0,
                 archived INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
             )
             """
         )
@@ -269,13 +304,13 @@ class UserStore:
                 tenant_id TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 password_salt TEXT NOT NULL,
-                password_updated_at TEXT,
+                password_updated_at INTEGER,
                 must_change_password INTEGER NOT NULL DEFAULT 1,
-                expires_at TEXT,
+                expires_at INTEGER,
                 disabled INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                last_login_at TEXT
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                last_login_at INTEGER
             )
             """
         )
@@ -284,9 +319,9 @@ class UserStore:
             CREATE TABLE IF NOT EXISTS sessions (
                 id_hash TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                last_seen_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL
+                created_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
             )
             """
         )
@@ -296,9 +331,9 @@ class UserStore:
                 id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 code_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                used_at TEXT,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                used_at INTEGER,
                 attempt_count INTEGER NOT NULL DEFAULT 0
             )
             """
@@ -311,16 +346,171 @@ class UserStore:
                 target_user_id TEXT,
                 tenant_id TEXT,
                 event_type TEXT NOT NULL,
-                created_at TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
                 metadata TEXT
             )
             """
         )
+        self._migrate_auth_timestamp_columns(conn)
         conn.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS users_username_ci_unique
             ON users(lower(username))
             """
+        )
+
+    def _migrate_auth_timestamp_columns(self, conn: sqlite3.Connection) -> None:
+        self._migrate_tenants_table(conn)
+        self._migrate_users_table(conn)
+        self._migrate_sessions_table(conn)
+        self._migrate_password_reset_tokens_table(conn)
+        self._migrate_audit_events_table(conn)
+
+    def _migrate_tenants_table(self, conn: sqlite3.Connection) -> None:
+        _migrate_table_with_integer_timestamps(
+            conn,
+            table_name="tenants",
+            create_sql="""
+            CREATE TABLE tenants (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                disabled INTEGER NOT NULL DEFAULT 0,
+                archived INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """,
+            column_names=[
+                "id",
+                "tenant_id",
+                "display_name",
+                "disabled",
+                "archived",
+                "created_at",
+                "updated_at",
+            ],
+            timestamp_columns={"created_at", "updated_at"},
+        )
+
+    def _migrate_users_table(self, conn: sqlite3.Connection) -> None:
+        _migrate_table_with_integer_timestamps(
+            conn,
+            table_name="users",
+            create_sql="""
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                password_salt TEXT NOT NULL,
+                password_updated_at INTEGER,
+                must_change_password INTEGER NOT NULL DEFAULT 1,
+                expires_at INTEGER,
+                disabled INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                last_login_at INTEGER
+            )
+            """,
+            column_names=[
+                "id",
+                "username",
+                "email",
+                "display_name",
+                "role",
+                "tenant_id",
+                "password_hash",
+                "password_salt",
+                "password_updated_at",
+                "must_change_password",
+                "expires_at",
+                "disabled",
+                "created_at",
+                "updated_at",
+                "last_login_at",
+            ],
+            timestamp_columns={
+                "password_updated_at",
+                "expires_at",
+                "created_at",
+                "updated_at",
+                "last_login_at",
+            },
+        )
+
+    def _migrate_sessions_table(self, conn: sqlite3.Connection) -> None:
+        _migrate_table_with_integer_timestamps(
+            conn,
+            table_name="sessions",
+            create_sql="""
+            CREATE TABLE sessions (
+                id_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            )
+            """,
+            column_names=["id_hash", "user_id", "created_at", "last_seen_at", "expires_at"],
+            timestamp_columns={"created_at", "last_seen_at", "expires_at"},
+        )
+
+    def _migrate_password_reset_tokens_table(self, conn: sqlite3.Connection) -> None:
+        _migrate_table_with_integer_timestamps(
+            conn,
+            table_name="password_reset_tokens",
+            create_sql="""
+            CREATE TABLE password_reset_tokens (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                code_hash TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                used_at INTEGER,
+                attempt_count INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            column_names=[
+                "id",
+                "user_id",
+                "code_hash",
+                "created_at",
+                "expires_at",
+                "used_at",
+                "attempt_count",
+            ],
+            timestamp_columns={"created_at", "expires_at", "used_at"},
+        )
+
+    def _migrate_audit_events_table(self, conn: sqlite3.Connection) -> None:
+        _migrate_table_with_integer_timestamps(
+            conn,
+            table_name="audit_events",
+            create_sql="""
+            CREATE TABLE audit_events (
+                id TEXT PRIMARY KEY,
+                actor_user_id TEXT,
+                target_user_id TEXT,
+                tenant_id TEXT,
+                event_type TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                metadata TEXT
+            )
+            """,
+            column_names=[
+                "id",
+                "actor_user_id",
+                "target_user_id",
+                "tenant_id",
+                "event_type",
+                "created_at",
+                "metadata",
+            ],
+            timestamp_columns={"created_at"},
         )
         conn.execute(
             """
@@ -418,11 +608,11 @@ class UserStore:
         admin_display_name: str,
         password_hash: str,
         password_salt: str,
-        password_updated_at: str | None = None,
+        password_updated_at: int | str | None = None,
         must_change_password: bool = True,
-        expires_at: str | None = None,
+        expires_at: int | str | None = None,
         disabled: bool = False,
-        last_login_at: str | None = None,
+        last_login_at: int | str | None = None,
         user_id: str | None = None,
     ) -> tuple[TenantRecord, UserRecord]:
         self.ensure_schema()
@@ -434,6 +624,8 @@ class UserStore:
         normalized_password_hash = _require_text(password_hash, "password_hash")
         normalized_password_salt = _require_text(password_salt, "password_salt")
         normalized_expires_at = _validate_optional_expires_at(expires_at)
+        normalized_password_updated_at = _validate_optional_expires_at(password_updated_at)
+        normalized_last_login_at = _validate_optional_expires_at(last_login_at)
         now = _utc_now()
         tenant_row_id = uuid.uuid4().hex
         resolved_user_id = user_id or uuid.uuid4().hex
@@ -486,7 +678,7 @@ class UserStore:
                         tenant_id,
                         password_hash,
                         password_salt,
-                        password_updated_at,
+                        normalized_password_updated_at,
                         must_change_password,
                         expires_at,
                         disabled,
@@ -511,7 +703,7 @@ class UserStore:
                         int(disabled),
                         now,
                         now,
-                        last_login_at,
+                        normalized_last_login_at,
                     ),
                 )
             except sqlite3.IntegrityError as exc:
@@ -629,11 +821,11 @@ class UserStore:
         tenant_id: str | None,
         password_hash: str,
         password_salt: str,
-        password_updated_at: str | None = None,
+        password_updated_at: int | str | None = None,
         must_change_password: bool = True,
-        expires_at: str | None = None,
+        expires_at: int | str | None = None,
         disabled: bool = False,
-        last_login_at: str | None = None,
+        last_login_at: int | str | None = None,
         user_id: str | None = None,
     ) -> UserRecord:
         self.ensure_schema()
@@ -645,6 +837,8 @@ class UserStore:
         normalized_password_hash = _require_text(password_hash, "password_hash")
         normalized_password_salt = _require_text(password_salt, "password_salt")
         normalized_expires_at = _validate_optional_expires_at(expires_at)
+        normalized_password_updated_at = _validate_optional_expires_at(password_updated_at)
+        normalized_last_login_at = _validate_optional_expires_at(last_login_at)
         now = _utc_now()
         resolved_user_id = user_id or uuid.uuid4().hex
 
@@ -668,7 +862,7 @@ class UserStore:
                         tenant_id,
                         password_hash,
                         password_salt,
-                        password_updated_at,
+                        normalized_password_updated_at,
                         must_change_password,
                         expires_at,
                         disabled,
@@ -693,7 +887,7 @@ class UserStore:
                         int(disabled),
                         now,
                         now,
-                        last_login_at,
+                        normalized_last_login_at,
                     ),
                 )
             except sqlite3.IntegrityError as exc:
@@ -1140,7 +1334,7 @@ class UserStore:
                 "SELECT * FROM sessions WHERE id_hash = ?",
                 (id_hash,),
             ).fetchone()
-            if row is None or datetime.fromisoformat(row["expires_at"]) <= now:
+            if row is None or (coerce_timestamp_ms(row["expires_at"]) or 0) <= _format_timestamp(now):
                 return None
             user = conn.execute(
                 "SELECT * FROM users WHERE id = ?",
@@ -1149,7 +1343,7 @@ class UserStore:
             if user is None or not _user_row_is_active(user):
                 return None
 
-            expires_at = row["expires_at"]
+            expires_at = coerce_timestamp_ms(row["expires_at"]) or 0
             if ttl_seconds is not None:
                 expires_at = _format_timestamp(now + timedelta(seconds=ttl_seconds))
             conn.execute(

@@ -6,7 +6,31 @@ import os
 import re
 from pathlib import Path
 
+from tradingagents.service.timestamps import coerce_timestamp_ms
+from tradingagents.settings import load_settings, save_settings
+
 _TENANT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_TIMESTAMP_FIELD_NAMES = {
+    "created_at",
+    "updated_at",
+    "started_at",
+    "completed_at",
+    "expires_at",
+    "password_updated_at",
+    "last_login_at",
+    "last_seen_at",
+    "used_at",
+    "last_triggered_at",
+    "next_run_at",
+    "generated_at",
+    "occurred_at",
+    "exported_at",
+    "timestamp",
+    "read_at",
+    "last_viewed_at",
+    "resolved_at",
+    "last_delivery_at",
+}
 
 
 def get_web_state_base_dir() -> Path:
@@ -103,3 +127,61 @@ def list_web_tenant_ids() -> list[str]:
         for entry in tenants_dir.iterdir()
         if entry.is_dir()
     )
+
+
+def _migrate_settings_value(value, *, parent_key: str | None = None):
+    changed = False
+
+    if isinstance(value, dict):
+        migrated: dict = {}
+        for key, item in value.items():
+            if key in _TIMESTAMP_FIELD_NAMES:
+                normalized = coerce_timestamp_ms(item)
+                if normalized is not None:
+                    migrated[key] = normalized
+                    changed = changed or normalized != item
+                    continue
+            next_value, next_changed = _migrate_settings_value(item, parent_key=key)
+            migrated[key] = next_value
+            changed = changed or next_changed
+        return migrated, changed
+
+    if isinstance(value, list):
+        migrated_items = []
+        for item in value:
+            next_value, next_changed = _migrate_settings_value(item, parent_key=parent_key)
+            migrated_items.append(next_value)
+            changed = changed or next_changed
+        return migrated_items, changed
+
+    if parent_key in _TIMESTAMP_FIELD_NAMES:
+        normalized = coerce_timestamp_ms(value)
+        if normalized is not None:
+            return normalized, normalized != value
+
+    return value, False
+
+
+def migrate_web_settings_timestamps_to_ms(path: str | Path | None = None) -> bool:
+    settings_path = Path(path).expanduser() if path is not None else get_web_settings_path()
+    if not settings_path.exists():
+        return False
+    settings = load_settings(path=settings_path)
+    migrated, changed = _migrate_settings_value(settings)
+    if changed:
+        save_settings(migrated, path=settings_path)
+    return changed
+
+
+def migrate_all_web_settings_timestamps_to_ms() -> int:
+    updated = 0
+    paths = [get_web_settings_path(None), *[get_web_settings_path(tenant_id) for tenant_id in list_web_tenant_ids()]]
+    seen: set[Path] = set()
+    for path in paths:
+        resolved = path.expanduser()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if migrate_web_settings_timestamps_to_ms(resolved):
+            updated += 1
+    return updated

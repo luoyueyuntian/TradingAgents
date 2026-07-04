@@ -14,6 +14,7 @@ def serialize_run_state(run: RunState) -> dict:
     return {
         "run_id": run.run_id,
         "ticker": run.ticker,
+        "company_name": run.company_name,
         "date": run.date,
         "asset_type": run.asset_type,
         "config": run.config,
@@ -53,6 +54,7 @@ def deserialize_run_state(payload: dict, *, runs_root_dir: Path) -> RunState:
         config=payload.get("config") or build_default_config(),
         selected_analysts=payload.get("selected_analysts") or ["market", "social", "news", "fundamentals"],
         runtime_context=runtime_context,
+        company_name=payload.get("company_name"),
         status=payload.get("status", "pending"),
         current_report=payload.get("current_report"),
         final_report=payload.get("final_report"),
@@ -63,7 +65,7 @@ def deserialize_run_state(payload: dict, *, runs_root_dir: Path) -> RunState:
         terminal_log_path=payload.get("terminal_log_path"),
         event_log_path=payload.get("event_log_path"),
         queue_sequence=payload.get("queue_sequence"),
-        created_at=payload.get("created_at", ""),
+        created_at=payload.get("created_at", 0),
         started_at=payload.get("started_at"),
         completed_at=payload.get("completed_at"),
     )

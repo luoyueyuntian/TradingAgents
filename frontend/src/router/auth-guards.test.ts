@@ -11,7 +11,7 @@ const sessionState = {
     display_name: string;
     role: string;
     tenant_id: string;
-    expires_at: string | null;
+    expires_at: number | null;
     must_change_password: boolean;
   },
 };
