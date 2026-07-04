@@ -22,6 +22,17 @@ PASSWORD_RESET_MAX_ATTEMPTS = 5
 
 
 @dataclass(frozen=True)
+class TenantRecord:
+    id: str
+    tenant_id: str
+    display_name: str
+    disabled: bool
+    archived: bool
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class UserRecord:
     id: str
     username: str
@@ -143,6 +154,18 @@ def _user_from_row(row: sqlite3.Row) -> UserRecord:
     )
 
 
+def _tenant_from_row(row: sqlite3.Row) -> TenantRecord:
+    return TenantRecord(
+        id=row["id"],
+        tenant_id=row["tenant_id"],
+        display_name=row["display_name"],
+        disabled=bool(row["disabled"]),
+        archived=bool(row["archived"]),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
 def _session_from_row(row: sqlite3.Row) -> SessionRecord:
     return SessionRecord(
         id_hash=row["id_hash"],
@@ -193,82 +216,218 @@ class UserStore:
 
     def ensure_schema(self) -> None:
         with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY,
-                    username TEXT NOT NULL UNIQUE,
-                    email TEXT NOT NULL UNIQUE,
-                    display_name TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    tenant_id TEXT NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    password_salt TEXT NOT NULL,
-                    password_updated_at TEXT,
-                    must_change_password INTEGER NOT NULL DEFAULT 1,
-                    expires_at TEXT,
-                    disabled INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    last_login_at TEXT
-                )
-                """
+            self._ensure_auth_schema(conn)
+            self._backfill_tenants(conn)
+
+    def _ensure_auth_schema(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tenants (
+                id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                disabled INTEGER NOT NULL DEFAULT 0,
+                archived INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sessions (
-                    id_hash TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    last_seen_at TEXT NOT NULL,
-                    expires_at TEXT NOT NULL
-                )
-                """
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                password_salt TEXT NOT NULL,
+                password_updated_at TEXT,
+                must_change_password INTEGER NOT NULL DEFAULT 1,
+                expires_at TEXT,
+                disabled INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_login_at TEXT
             )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                    id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    code_hash TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    expires_at TEXT NOT NULL,
-                    used_at TEXT,
-                    attempt_count INTEGER NOT NULL DEFAULT 0
-                )
-                """
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                id_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL
             )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS audit_events (
-                    id TEXT PRIMARY KEY,
-                    actor_user_id TEXT,
-                    target_user_id TEXT,
-                    tenant_id TEXT,
-                    event_type TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    metadata TEXT
-                )
-                """
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                code_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                used_at TEXT,
+                attempt_count INTEGER NOT NULL DEFAULT 0
             )
-            conn.execute(
-                """
-                CREATE UNIQUE INDEX IF NOT EXISTS users_username_ci_unique
-                ON users(lower(username))
-                """
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_events (
+                id TEXT PRIMARY KEY,
+                actor_user_id TEXT,
+                target_user_id TEXT,
+                tenant_id TEXT,
+                event_type TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                metadata TEXT
             )
-            conn.execute(
-                """
-                CREATE UNIQUE INDEX IF NOT EXISTS users_email_ci_unique
-                ON users(lower(email))
-                """
-            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS users_username_ci_unique
+            ON users(lower(username))
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS users_email_ci_unique
+            ON users(lower(email))
+            """
+        )
+
+    def _backfill_tenants(self, conn: sqlite3.Connection) -> None:
+        user_tenant_ids = conn.execute(
+            """
+            SELECT DISTINCT tenant_id
+            FROM users
+            WHERE tenant_id IS NOT NULL
+              AND trim(tenant_id) != ''
+            ORDER BY tenant_id
+            """
+        ).fetchall()
+        now = _utc_now()
+        for row in user_tenant_ids:
+            tenant_id = row["tenant_id"]
+            self._ensure_tenant_record(conn, tenant_id, now=now)
 
     def count_users(self) -> int:
         self.ensure_schema()
         with self._connect() as conn:
             row = conn.execute("SELECT COUNT(*) AS count FROM users").fetchone()
         return int(row["count"])
+
+    def create_tenant(self, tenant_id: str, *, display_name: str) -> TenantRecord:
+        self.ensure_schema()
+        normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
+        normalized_display_name = _require_text(display_name, "display_name")
+        now = _utc_now()
+        tenant_row_id = uuid.uuid4().hex
+        with self._connect() as conn:
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO tenants (
+                        id,
+                        tenant_id,
+                        display_name,
+                        disabled,
+                        archived,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, 0, 0, ?, ?)
+                    """,
+                    (
+                        tenant_row_id,
+                        normalized_tenant_id,
+                        normalized_display_name,
+                        now,
+                        now,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise ValueError("tenant_id already exists") from exc
+            return self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
+
+    def update_tenant(self, tenant_id: str, **fields: Any) -> TenantRecord:
+        self.ensure_schema()
+        normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
+        allowed_fields = {"display_name", "disabled", "archived"}
+        unknown_fields = sorted(set(fields) - allowed_fields)
+        if unknown_fields:
+            raise ValueError(f"unsupported tenant field: {unknown_fields[0]}")
+        if not fields:
+            raise ValueError("no fields to update")
+
+        updates: dict[str, Any] = {}
+        for field_name, value in fields.items():
+            if field_name == "display_name":
+                updates[field_name] = _require_text(value, field_name)
+            elif field_name in {"disabled", "archived"}:
+                updates[field_name] = int(value)
+
+        with self._connect() as conn:
+            self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
+            updates["updated_at"] = _utc_now()
+            assignments = ", ".join(f"{field_name} = ?" for field_name in updates)
+            conn.execute(
+                f"UPDATE tenants SET {assignments} WHERE tenant_id = ?",
+                (*updates.values(), normalized_tenant_id),
+            )
+            return self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
+
+    def get_tenant(self, tenant_id: str) -> TenantRecord | None:
+        self.ensure_schema()
+        normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM tenants WHERE tenant_id = ?",
+                (normalized_tenant_id,),
+            ).fetchone()
+        return _tenant_from_row(row) if row is not None else None
+
+    def list_tenants(self, *, include_archived: bool = False) -> list[TenantRecord]:
+        self.ensure_schema()
+        with self._connect() as conn:
+            if include_archived:
+                rows = conn.execute(
+                    "SELECT * FROM tenants ORDER BY tenant_id"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM tenants
+                    WHERE archived = 0
+                    ORDER BY tenant_id
+                    """
+                ).fetchall()
+        return [_tenant_from_row(row) for row in rows]
+
+    def get_tenant_stats(self, tenant_id: str) -> dict[str, int]:
+        self.ensure_schema()
+        normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS user_count
+                FROM users
+                WHERE tenant_id = ?
+                """,
+                (normalized_tenant_id,),
+            ).fetchone()
+        return {
+            "user_count": int(row["user_count"]),
+            "active_admin_count": self.active_admin_count(normalized_tenant_id),
+        }
 
     def create_user(
         self,
@@ -300,6 +459,7 @@ class UserStore:
         resolved_user_id = user_id or uuid.uuid4().hex
 
         with self._connect() as conn:
+            self._ensure_tenant_record(conn, normalized_tenant_id)
             self._raise_for_duplicate_user_field(
                 conn,
                 "username",
@@ -495,6 +655,8 @@ class UserStore:
         updates = self._prepare_user_updates(conn, user_id, fields)
         if not updates:
             return
+        if "tenant_id" in updates:
+            self._ensure_tenant_record(conn, updates["tenant_id"])
         updates["updated_at"] = _utc_now()
         assignments = ", ".join(f"{field_name} = ?" for field_name in updates)
         conn.execute(
@@ -503,6 +665,50 @@ class UserStore:
         )
         if delete_sessions or updates.get("disabled") == 1:
             conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+    def _ensure_tenant_record(
+        self,
+        conn: sqlite3.Connection,
+        tenant_id: str,
+        *,
+        now: str | None = None,
+    ) -> None:
+        resolved_now = now or _utc_now()
+        conn.execute(
+            """
+            INSERT INTO tenants (
+                id,
+                tenant_id,
+                display_name,
+                disabled,
+                archived,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, 0, 0, ?, ?)
+            ON CONFLICT(tenant_id) DO NOTHING
+            """,
+            (
+                uuid.uuid4().hex,
+                tenant_id,
+                tenant_id,
+                resolved_now,
+                resolved_now,
+            ),
+        )
+
+    def _get_tenant_by_tenant_id(
+        self,
+        conn: sqlite3.Connection,
+        tenant_id: str,
+    ) -> TenantRecord:
+        row = conn.execute(
+            "SELECT * FROM tenants WHERE tenant_id = ?",
+            (tenant_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("tenant not found")
+        return _tenant_from_row(row)
 
     def _get_active_user_row_by_id(
         self,
