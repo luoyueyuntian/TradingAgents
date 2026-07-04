@@ -11,6 +11,7 @@ describe('one-time task payload helpers', () => {
       manualStocks: [{ market: 'us', symbol: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ' }],
       selectedGroupIds: ['group-1', 'group-2'],
       includeWatchlist: true,
+      analysts: ['market', 'news'],
       llm_provider: 'openai',
       quick_think_model: 'gpt-5.4-mini',
       deep_think_model: 'gpt-5.5',
@@ -36,6 +37,7 @@ describe('one-time task payload helpers', () => {
       group_ids: ['group-1', 'group-2'],
       include_watchlist: true,
       analysis_config: expect.objectContaining({
+        analysts: ['market', 'news'],
         llm_provider: 'openai',
         quick_think_model: 'gpt-5.4-mini',
         deep_think_model: 'gpt-5.5',
