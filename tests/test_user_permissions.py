@@ -24,6 +24,9 @@ def _create_user(store: UserStore, **overrides):
         "must_change_password": False,
     }
     values.update(overrides)
+    tenant_id = values["tenant_id"]
+    if store.get_tenant(tenant_id) is None:
+        store.create_tenant(tenant_id, display_name=tenant_id)
     return store.create_user(**values)
 
 
@@ -221,6 +224,20 @@ def test_forced_password_change_blocks_protected_routes(monkeypatch, tmp_path):
     assert allowed.status_code == 200
     assert blocked.status_code == 403
     assert blocked.json()["code"] == "password_change_required"
+
+
+def test_disabled_tenant_blocks_existing_session_requests(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
+    _create_user(store, role="viewer", tenant_id="tenant-disabled")
+    _login(client)
+    store.update_tenant("tenant-disabled", disabled=True)
+    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [])
+
+    response = client.get("/api/runs")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is disabled"
 
 
 def test_authenticated_me_request_populates_auth_state(monkeypatch, tmp_path):

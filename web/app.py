@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,7 +21,7 @@ from .auth import (
     get_session_user,
     is_user_auth_required,
 )
-from .auth_routes import router as auth_router
+from .auth_routes import _ensure_tenant_allows_access, router as auth_router
 from .permissions import (
     has_required_role,
     is_auth_path,
@@ -95,6 +95,10 @@ async def _resolve_request_auth(request, call_next):
         return await call_next(request)
 
     if session_user is not None:
+        try:
+            _ensure_tenant_allows_access(UserStore(get_web_auth_db_path()), session_user.tenant_id)
+        except HTTPException as exc:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         if session_user.must_change_password and not is_password_change_allowed_path(path, method):
             return JSONResponse(
                 {

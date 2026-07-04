@@ -26,6 +26,9 @@ def _create_user(store: UserStore, **overrides):
         "must_change_password": True,
     }
     values.update(overrides)
+    tenant_id = values["tenant_id"]
+    if store.get_tenant(tenant_id) is None:
+        store.create_tenant(tenant_id, display_name=tenant_id)
     return store.create_user(**values)
 
 
@@ -146,6 +149,36 @@ def test_login_rejects_expired_user_with_clear_403(monkeypatch, tmp_path):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "User account has expired"
+
+
+def test_login_rejects_disabled_tenant_with_clear_403(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
+    _create_user(store, tenant_id="tenant-disabled")
+    store.update_tenant("tenant-disabled", disabled=True)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice", "password": "StrongPass123!"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is disabled"
+
+
+def test_login_rejects_archived_tenant_with_clear_403(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-archived", display_name="Tenant Archived")
+    _create_user(store, tenant_id="tenant-archived")
+    store.update_tenant("tenant-archived", archived=True)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice", "password": "StrongPass123!"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is archived"
 
 
 def test_me_rejects_missing_or_expired_session(monkeypatch, tmp_path):
