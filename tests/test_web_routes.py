@@ -58,6 +58,7 @@ def test_put_settings_exports_to_current_process(monkeypatch):
             "workspace": {
                 "default_home_view": "saved-view",
                 "default_saved_view_id": "view-a",
+                "default_ui_language": "en",
             },
         },
     )
@@ -72,6 +73,7 @@ def test_put_settings_exports_to_current_process(monkeypatch):
     assert captured["exported"]["data"]["tool_vendors"]["get_global_news"] == "alpha_vantage"
     assert captured["saved"]["workspace"]["default_home_view"] == "saved-view"
     assert captured["saved"]["workspace"]["default_saved_view_id"] == "view-a"
+    assert captured["saved"]["workspace"]["default_ui_language"] == "en"
 
 
 def test_settings_are_scoped_by_request_tenant(monkeypatch, tmp_path):
@@ -88,6 +90,7 @@ def test_settings_are_scoped_by_request_tenant(monkeypatch, tmp_path):
     assert tenant_a.status_code == 200
     assert tenant_b.status_code == 200
     assert tenant_b.json()["analysis"]["output_language"] == "English"
+    assert tenant_b.json()["workspace"]["default_ui_language"] == "zh-CN"
 
 
 def test_provider_catalog_includes_mimo():
@@ -100,6 +103,12 @@ def test_provider_catalog_includes_mimo():
     assert providers["mimo"]["display_name"] == "Xiaomi MiMo"
     assert providers["mimo"]["quick_models"][0]["value"] == "mimo-v2.5"
     assert providers["mimo"]["deep_models"][0]["value"] == "mimo-v2.5-pro"
+    assert providers["mimo"]["backend_url"] == "https://api.xiaomimimo.com/v1"
+    assert providers["mimo"]["api_key_env"] == "MIMO_API_KEY"
+    assert providers["openai"]["backend_url"] is None
+    assert providers["openai"]["api_key_env"] == "OPENAI_API_KEY"
+    assert providers["openai_compatible"]["backend_url"] is None
+    assert providers["ollama"]["api_key_env"] is None
 
 
 def test_settings_response_includes_empty_mimo_api_key(monkeypatch, tmp_path):
@@ -160,6 +169,7 @@ def test_list_runs_returns_history(monkeypatch):
     old_run.created_at = "2026-01-15T00:00:00"
     new_run = _make_run("new")
     new_run.created_at = "2026-01-15T01:00:00"
+    new_run.company_name = "Apple Inc."
 
     monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [new_run, old_run])
     monkeypatch.setattr(web_routes, "get_queue_position", lambda run_id, tenant_id=None: 2 if run_id == "new" else None)
@@ -170,6 +180,7 @@ def test_list_runs_returns_history(monkeypatch):
     payload = response.json()
     assert [item["run_id"] for item in payload] == ["new", "old"]
     assert payload[0]["ticker"] == "AAPL"
+    assert payload[0]["company_name"] == "Apple Inc."
     assert payload[0]["queue_position"] == 2
 
 
@@ -260,6 +271,7 @@ def test_run_history_export_csv_returns_filtered_rows(monkeypatch):
 
     failed = _make_run("btc-google")
     failed.ticker = "BTC-USD"
+    failed.company_name = "Bitcoin USD"
     failed.status = "failed"
     failed.error = "timeout"
     failed.asset_type = "crypto"
@@ -274,9 +286,110 @@ def test_run_history_export_csv_returns_filtered_rows(monkeypatch):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
     assert "tradingagents-run-history-default-" in response.headers["content-disposition"]
-    assert "run_id,ticker,date,status,archived,asset_type,llm_provider,created_at,completed_at,queue_position,signal,error" in response.text
-    assert "btc-google,BTC-USD,2026-01-15,failed,False,crypto,google,2026-01-15T00:00:00" in response.text
+    assert "run_id,ticker,company_name,date,status,archived,asset_type,llm_provider,created_at,completed_at,queue_position,signal,error" in response.text
+    assert "btc-google,BTC-USD,Bitcoin USD,2026-01-15,failed,False,crypto,google,2026-01-15T00:00:00" in response.text
     assert "nvda-openai" not in response.text
+
+
+def test_list_run_company_groups_orders_by_latest_analysis_time(monkeypatch):
+    client = TestClient(app)
+    newer = _make_run("newer")
+    newer.ticker = "AAPL"
+    newer.company_name = "Apple Inc."
+    newer.created_at = "2026-07-04T09:00:00"
+
+    older = _make_run("older")
+    older.ticker = "AAPL"
+    older.company_name = "Apple Inc."
+    older.created_at = "2026-07-03T09:00:00"
+
+    other = _make_run("other")
+    other.ticker = "NVDA"
+    other.company_name = "NVIDIA Corporation"
+    other.created_at = "2026-07-05T09:00:00"
+
+    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [older, newer, other])
+    monkeypatch.setattr(web_routes, "get_queue_position", lambda run_id, tenant_id=None: None)
+
+    response = client.get("/api/runs/company-groups")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["page"] == 1
+    assert payload["page_size"] == 20
+    assert payload["total_count"] == 2
+    assert [item["company_name"] for item in payload["items"]] == ["NVIDIA Corporation", "Apple Inc."]
+    assert [run["run_id"] for run in payload["items"][1]["recent_runs"]] == ["newer", "older"]
+
+
+def test_list_run_company_groups_paginates_by_company(monkeypatch):
+    client = TestClient(app)
+    first = _make_run("first")
+    first.ticker = "AAPL"
+    first.company_name = "Apple Inc."
+    first.created_at = "2026-07-04T08:00:00"
+
+    second = _make_run("second")
+    second.ticker = "NVDA"
+    second.company_name = "NVIDIA Corporation"
+    second.created_at = "2026-07-04T09:00:00"
+
+    third = _make_run("third")
+    third.ticker = "MSFT"
+    third.company_name = "Microsoft Corporation"
+    third.created_at = "2026-07-04T10:00:00"
+
+    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [first, second, third])
+    monkeypatch.setattr(web_routes, "get_queue_position", lambda run_id, tenant_id=None: None)
+
+    response = client.get("/api/runs/company-groups", params={"page": 2, "page_size": 1})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["page"] == 2
+    assert payload["page_size"] == 1
+    assert payload["total_count"] == 3
+    assert [item["company_name"] for item in payload["items"]] == ["NVIDIA Corporation"]
+
+
+def test_list_run_company_groups_limits_recent_runs_and_falls_back_to_ticker(monkeypatch):
+    client = TestClient(app)
+    runs = []
+    for index in range(6):
+        run = _make_run(f"fallback-{index}")
+        run.ticker = "BTC-USD"
+        run.company_name = None
+        run.asset_type = "crypto"
+        run.created_at = f"2026-07-0{6 - index}T09:00:00"
+        runs.append(run)
+
+    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: runs)
+    monkeypatch.setattr(web_routes, "get_queue_position", lambda run_id, tenant_id=None: None)
+
+    response = client.get("/api/runs/company-groups")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["company_name"] == "BTC-USD"
+    assert payload["items"][0]["run_count"] == 6
+    assert len(payload["items"][0]["recent_runs"]) == 5
+    assert payload["items"][0]["tickers"] == ["BTC-USD"]
+
+
+def test_list_run_company_groups_search_matches_company_name(monkeypatch):
+    client = TestClient(app)
+    run = _make_run("apple-run")
+    run.ticker = "AAPL"
+    run.company_name = "Apple Inc."
+    run.created_at = "2026-07-04T09:00:00"
+
+    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [run])
+    monkeypatch.setattr(web_routes, "get_queue_position", lambda run_id, tenant_id=None: None)
+
+    response = client.get("/api/runs/company-groups", params={"q": "apple"})
+
+    assert response.status_code == 200
+    assert response.json()["total_count"] == 1
 
 
 def test_bulk_delete_runs_deletes_terminal_and_skips_active(monkeypatch, tmp_path):
@@ -3950,6 +4063,7 @@ def test_stream_run_events_reads_persisted_history_in_external_worker_mode(monke
 def test_get_run_status_includes_config_summary(monkeypatch):
     client = TestClient(app)
     run = _make_run()
+    run.company_name = "Apple Inc."
     run.config.update({
         "llm_provider": "openai",
         "quick_think_llm": "gpt-5.4-mini",
@@ -3972,6 +4086,7 @@ def test_get_run_status_includes_config_summary(monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["company_name"] == "Apple Inc."
     assert payload["config_summary"]["llm_provider"] == "openai"
     assert payload["config_summary"]["output_language"] == "Chinese"
     assert payload["config_summary"]["market_profile"] == "cn_a"
@@ -4195,6 +4310,7 @@ def test_retry_run_endpoint_returns_new_run(monkeypatch):
     client = TestClient(app)
     run = _make_run("retried")
     run.status = "queued"
+    run.company_name = "Apple Inc."
     monkeypatch.setattr(web_routes, "retry_run", lambda _run_id, tenant_id=None: run)
 
     response = client.post("/api/runs/source/retry")
@@ -4202,6 +4318,7 @@ def test_retry_run_endpoint_returns_new_run(monkeypatch):
     assert response.status_code == 201
     assert response.json()["run_id"] == "retried"
     assert response.json()["status"] == "queued"
+    assert response.json()["company_name"] == "Apple Inc."
 
 
 def test_retry_run_endpoint_409s_for_active_source(monkeypatch):

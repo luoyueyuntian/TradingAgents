@@ -1,7 +1,10 @@
 <template>
   <div
     v-if="blocks.length"
-    class="uno-max-h-[680px] uno-overflow-auto uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-[1.05rem] uno-leading-[1.6] uno-text-[#162326]"
+    :class="[
+      props.constrainHeight ? 'uno-max-h-[680px] uno-overflow-auto' : '',
+      'uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-[1.05rem] uno-leading-[1.6] uno-text-[#162326]',
+    ]"
   >
     <template v-for="(block, blockIndex) in blocks" :key="`${block.kind}-${blockIndex}`">
       <component :is="headingTag(block.level)" v-if="block.kind === 'heading'" :class="headingClass(block.level, blockIndex)">
@@ -71,6 +74,7 @@ import { parseReportMarkdown } from '../utils/reportMarkdown';
 const props = defineProps<{
   content?: string | null;
   emptyText: string;
+  constrainHeight?: boolean;
 }>();
 
 const blocks = computed(() => parseReportMarkdown(props.content || ''));

@@ -14,13 +14,14 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from sse_starlette.sse import EventSourceResponse
 from starlette.concurrency import run_in_threadpool
 
 from tradingagents.llm_clients.factory import create_llm_client
 from tradingagents.llm_clients.model_catalog import MODEL_OPTIONS
+from tradingagents.llm_clients.openai_client import OPENAI_COMPATIBLE_PROVIDERS
 from tradingagents.service.artifact_store import build_run_artifacts, resolve_run_artifact
 from tradingagents.service.execution_lock import PROCESS_EXECUTION_LOCK
 from tradingagents.service.runtime_admin import (
@@ -28,6 +29,13 @@ from tradingagents.service.runtime_admin import (
     clear_runtime_memory_logs,
     list_runtime_checkpoints,
     list_runtime_memory_entries,
+)
+from tradingagents.service.timestamps import (
+    coerce_timestamp_ms,
+    current_timestamp_ms,
+    timestamp_ms_to_date_text,
+    timestamp_ms_to_datetime,
+    timestamp_ms_to_filename_text,
 )
 from tradingagents.service.stock_catalog import (
     StockCatalogItem,
@@ -39,9 +47,12 @@ from tradingagents.service.stock_catalog import (
 from tradingagents.service.web_state import (
     get_web_settings_path,
     get_web_state_dir,
+    migrate_all_web_settings_timestamps_to_ms,
+    migrate_web_settings_timestamps_to_ms,
     list_web_tenant_ids,
 )
 from tradingagents.settings import (
+    PROVIDER_API_KEY_MAP,
     export_api_keys_to_env,
     load_settings,
     mask_api_keys,
@@ -117,6 +128,7 @@ from .schemas import (
     MemberWorkspaceResponse,
     MemberWorkspaceSummary,
     MemoryEntryInfo,
+    MigrationResult,
     Note,
     NoteCreate,
     NoteUpdate,
@@ -143,6 +155,8 @@ from .schemas import (
     RunBulkActionResult,
     RunChatRequest,
     RunChatResponse,
+    RunCompanyGroup,
+    RunCompanyGroupPage,
     RunComment,
     RunCommentCreate,
     RunCommentResolveUpdate,
@@ -271,6 +285,7 @@ def _analysis_response_from_run(run) -> AnalysisResponse:
         run_id=run.run_id,
         status=run.status,
         ticker=run.ticker,
+        company_name=run.company_name,
         date=run.date,
     )
 
@@ -377,6 +392,17 @@ async def delete_runtime_memory(request: Request):
     return DeleteResult(deleted=deleted)
 
 
+@router.post("/api/system/settings/migrate-timestamps", response_model=MigrationResult)
+async def migrate_web_settings_timestamps(request: Request):
+    """Rewrite persisted settings timestamps to Unix millisecond timestamps."""
+    tenant_id = _request_tenant_id(request)
+    if tenant_id is not None:
+        _require_tenant_scoped_system_access(request)
+        updated = 1 if migrate_web_settings_timestamps_to_ms(get_web_settings_path(tenant_id)) else 0
+        return MigrationResult(updated=updated)
+    return MigrationResult(updated=migrate_all_web_settings_timestamps_to_ms())
+
+
 def _run_config_summary(run) -> dict[str, object]:
     config = run.config or {}
     return {
@@ -409,8 +435,16 @@ def _normalize_ticker_symbol(raw_ticker: str) -> str:
     return ticker
 
 
-def _now_iso() -> str:
-    return datetime.datetime.now().isoformat()
+def _now_ts() -> int:
+    return current_timestamp_ms(datetime.datetime.now())
+
+
+def _timestamp_value(value: object) -> int | None:
+    return coerce_timestamp_ms(value)
+
+
+def _timestamp_sort_value(value: object) -> int:
+    return _timestamp_value(value) or 0
 
 
 def _load_settings_for_update(settings_path) -> dict:
@@ -453,7 +487,7 @@ def _load_watchlist_items(tenant_id: str | None = None) -> list[dict[str, object
         items.append({
             "id": item_id if isinstance(item_id, str) else f"legacy-{normalized}",
             "ticker": normalized,
-            "created_at": created_at if isinstance(created_at, str) else None,
+            "created_at": _timestamp_value(created_at),
         })
     return items
 
@@ -512,7 +546,7 @@ def _load_alert_rules(tenant_id: str | None = None) -> list[AlertRule]:
             ticker=ticker.strip().upper(),
             field=normalized_field,
             value=_normalize_alert_value(normalized_field, value),
-            created_at=item.get("created_at") if isinstance(item.get("created_at"), str) else None,
+            created_at=_timestamp_value(item.get("created_at")),
         ))
     return rules
 
@@ -552,7 +586,7 @@ def _load_portfolio_positions(tenant_id: str | None = None) -> list[dict[str, ob
             "ticker": item["ticker"].strip().upper(),
             "quantity": quantity,
             "average_cost": average_cost,
-            "created_at": item.get("created_at") if isinstance(item.get("created_at"), str) else None,
+            "created_at": _timestamp_value(item.get("created_at")),
         })
     return positions
 
@@ -607,6 +641,7 @@ def _save_workspace_settings_model(tenant_id: str | None, workspace_settings: Wo
     existing["workspace"] = {
         "default_home_view": workspace_settings.default_home_view,
         "default_saved_view_id": workspace_settings.default_saved_view_id,
+        "default_ui_language": workspace_settings.default_ui_language,
     }
     save_settings(existing, path=settings_path)
 
@@ -706,7 +741,7 @@ def _build_csv_download_response(
             key: "" if row.get(key) is None else row.get(key)
             for key in fieldnames
         })
-    timestamp = _now_iso()[:19].replace(":", "-")
+    timestamp = timestamp_ms_to_filename_text(_now_ts())
     filename = f"tradingagents-{prefix}-{_safe_tenant_slug(tenant_id)}-{timestamp}.csv"
     return Response(
         content=buffer.getvalue(),
@@ -914,17 +949,17 @@ def _get_run_review(run_id: str, tenant_id: str | None = None) -> RunReview | No
     return next((item for item in _load_run_reviews(tenant_id) if item.run_id == run_id), None)
 
 
-def _load_notification_reads(tenant_id: str | None = None) -> dict[str, str]:
+def _load_notification_reads(tenant_id: str | None = None) -> dict[str, int]:
     settings = load_settings(path=get_web_settings_path(tenant_id))
     raw = settings.get("notifications", {}).get("read_items", [])
     if not isinstance(raw, list):
         return {}
 
-    reads: dict[str, str] = {}
+    reads: dict[str, int] = {}
     for item in raw:
         if isinstance(item, str):
             if item:
-                reads[item] = ""
+                reads[item] = 0
             continue
         if not isinstance(item, dict):
             continue
@@ -932,17 +967,17 @@ def _load_notification_reads(tenant_id: str | None = None) -> dict[str, str]:
         read_at = item.get("read_at")
         if not isinstance(notification_id, str) or not notification_id:
             continue
-        reads[notification_id] = read_at if isinstance(read_at, str) else ""
+        reads[notification_id] = _timestamp_value(read_at) or 0
     return reads
 
 
-def _save_notification_reads(tenant_id: str | None, reads: dict[str, str]) -> None:
+def _save_notification_reads(tenant_id: str | None, reads: dict[str, int]) -> None:
     settings_path = get_web_settings_path(tenant_id)
     existing = _load_settings_for_update(settings_path)
     bucket = existing.get("notifications", {})
     if not isinstance(bucket, dict):
         bucket = {}
-    ordered = sorted(reads.items(), key=lambda item: item[1] or "", reverse=True)[:500]
+    ordered = sorted(reads.items(), key=lambda item: item[1] or 0, reverse=True)[:500]
     bucket["read_items"] = [
         {"id": notification_id, "read_at": read_at or None}
         for notification_id, read_at in ordered
@@ -1046,10 +1081,10 @@ def _build_public_share_list_item(snapshot: PublicRunShareSnapshot) -> PublicRun
 def _is_public_share_expired(snapshot: PublicRunShareSnapshot) -> bool:
     if not snapshot.expires_at:
         return False
-    try:
-        return datetime.datetime.fromisoformat(snapshot.expires_at) < datetime.datetime.now()
-    except ValueError:
+    expires_at = _timestamp_value(snapshot.expires_at)
+    if expires_at is None:
         return True
+    return expires_at < _now_ts()
 
 
 def _find_public_run_share(share_id: str) -> PublicRunShareSnapshot | None:
@@ -1084,7 +1119,7 @@ def _load_saved_searches(tenant_id: str | None = None) -> list[SavedSearch]:
             item.archived,
             not item.pinned,
             (item.group or "~").lower(),
-            item.created_at or "",
+            _timestamp_sort_value(item.created_at),
             item.name.lower(),
         )
     )
@@ -1121,7 +1156,7 @@ def _load_saved_views(tenant_id: str | None = None) -> list[SavedView]:
             item.archived,
             not item.pinned,
             (item.group or "~").lower(),
-            item.created_at or "",
+            _timestamp_sort_value(item.created_at),
             item.name.lower(),
         )
     )
@@ -1325,6 +1360,7 @@ def _filter_runs(
             normalized_query,
             run.run_id,
             run.ticker,
+            run.company_name,
             run.date,
             run.signal,
             run.error,
@@ -1374,6 +1410,7 @@ def _build_run_summary(run, tenant_id: str | None = None) -> RunSummary:
         run_id=run.run_id,
         status=run.status,
         ticker=run.ticker,
+        company_name=run.company_name,
         date=run.date,
         asset_type=run.asset_type,
         created_at=run.created_at,
@@ -1395,7 +1432,7 @@ def _build_ticker_overview(normalized: str, tenant_id: str | None, runs: list | 
         run for run in candidate_runs
         if run.ticker.upper() == normalized
     ]
-    matched_runs.sort(key=lambda run: run.created_at or "", reverse=True)
+    matched_runs.sort(key=lambda run: _timestamp_sort_value(run.created_at), reverse=True)
     latest = matched_runs[0] if matched_runs else None
 
     return TickerOverview(
@@ -1410,7 +1447,69 @@ def _build_ticker_overview(normalized: str, tenant_id: str | None, runs: list | 
     )
 
 
-def _watchlist_entry_from_overview(overview: TickerOverview, *, created_at: str | None = None) -> WatchlistEntry:
+def _run_company_display_name(run) -> str:
+    company_name = str(getattr(run, "company_name", "") or "").strip()
+    if company_name:
+        return company_name
+    ticker = str(getattr(run, "ticker", "") or "").strip()
+    return ticker or "Unknown"
+
+
+def _run_company_group_key(run) -> str:
+    display_name = _run_company_display_name(run).strip().lower()
+    normalized = "".join(char if char.isalnum() else "-" for char in display_name).strip("-")
+    asset = str(getattr(run, "asset_type", "") or "").strip().lower() or "unknown"
+    return f"{normalized or 'unknown'}-{asset}"
+
+
+def _build_run_company_groups_page(
+    runs: list,
+    tenant_id: str | None,
+    *,
+    page: int,
+    page_size: int,
+) -> RunCompanyGroupPage:
+    grouped: dict[str, list] = {}
+    for run in runs:
+        grouped.setdefault(_run_company_group_key(run), []).append(run)
+
+    items: list[RunCompanyGroup] = []
+    for group_key, grouped_runs in grouped.items():
+        grouped_runs.sort(key=lambda run: _timestamp_sort_value(run.created_at), reverse=True)
+        latest = grouped_runs[0]
+        tickers = sorted({
+            str(run.ticker or "").strip()
+            for run in grouped_runs
+            if str(run.ticker or "").strip()
+        })
+        items.append(
+            RunCompanyGroup(
+                group_key=group_key,
+                company_name=_run_company_display_name(latest),
+                asset_type=str(latest.asset_type or ""),
+                tickers=tickers,
+                run_count=len(grouped_runs),
+                latest_run_id=latest.run_id,
+                latest_status=latest.status,
+                latest_signal=latest.signal,
+                latest_date=latest.date,
+                latest_created_at=latest.created_at,
+                recent_runs=[_build_run_summary(run, tenant_id) for run in grouped_runs[:5]],
+            )
+        )
+
+    items.sort(key=lambda item: _timestamp_sort_value(item.latest_created_at), reverse=True)
+    start = (page - 1) * page_size
+    end = start + page_size
+    return RunCompanyGroupPage(
+        items=items[start:end],
+        page=page,
+        page_size=page_size,
+        total_count=len(items),
+    )
+
+
+def _watchlist_entry_from_overview(overview: TickerOverview, *, created_at: int | None = None) -> WatchlistEntry:
     return WatchlistEntry(
         ticker=overview.ticker,
         run_count=overview.run_count,
@@ -1429,7 +1528,7 @@ def _build_watchlist_entries(tenant_id: str | None, runs: list | None = None) ->
     return [
         _watchlist_entry_from_overview(
             _build_ticker_overview(str(item["ticker"]), tenant_id, resolved_runs),
-            created_at=item.get("created_at") if isinstance(item.get("created_at"), str) else None,
+            created_at=_timestamp_value(item.get("created_at")),
         )
         for item in items
     ]
@@ -1596,7 +1695,7 @@ def _build_portfolio_position(position: dict[str, object], tenant_id: str | None
         quantity=quantity,
         average_cost=average_cost,
         cost_basis=round(quantity * average_cost, 6),
-        created_at=position.get("created_at") if isinstance(position.get("created_at"), str) else None,
+        created_at=_timestamp_value(position.get("created_at")),
         latest_signal=overview.latest_signal,
         latest_status=overview.latest_status,
         latest_date=overview.latest_date,
@@ -1631,7 +1730,7 @@ def _build_daily_briefing_response(tenant_id: str | None) -> DailyBriefingRespon
     watchlist_focus = [
         _watchlist_entry_from_overview(
             _build_ticker_overview(str(item["ticker"]), tenant_id, runs),
-            created_at=item.get("created_at") if isinstance(item.get("created_at"), str) else None,
+            created_at=_timestamp_value(item.get("created_at")),
         )
         for item in watchlist_items[:5]
     ]
@@ -1656,7 +1755,7 @@ def _build_daily_briefing_response(tenant_id: str | None) -> DailyBriefingRespon
         headline = f"{recent_count} recent run(s), {position_count} position(s), and no active alerts right now."
 
     summary = DailyBriefingSummary(
-        generated_at=datetime.datetime.now().isoformat(),
+        generated_at=_now_ts(),
         headline=headline,
         alert_hit_count=hit_count,
         watchlist_count=watchlist_count,
@@ -1771,7 +1870,7 @@ def _build_dashboard_response(tenant_id: str | None) -> DashboardResponse:
     watchlist_entries = [
         _watchlist_entry_from_overview(
             _build_ticker_overview(str(item["ticker"]), tenant_id, runs),
-            created_at=item.get("created_at") if isinstance(item.get("created_at"), str) else None,
+            created_at=_timestamp_value(item.get("created_at")),
         )
         for item in watchlist_items
     ]
@@ -1840,7 +1939,7 @@ def _build_dashboard_response(tenant_id: str | None) -> DashboardResponse:
     ][:5]
 
     summary = DashboardSummary(
-        generated_at=datetime.datetime.now().isoformat(),
+        generated_at=_now_ts(),
         watchlist_count=len(watchlist_items),
         bullish_focus_count=len(bullish_focus),
         needs_attention_count=len(needs_attention),
@@ -1876,15 +1975,10 @@ def _bucketize_counts(values: dict[str, int]) -> list[AnalyticsBucket]:
     ]
 
 
-def _safe_duration_seconds(started_at: str | None, completed_at: str | None) -> float | None:
-    if not started_at or not completed_at:
+def _safe_duration_seconds(started_at: int | None, completed_at: int | None) -> float | None:
+    if started_at is None or completed_at is None:
         return None
-    try:
-        start = datetime.datetime.fromisoformat(started_at)
-        end = datetime.datetime.fromisoformat(completed_at)
-    except ValueError:
-        return None
-    duration = (end - start).total_seconds()
+    duration = (completed_at - started_at) / 1000
     return duration if duration >= 0 else None
 
 
@@ -1914,7 +2008,7 @@ def _build_workspace_analytics_response(tenant_id: str | None) -> WorkspaceAnaly
         ticker = str(run.ticker or "unknown")
         ticker_counts[ticker] = ticker_counts.get(ticker, 0) + 1
 
-        day = str(run.created_at or "")[:10]
+        day = timestamp_ms_to_date_text(run.created_at)
         if day:
             bucket = daily_counts.setdefault(day, {
                 "total_runs": 0,
@@ -1940,7 +2034,7 @@ def _build_workspace_analytics_response(tenant_id: str | None) -> WorkspaceAnaly
     avg_duration = round(statistics.mean(durations), 3) if durations else None
 
     summary = AnalyticsSummary(
-        generated_at=_now_iso(),
+        generated_at=_now_ts(),
         total_runs=len(runs),
         terminal_runs=terminal_runs,
         queued_runs=status_counts.get("queued", 0),
@@ -2118,7 +2212,7 @@ def _build_workspace_screener_response(
             bool(row.is_pinned),
             bool(row.on_watchlist),
             bool(row.in_portfolio),
-            row.latest_created_at or "",
+            _timestamp_sort_value(row.latest_created_at),
             row.ticker,
         ),
         reverse=True,
@@ -2208,7 +2302,7 @@ def _build_notification_center_response(
         rule = rules_by_id.get(hit.rule_id)
         created_at = (
             (run.completed_at or run.created_at) if run is not None
-            else (rule.created_at if rule is not None else _now_iso())
+            else (rule.created_at if rule is not None else _now_ts())
         )
         items.append(NotificationItem(
             id=notification_id,
@@ -2244,7 +2338,7 @@ def _build_notification_center_response(
             severity="error" if overdue else "warning",
             title=title,
             message=message,
-            created_at=f"{item.due_date}T00:00:00",
+            created_at=coerce_timestamp_ms(f"{item.due_date}T00:00:00"),
             is_read=notification_id in reads,
             target_url=_build_share_url("/", tenant_id, run_id=item.run_id),
             ticker=item.ticker,
@@ -2299,7 +2393,7 @@ def _build_notification_center_response(
             member=review.reviewer,
         ))
 
-    items.sort(key=lambda item: item.created_at, reverse=True)
+    items.sort(key=lambda item: _timestamp_sort_value(item.created_at), reverse=True)
     unread_count = sum(1 for item in items if not item.is_read)
     visible_items = [
         item for item in items
@@ -2309,7 +2403,7 @@ def _build_notification_center_response(
         and (severity_filter == "all" or item.severity == severity_filter)
     ]
     return NotificationCenterResponse(
-        generated_at=_now_iso(),
+        generated_at=_now_ts(),
         unread_count=unread_count,
         total_count=len(items),
         unread_only=unread_only,
@@ -2331,7 +2425,7 @@ def _build_member_workspace_response(member: WorkspaceMember, tenant_id: str | N
         key=lambda item: (
             item.action_status == "done",
             item.due_date or "9999-12-31",
-            item.created_at or "",
+            _timestamp_sort_value(item.created_at),
         )
     )
 
@@ -2342,12 +2436,12 @@ def _build_member_workspace_response(member: WorkspaceMember, tenant_id: str | N
         if review.reviewer.strip().lower() == member.name.strip().lower()
         and review.status == "pending"
     ]
-    pending_reviews.sort(key=lambda review: review.updated_at, reverse=True)
+    pending_reviews.sort(key=lambda review: _timestamp_sort_value(review.updated_at), reverse=True)
     recent_comments = [
         comment for comment in _load_run_comments(tenant_id)
         if comment.author.strip().lower() == member.name.strip().lower()
     ]
-    recent_comments.sort(key=lambda comment: comment.created_at, reverse=True)
+    recent_comments.sort(key=lambda comment: _timestamp_sort_value(comment.created_at), reverse=True)
 
     summary = MemberWorkspaceSummary(
         assigned_action_count=len(assigned_actions),
@@ -2420,7 +2514,7 @@ def _build_run_review_history_response(
                 continue
         items.append(row)
 
-    items.sort(key=lambda item: item.updated_at, reverse=True)
+    items.sort(key=lambda item: _timestamp_sort_value(item.updated_at), reverse=True)
     summary = RunReviewHistorySummary(
         total_reviews=len(items),
         pending_count=sum(1 for item in items if item.status == "pending"),
@@ -2460,12 +2554,13 @@ def _build_workspace_timeline_response(
     if not kinds or "watchlist" in kinds:
         for item in _load_watchlist_items(tenant_id):
             created_at = item.get("created_at")
-            if not isinstance(created_at, str) or not created_at:
+            created_at_ms = _timestamp_value(created_at)
+            if created_at_ms is None:
                 continue
             ticker = str(item["ticker"])
             events.append(WorkspaceTimelineEvent(
                 kind="watchlist",
-                occurred_at=created_at,
+                occurred_at=created_at_ms,
                 title=f"{ticker} added to watchlist",
                 detail="Saved for ongoing tracking.",
                 ticker=ticker,
@@ -2486,11 +2581,12 @@ def _build_workspace_timeline_response(
     if not kinds or "portfolio" in kinds:
         for position in _load_portfolio_positions(tenant_id):
             created_at = position.get("created_at")
-            if not isinstance(created_at, str) or not created_at:
+            created_at_ms = _timestamp_value(created_at)
+            if created_at_ms is None:
                 continue
             events.append(WorkspaceTimelineEvent(
                 kind="portfolio",
-                occurred_at=created_at,
+                occurred_at=created_at_ms,
                 title=f"Position saved for {position['ticker']}",
                 detail=f"qty {position['quantity']} @ {position['average_cost']}",
                 ticker=str(position["ticker"]),
@@ -2620,7 +2716,7 @@ def _build_workspace_timeline_response(
                 run_id=review.run_id,
             ))
 
-    events.sort(key=lambda event: event.occurred_at, reverse=True)
+    events.sort(key=lambda event: _timestamp_sort_value(event.occurred_at), reverse=True)
     return WorkspaceTimelineResponse(active_kinds=kinds, events=events[:20])
 
 
@@ -2628,7 +2724,9 @@ def _build_workspace_calendar_response(tenant_id: str | None) -> WorkspaceCalend
     timeline = _build_workspace_timeline_response(tenant_id)
     by_date: dict[str, list[WorkspaceTimelineEvent]] = {}
     for event in timeline.events:
-        day = event.occurred_at[:10]
+        day = timestamp_ms_to_date_text(event.occurred_at)
+        if not day:
+            continue
         by_date.setdefault(day, []).append(event)
 
     days = [
@@ -2694,7 +2792,7 @@ def _build_workspace_export_response(tenant_id: str | None) -> WorkspaceExport:
     annotations = _load_run_annotations(tenant_id)
 
     summary = WorkspaceExportSummary(
-        exported_at=datetime.datetime.now().isoformat(),
+        exported_at=_now_ts(),
         tenant_id=tenant_id,
         run_count=len(run_summaries),
         watchlist_count=len(watchlist),
@@ -3053,7 +3151,7 @@ def _build_share_url(path: str, tenant_id: str | None = None, **params: str) -> 
     return f"{path}?{encoded}" if encoded else path
 
 
-def _build_public_run_share_snapshot(run, tenant_id: str | None, share_id: str, created_at: str) -> PublicRunShareSnapshot:
+def _build_public_run_share_snapshot(run, tenant_id: str | None, share_id: str, created_at: int) -> PublicRunShareSnapshot:
     return PublicRunShareSnapshot(
         share_id=share_id,
         tenant_id=tenant_id,
@@ -3214,6 +3312,7 @@ async def list_providers():
     """Return available LLM providers and their model catalogs."""
     providers = []
     for provider_key, modes in MODEL_OPTIONS.items():
+        provider_spec = OPENAI_COMPATIBLE_PROVIDERS.get(provider_key)
         quick = [
             ProviderModel(label=label, value=value)
             for label, value in modes.get("quick", [])
@@ -3227,6 +3326,8 @@ async def list_providers():
             display_name=_PROVIDER_DISPLAY_NAMES.get(provider_key, provider_key),
             quick_models=quick,
             deep_models=deep,
+            backend_url=provider_spec.base_url if provider_spec else None,
+            api_key_env=PROVIDER_API_KEY_MAP.get(provider_key),
         ))
     return providers
 
@@ -3326,6 +3427,32 @@ async def get_runs(
     ]
 
 
+@router.get("/api/runs/company-groups", response_model=RunCompanyGroupPage)
+async def get_run_company_groups(
+    request: Request,
+    q: str | None = None,
+    status: str | None = None,
+    provider: str | None = None,
+    asset_type: str | None = None,
+    archived: str = "active",
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+):
+    """Return run history grouped and paginated by company."""
+    tenant_id = _request_tenant_id(request)
+    archived_run_ids = _load_archived_run_ids(tenant_id)
+    runs = _filter_runs(
+        list_runs(tenant_id),
+        q=q,
+        status=status,
+        provider=provider,
+        asset_type=asset_type,
+        archived_scope=archived,
+        archived_run_ids=archived_run_ids,
+    )
+    return _build_run_company_groups_page(runs, tenant_id, page=page, page_size=page_size)
+
+
 @router.get("/api/runs/export")
 async def export_run_history_csv(
     request: Request,
@@ -3351,6 +3478,7 @@ async def export_run_history_csv(
         {
             "run_id": run.run_id,
             "ticker": run.ticker,
+            "company_name": run.company_name or "",
             "date": run.date,
             "status": run.status,
             "archived": run.run_id in archived_run_ids,
@@ -3367,7 +3495,7 @@ async def export_run_history_csv(
     return _build_csv_download_response(
         tenant_id=tenant_id,
         prefix="run-history",
-        fieldnames=["run_id", "ticker", "date", "status", "archived", "asset_type", "llm_provider", "created_at", "completed_at", "queue_position", "signal", "error"],
+        fieldnames=["run_id", "ticker", "company_name", "date", "status", "archived", "asset_type", "llm_provider", "created_at", "completed_at", "queue_position", "signal", "error"],
         rows=rows,
     )
 
@@ -3456,7 +3584,7 @@ async def import_watchlist(payload: WorkspaceImportRequest, request: Request):
         items.append({
             "id": uuid.uuid4().hex[:12],
             "ticker": ticker,
-            "created_at": _now_iso(),
+            "created_at": _now_ts(),
         })
         existing_tickers.add(ticker)
         imported_count += 1
@@ -3502,7 +3630,7 @@ async def import_portfolio(payload: WorkspaceImportRequest, request: Request):
             "ticker": row.ticker,
             "quantity": row.quantity,
             "average_cost": row.average_cost,
-            "created_at": _now_iso(),
+            "created_at": _now_ts(),
         })
 
     if parsed.positions:
@@ -3712,7 +3840,7 @@ async def mark_all_notifications_read(
     center = _build_notification_center_response(tenant_id, member=member, kind=kind, severity=severity)
     unread = [item.id for item in center.items if not item.is_read]
     reads = _load_notification_reads(tenant_id)
-    read_at = _now_iso()
+    read_at = _now_ts()
     for notification_id in unread:
         reads[notification_id] = read_at
     _save_notification_reads(tenant_id, reads)
@@ -3730,7 +3858,7 @@ async def mark_notification_read(notification_id: str, request: Request):
 
     reads = _load_notification_reads(tenant_id)
     updated = 0 if notification_id in reads else 1
-    reads[notification_id] = _now_iso()
+    reads[notification_id] = _now_ts()
     _save_notification_reads(tenant_id, reads)
     refreshed = _build_notification_center_response(tenant_id)
     return NotificationReadResult(updated=updated, unread_count=refreshed.unread_count)
@@ -3829,7 +3957,7 @@ async def download_workspace_export(request: Request, format: str = "json"):
         ch if ch.isalnum() or ch in {"-", "_"} else "-"
         for ch in (tenant_id or "default")
     ) or "default"
-    timestamp = workspace.summary.exported_at[:19].replace(":", "-")
+    timestamp = timestamp_ms_to_filename_text(workspace.summary.exported_at)
 
     if normalized == "json":
         filename = f"tradingagents-workspace-{safe_tenant}-{timestamp}.json"
@@ -3881,6 +4009,9 @@ async def import_workspace_snapshot(payload: WorkspaceSnapshotImportRequest, req
                 default_saved_view_id=snapshot.workspace_settings.default_saved_view_id
                 if "default_saved_view_id" in imported
                 else current.default_saved_view_id,
+                default_ui_language=snapshot.workspace_settings.default_ui_language
+                if "default_ui_language" in imported
+                else current.default_ui_language,
             )
             _save_workspace_settings_model(tenant_id, merged)
 
@@ -4098,7 +4229,7 @@ async def add_saved_search(payload: SavedSearchCreate, request: Request):
         archived=payload.archived,
         member_id=member.id if member else None,
         member_name=member.name if member else None,
-        created_at=_now_iso(),
+        created_at=_now_ts(),
     )
     searches.append(search)
     _save_saved_searches(tenant_id, searches)
@@ -4160,7 +4291,7 @@ async def duplicate_saved_search(search_id: str, request: Request):
         archived=False,
         member_id=source.member_id,
         member_name=source.member_name,
-        created_at=_now_iso(),
+        created_at=_now_ts(),
     )
     searches.append(duplicate)
     _save_saved_searches(tenant_id, searches)
@@ -4214,7 +4345,7 @@ async def add_workspace_member(payload: WorkspaceMemberCreate, request: Request)
         id=uuid.uuid4().hex[:12],
         name=payload.name,
         role=payload.role,
-        created_at=_now_iso(),
+        created_at=_now_ts(),
     )
     members.append(member)
     _save_workspace_members(tenant_id, members)
@@ -4278,7 +4409,7 @@ async def add_saved_view(payload: SavedViewCreate, request: Request):
         archived=payload.archived,
         member_id=member.id if member else None,
         member_name=member.name if member else None,
-        created_at=_now_iso(),
+        created_at=_now_ts(),
     )
     views.append(view)
     _save_saved_views(tenant_id, views)
@@ -4340,7 +4471,7 @@ async def duplicate_saved_view(view_id: str, request: Request):
         archived=False,
         member_id=source.member_id,
         member_name=source.member_name,
-        created_at=_now_iso(),
+        created_at=_now_ts(),
     )
     views.append(duplicate)
     _save_saved_views(tenant_id, views)
@@ -4431,7 +4562,7 @@ async def add_pinned_run(payload: PinnedRunCreate, request: Request):
             assignee=payload.assignee,
             due_date=payload.due_date,
             snoozed_until=payload.snoozed_until,
-            created_at=_now_iso(),
+            created_at=_now_ts(),
         )
         pinned_runs.append(existing)
     else:
@@ -4583,7 +4714,7 @@ async def add_run_comment(run_id: str, payload: RunCommentCreate, request: Reque
         run_id=run_id,
         author=payload.author,
         content=payload.content,
-        created_at=_now_iso(),
+        created_at=_now_ts(),
     )
     comments.append(comment)
     _save_run_comments(tenant_id, comments)
@@ -4612,7 +4743,7 @@ async def update_run_comment(run_id: str, comment_id: str, payload: RunCommentRe
         comment.resolved = payload.resolved
         if payload.resolved:
             comment.resolved_by = payload.resolved_by
-            comment.resolved_at = _now_iso()
+            comment.resolved_at = _now_ts()
         else:
             comment.resolved_by = None
             comment.resolved_at = None
@@ -4647,7 +4778,7 @@ async def save_run_review(run_id: str, payload: RunReviewCreate, request: Reques
 
     reviews = _load_run_reviews(tenant_id)
     existing = next((item for item in reviews if item.run_id == run_id), None)
-    now = _now_iso()
+    now = _now_ts()
     if existing is None:
         review = RunReview(
             run_id=run_id,
@@ -4764,7 +4895,7 @@ async def add_note(payload: NoteCreate, request: Request):
     """Persist one tenant-scoped note."""
     tenant_id = _request_tenant_id(request)
     notes = _load_notes(tenant_id)
-    now = _now_iso()
+    now = _now_ts()
     note = Note(
         id=uuid.uuid4().hex[:12],
         content=payload.content,
@@ -4798,7 +4929,7 @@ async def update_note(note_id: str, payload: NoteUpdate, request: Request):
             ticker=note.ticker,
             run_id=note.run_id,
             created_at=note.created_at,
-            updated_at=_now_iso(),
+            updated_at=_now_ts(),
         )
         new_notes.append(updated_note)
 
@@ -4836,7 +4967,7 @@ async def add_preset(payload: AnalysisPresetCreate, request: Request):
     preset = AnalysisPreset(
         id=uuid.uuid4().hex[:12],
         name=payload.name,
-        created_at=_now_iso(),
+        created_at=_now_ts(),
         analysis_request=payload.analysis_request,
     )
     presets.append(preset)
@@ -4873,7 +5004,7 @@ async def duplicate_preset(preset_id: str, request: Request):
     duplicate = AnalysisPreset(
         id=uuid.uuid4().hex[:12],
         name=_build_duplicate_name([preset.name for preset in presets], source.name),
-        created_at=_now_iso(),
+        created_at=_now_ts(),
         analysis_request=source.analysis_request,
     )
     presets.append(duplicate)
@@ -4953,7 +5084,7 @@ async def create_public_run_share(run_id: str, request: Request):
     shares = _load_public_run_shares(tenant_id)
     existing = next((item for item in shares if item.run_id == run_id), None)
     share_id = existing.share_id if existing is not None else uuid.uuid4().hex[:12]
-    created_at = existing.created_at if existing is not None else _now_iso()
+    created_at = existing.created_at if existing is not None else _now_ts()
     snapshot = _build_public_run_share_snapshot(run, tenant_id, share_id, created_at)
     if existing is not None:
         snapshot.view_count = existing.view_count
@@ -5055,7 +5186,7 @@ async def update_public_run_share(run_id: str, payload: PublicRunShareUpdate, re
             item.expires_at = None
         else:
             expires_at = datetime.datetime.now() + datetime.timedelta(days=payload.expires_in_days)
-            item.expires_at = expires_at.isoformat()
+            item.expires_at = current_timestamp_ms(expires_at)
         if payload.share_title is not None:
             item.share_title = payload.share_title or None
         if payload.share_summary is not None:
@@ -5090,7 +5221,7 @@ async def add_portfolio_position(payload: PortfolioPositionCreate, request: Requ
         "ticker": payload.ticker,
         "quantity": float(payload.quantity),
         "average_cost": float(payload.average_cost),
-        "created_at": _now_iso(),
+        "created_at": _now_ts(),
     }
     positions.append(stored)
     _save_portfolio_positions(tenant_id, positions)
@@ -5119,7 +5250,7 @@ async def add_alert_rule(payload: AlertRuleCreate, request: Request):
         ticker=payload.ticker,
         field=payload.field,
         value=_normalize_alert_value(payload.field, payload.value),
-        created_at=_now_iso(),
+        created_at=_now_ts(),
     )
     rules.append(rule)
     _save_alert_rules(tenant_id, rules)
@@ -5147,12 +5278,12 @@ async def add_watchlist_ticker(update: WatchlistUpdate, request: Request):
         items.append({
             "id": uuid.uuid4().hex[:12],
             "ticker": update.ticker,
-            "created_at": _now_iso(),
+            "created_at": _now_ts(),
         })
         _save_watchlist_items(tenant_id, items)
 
     matched = next((item for item in items if str(item["ticker"]) == update.ticker), None)
-    created_at = matched.get("created_at") if matched and isinstance(matched.get("created_at"), str) else None
+    created_at = _timestamp_value(matched.get("created_at")) if matched else None
     return _watchlist_entry_from_overview(
         _build_ticker_overview(update.ticker, tenant_id),
         created_at=created_at,
@@ -5248,7 +5379,7 @@ async def save_run_annotation(run_id: str, payload: RunAnnotationCreate, request
 
     annotations = _load_run_annotations(tenant_id)
     existing = next((item for item in annotations if item.run_id == run_id), None)
-    now = _now_iso()
+    now = _now_ts()
     if existing is None:
         annotation = RunAnnotation(
             run_id=run_id,
@@ -5292,6 +5423,7 @@ async def get_run_status(run_id: str, request: Request):
         run_id=run.run_id,
         status=run.status,
         ticker=run.ticker,
+        company_name=run.company_name,
         date=run.date,
         asset_type=run.asset_type,
         created_at=run.created_at,
@@ -5322,6 +5454,7 @@ async def cancel_analysis_run(run_id: str, request: Request):
         run_id=run.run_id,
         status=run.status,
         ticker=run.ticker,
+        company_name=run.company_name,
         date=run.date,
         asset_type=run.asset_type,
         created_at=run.created_at,
@@ -5365,12 +5498,7 @@ async def retry_analysis_run(run_id: str, request: Request):
     tenant_id = _request_tenant_id(request)
     run = retry_run(run_id, tenant_id)
     if run is not None:
-        return AnalysisResponse(
-            run_id=run.run_id,
-            status=run.status,
-            ticker=run.ticker,
-            date=run.date,
-        )
+        return _analysis_response_from_run(run)
 
     existing = get_run(run_id, tenant_id)
     if existing is not None:
@@ -5522,6 +5650,7 @@ def _settings_to_response(settings: dict) -> SettingsResponse:
         workspace=WorkspaceSettings(
             default_home_view=workspace.get("default_home_view", "auto"),
             default_saved_view_id=workspace.get("default_saved_view_id"),
+            default_ui_language=workspace.get("default_ui_language", "zh-CN"),
         ),
         data=DataSettings(
             data_vendors=DataVendorSettings(**{
@@ -5776,7 +5905,7 @@ async def get_public_run_share_page(share_id: str):
         if item.share_id != share_id:
             continue
         item.view_count += 1
-        item.last_viewed_at = _now_iso()
+        item.last_viewed_at = _now_ts()
         snapshot = item
         break
     _save_public_run_shares(tenant_id, shares)
