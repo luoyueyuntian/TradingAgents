@@ -714,6 +714,66 @@ def test_process_due_one_time_tasks_marks_missed_and_queues_current_minute(monke
     assert tasks[1]["status"] == "missed"
 
 
+def test_process_due_one_time_tasks_infers_crypto_asset_type_for_btc(monkeypatch):
+    state = {
+        "one_time_tasks": {
+            "items": [
+                {
+                    "id": "btc-task",
+                    "name": "BTC task",
+                    "status": "scheduled",
+                    "scheduled_for": "2026-07-10 21:30",
+                    "analysis_date": "2026-07-11",
+                    "selection_snapshot": {
+                        "manual_stocks": [],
+                        "group_snapshots": [],
+                        "include_watchlist": False,
+                        "watchlist_snapshot": [],
+                        "resolved_tickers": ["BTC"],
+                    },
+                    "analysis_config": {
+                        "analysts": ["market"],
+                        "llm_provider": "openai",
+                        "quick_think_model": "gpt-5.4-mini",
+                        "deep_think_model": "gpt-5.5",
+                        "research_depth": 1,
+                        "output_language": "English",
+                    },
+                    "created_at": "2026-07-04T10:00:00",
+                    "updated_at": "2026-07-04T10:00:00",
+                    "triggered_at": None,
+                    "completed_at": None,
+                    "last_error": None,
+                    "last_queued_count": 0,
+                    "run_ids": [],
+                }
+            ]
+        }
+    }
+    created = []
+
+    class FakeService:
+        def load_tenant_settings(self):
+            return {}
+
+        def create_run(self, req, *, start_worker=True, settings=None):
+            created.append(req)
+            return SimpleNamespace(run_id="run-1", status="queued", ticker=req.ticker, date=req.date)
+
+    monkeypatch.setattr(task_module, "load_settings", lambda path=None: state)
+    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: None)
+    monkeypatch.setattr(task_module, "get_service", lambda tenant_id=None: FakeService())
+
+    queued = task_module.process_due_one_time_tasks(
+        now=datetime.datetime(2026, 7, 10, 21, 30, 5),
+        start_worker=False,
+    )
+
+    assert queued == 1
+    assert created[0].ticker == "BTC"
+    assert created[0].asset_type == "crypto"
+
+
 def test_process_due_one_time_tasks_keeps_successes_when_a_later_ticker_fails(monkeypatch):
     state = {
         "one_time_tasks": {
