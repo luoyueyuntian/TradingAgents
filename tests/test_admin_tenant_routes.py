@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from web.app import app
@@ -229,3 +230,19 @@ def test_disable_and_archive_tenant(monkeypatch, tmp_path):
     listed = client.get("/api/admin/tenants")
     assert listed.status_code == 200
     assert [tenant["tenant_id"] for tenant in listed.json()["tenants"]] == ["tenant-a"]
+
+
+@pytest.mark.parametrize("method", ["get", "patch"])
+def test_malformed_tenant_id_returns_400(monkeypatch, tmp_path, method: str):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store)
+    _login(client)
+
+    path = "/api/admin/tenants/bad!id"
+    if method == "get":
+        response = client.get(path)
+    else:
+        response = client.patch(path, json={"display_name": "Tenant Bad"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "tenant_id must be 1-64 chars using letters, numbers, dot, dash, or underscore"
