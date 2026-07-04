@@ -47,7 +47,10 @@ def _build_tenant_response(store: UserStore, tenant: TenantRecord) -> AdminTenan
 
 
 def _get_existing_tenant(store: UserStore, tenant_id: str) -> TenantRecord:
-    tenant = store.get_tenant(tenant_id)
+    try:
+        tenant = store.get_tenant(tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return tenant
