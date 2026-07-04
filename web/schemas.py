@@ -44,6 +44,31 @@ def _normalize_role(value: str) -> str:
     return normalized
 
 
+def _normalize_market(value: str) -> str:
+    normalized = _normalize_required_text(value, "market").lower()
+    if normalized not in {"cn_a", "hk", "us"}:
+        raise ValueError("market must be one of cn_a, hk, us")
+    return normalized
+
+
+def _normalize_ticker_list(value) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("tickers must be a list")
+    tickers: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        normalized = item.strip().upper()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        tickers.append(normalized)
+    return tickers
+
+
 def _normalize_blank_optional_string(value: str | None) -> str | None:
     if value is None:
         return None
@@ -551,6 +576,111 @@ class AutomationAnalysisConfig(BaseModel):
             bad = ", ".join(invalid)
             raise ValueError(f"analysts must be chosen from: {allowed}. Invalid: {bad}")
         return normalized
+
+
+class StockGroupCreate(BaseModel):
+    """Payload for creating or updating one static stock group."""
+
+    name: str = Field(..., min_length=1)
+    tickers: list[str] = Field(default_factory=list, min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        return _normalize_required_text(value, "name")
+
+    @field_validator("tickers", mode="before")
+    @classmethod
+    def _normalize_tickers(cls, value) -> list[str]:
+        tickers = _normalize_ticker_list(value)
+        if not tickers:
+            raise ValueError("tickers must not be empty")
+        return tickers
+
+
+class ManualStockSelection(BaseModel):
+    """One manually selected stock in a one-time task payload."""
+
+    market: str
+    symbol: str
+    name: str
+    exchange: str
+
+    @field_validator("market")
+    @classmethod
+    def _normalize_market(cls, value: str) -> str:
+        return _normalize_market(value)
+
+    @field_validator("symbol")
+    @classmethod
+    def _normalize_symbol(cls, value: str) -> str:
+        return _normalize_required_text(value, "symbol").upper()
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        return _normalize_required_text(value, "name")
+
+    @field_validator("exchange")
+    @classmethod
+    def _strip_exchange(cls, value: str) -> str:
+        return _normalize_required_text(value, "exchange")
+
+
+class OneTimeTaskCreate(BaseModel):
+    """Payload for creating one one-time analysis task."""
+
+    name: str = Field(..., min_length=1)
+    scheduled_for: str = Field(..., min_length=1)
+    analysis_date: str = Field(..., min_length=1)
+    manual_stocks: list[ManualStockSelection] = Field(default_factory=list)
+    group_ids: list[str] = Field(default_factory=list)
+    include_watchlist: bool = False
+    analysis_config: AutomationAnalysisConfig
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        return _normalize_required_text(value, "name")
+
+    @field_validator("scheduled_for")
+    @classmethod
+    def _validate_scheduled_for(cls, value: str) -> str:
+        trimmed = _normalize_required_text(value, "scheduled_for")
+        try:
+            datetime.strptime(trimmed, "%Y-%m-%d %H:%M")
+        except ValueError as exc:
+            raise ValueError("scheduled_for must be in YYYY-MM-DD HH:MM format") from exc
+        return trimmed
+
+    @field_validator("analysis_date")
+    @classmethod
+    def _validate_analysis_date(cls, value: str) -> str:
+        trimmed = _normalize_required_text(value, "analysis_date")
+        try:
+            datetime.strptime(trimmed, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError("analysis_date must be in YYYY-MM-DD format") from exc
+        return trimmed
+
+    @field_validator("group_ids", mode="before")
+    @classmethod
+    def _normalize_group_ids(cls, value) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("group_ids must be a list")
+        group_ids: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            normalized = item.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            group_ids.append(normalized)
+        return group_ids
 
 
 class AutomationRule(BaseModel):
