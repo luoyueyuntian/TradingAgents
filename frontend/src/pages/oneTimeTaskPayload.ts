@@ -7,6 +7,7 @@ export type OneTimeTaskFormState = {
   manualStocks: ManualStockPick[];
   selectedGroupIds: string[];
   includeWatchlist: boolean;
+  analysts: string[];
   llm_provider: string;
   quick_think_model: string;
   deep_think_model: string;
@@ -83,7 +84,7 @@ export function buildOneTimeTaskPayload(form: OneTimeTaskFormState): OneTimeTask
     group_ids: [...form.selectedGroupIds],
     include_watchlist: form.includeWatchlist,
     analysis_config: {
-      analysts: ['market', 'social', 'news', 'fundamentals'],
+      analysts: [...form.analysts],
       llm_provider: form.llm_provider,
       quick_think_model: form.quick_think_model.trim() || null,
       deep_think_model: form.deep_think_model.trim() || null,
