@@ -15,8 +15,6 @@ from .user_store import UserRecord, UserStore
 
 router = APIRouter(prefix="/api/admin/users", tags=["admin-users"])
 
-_LAST_ADMIN_ERROR = "Cannot remove the last active admin from tenant"
-
 
 def _get_store() -> UserStore:
     return UserStore(get_web_auth_db_path())
@@ -51,43 +49,6 @@ def _get_tenant_user(store: UserStore, tenant_id: str, user_id: str) -> UserReco
     if user is None or user.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="User not found")
     return user
-
-
-def _parse_expires_at(expires_at: str | None) -> datetime | None:
-    if expires_at is None:
-        return None
-    try:
-        parsed = datetime.fromisoformat(expires_at)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="expires_at must be an offset-aware ISO timestamp") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise HTTPException(status_code=400, detail="expires_at must be an offset-aware ISO timestamp")
-    return parsed
-
-
-def _would_remove_last_active_admin(
-    store: UserStore,
-    tenant_id: str,
-    user: UserRecord,
-    payload: AdminUserUpdate | None = None,
-) -> bool:
-    if user.role != "admin" or user.disabled:
-        return False
-    if user.expires_at is not None and datetime.fromisoformat(user.expires_at) <= datetime.now(timezone.utc):
-        return False
-    if store.active_admin_count(tenant_id) != 1:
-        return False
-    if payload is None:
-        return True
-    if payload.role is not None and payload.role != "admin":
-        return True
-    if payload.disabled is True:
-        return True
-    if payload.expires_at is not None:
-        expires_at = _parse_expires_at(payload.expires_at)
-        if expires_at is not None and expires_at <= datetime.now(timezone.utc):
-            return True
-    return False
 
 
 def _map_store_error(exc: ValueError) -> HTTPException:
@@ -153,9 +114,6 @@ def update_user_for_tenant(
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
 
-    if _would_remove_last_active_admin(store, tenant_id, target_user, payload):
-        raise HTTPException(status_code=400, detail=_LAST_ADMIN_ERROR)
-
     if "password" in updates:
         try:
             validate_password_policy(
@@ -187,9 +145,7 @@ def update_user_for_tenant(
 
 
 def delete_user_for_tenant(store: UserStore, tenant_id: str, user_id: str) -> dict[str, AdminUserResponse]:
-    target_user = _get_tenant_user(store, tenant_id, user_id)
-    if _would_remove_last_active_admin(store, tenant_id, target_user):
-        raise HTTPException(status_code=400, detail=_LAST_ADMIN_ERROR)
+    _get_tenant_user(store, tenant_id, user_id)
     try:
         deleted_user = store.delete_user(user_id)
     except ValueError as exc:

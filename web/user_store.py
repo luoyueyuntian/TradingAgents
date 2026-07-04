@@ -22,6 +22,7 @@ PASSWORD_RESET_MAX_ATTEMPTS = 5
 LAST_LOGIN_CAPABLE_ADMIN_TENANT_ERROR = (
     "Cannot disable or archive the last tenant with a login-capable admin"
 )
+LAST_ACTIVE_ADMIN_ERROR = "Cannot remove the last active admin from tenant"
 ARCHIVED_TENANT_READ_ONLY_ERROR = "Archived tenants are read-only"
 
 
@@ -213,6 +214,10 @@ def _user_row_is_active(row: sqlite3.Row) -> bool:
         return False
     expires_at = row["expires_at"]
     return expires_at is None or not _is_expired(expires_at)
+
+
+def _user_row_is_login_capable_admin(row: sqlite3.Row) -> bool:
+    return row["role"] == "admin" and _user_row_is_active(row)
 
 
 class UserStore:
@@ -730,12 +735,14 @@ class UserStore:
     def update_user(self, user_id: str, **fields: Any) -> UserRecord:
         self.ensure_schema()
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             self._update_user_in_transaction(conn, user_id, fields)
             return self._get_user_by_id(conn, user_id)
 
     def update_user_and_delete_sessions(self, user_id: str, **fields: Any) -> UserRecord:
         self.ensure_schema()
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             self._update_user_in_transaction(
                 conn,
                 user_id,
@@ -747,7 +754,10 @@ class UserStore:
     def delete_user(self, user_id: str) -> UserRecord:
         self.ensure_schema()
         with self._connect() as conn:
-            self._get_user_by_id(conn, user_id)
+            conn.execute("BEGIN IMMEDIATE")
+            current = self._get_user_by_id_row(conn, user_id)
+            if self._would_remove_last_active_admin_in_connection(conn, current):
+                raise ValueError(LAST_ACTIVE_ADMIN_ERROR)
             conn.execute(
                 """
                 UPDATE users
@@ -761,10 +771,14 @@ class UserStore:
             return self._get_user_by_id(conn, user_id)
 
     def _get_user_by_id(self, conn: sqlite3.Connection, user_id: str) -> UserRecord:
+        row = self._get_user_by_id_row(conn, user_id)
+        return _user_from_row(row)
+
+    def _get_user_by_id_row(self, conn: sqlite3.Connection, user_id: str) -> sqlite3.Row:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         if row is None:
             raise ValueError("user not found")
-        return _user_from_row(row)
+        return row
 
     def _prepare_user_updates(
         self,
@@ -790,12 +804,7 @@ class UserStore:
         if unknown_fields:
             raise ValueError(f"unsupported user field: {unknown_fields[0]}")
 
-        current = conn.execute(
-            "SELECT * FROM users WHERE id = ?",
-            (user_id,),
-        ).fetchone()
-        if current is None:
-            raise ValueError("user not found")
+        current = self._get_user_by_id_row(conn, user_id)
 
         updates: dict[str, Any] = {}
         for field_name, value in fields.items():
@@ -839,9 +848,12 @@ class UserStore:
         *,
         delete_sessions: bool = False,
     ) -> None:
+        current = self._get_user_by_id_row(conn, user_id)
         updates = self._prepare_user_updates(conn, user_id, fields)
         if not updates:
             return
+        if self._would_remove_last_active_admin_in_connection(conn, current, updates):
+            raise ValueError(LAST_ACTIVE_ADMIN_ERROR)
         updates["updated_at"] = _utc_now()
         assignments = ", ".join(f"{field_name} = ?" for field_name in updates)
         conn.execute(
@@ -850,6 +862,33 @@ class UserStore:
         )
         if delete_sessions or updates.get("disabled") == 1:
             conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+    def _would_remove_last_active_admin_in_connection(
+        self,
+        conn: sqlite3.Connection,
+        current: sqlite3.Row,
+        updates: dict[str, Any] | None = None,
+    ) -> bool:
+        if not _user_row_is_login_capable_admin(current):
+            return False
+        current_tenant_id = current["tenant_id"]
+        if self._active_admin_count_in_connection(conn, current_tenant_id) != 1:
+            return False
+        if updates is None:
+            return True
+
+        next_tenant_id = updates.get("tenant_id", current_tenant_id)
+        if next_tenant_id != current_tenant_id:
+            return True
+
+        next_role = updates.get("role", current["role"])
+        next_disabled = bool(updates.get("disabled", current["disabled"]))
+        next_expires_at = updates.get("expires_at", current["expires_at"])
+        if next_role != "admin" or next_disabled:
+            return True
+        if next_expires_at is not None and _is_expired(next_expires_at):
+            return True
+        return False
 
     def _insert_tenant_record_if_missing(
         self,

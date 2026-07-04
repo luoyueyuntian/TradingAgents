@@ -898,6 +898,52 @@ def test_active_admin_count_is_scoped_and_excludes_disabled_or_expired_users(tmp
     assert store.get_user(tenant_admin.id) is not None
 
 
+@pytest.mark.parametrize(
+    ("updates", "expected_message"),
+    [
+        ({"disabled": True}, "Cannot remove the last active admin from tenant"),
+        ({"role": "viewer"}, "Cannot remove the last active admin from tenant"),
+        ({"expires_at": "2000-01-01T00:00:00+00:00"}, "Cannot remove the last active admin from tenant"),
+    ],
+)
+def test_update_user_transactionally_protects_last_active_admin(tmp_path, updates, expected_message):
+    store = UserStore(tmp_path / "auth.db")
+    sole_admin = _create_user(
+        store,
+        username="sole-admin",
+        email="sole-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+
+    with pytest.raises(ValueError, match=expected_message):
+        store.update_user(sole_admin.id, **updates)
+
+    refreshed = store.get_user(sole_admin.id)
+    assert refreshed is not None
+    assert refreshed.role == "admin"
+    assert refreshed.disabled is False
+    assert refreshed.expires_at is None
+
+
+def test_delete_user_transactionally_protects_last_active_admin(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    sole_admin = _create_user(
+        store,
+        username="sole-admin",
+        email="sole-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+
+    with pytest.raises(ValueError, match="Cannot remove the last active admin from tenant"):
+        store.delete_user(sole_admin.id)
+
+    refreshed = store.get_user(sole_admin.id)
+    assert refreshed is not None
+    assert refreshed.disabled is False
+
+
 def test_archive_tenant_lifecycle_create_update_and_list(tmp_path):
     store = UserStore(tmp_path / "auth.db")
 

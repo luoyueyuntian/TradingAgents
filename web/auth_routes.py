@@ -166,10 +166,10 @@ def login(payload: AuthLoginRequest, request: Request, response: Response) -> Au
     user = store.get_user_by_identifier(payload.identifier)
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    _ensure_user_can_login(user)
-    _ensure_tenant_allows_access(store, user.tenant_id)
     if not verify_password(payload.password, user.password_hash, user.password_salt):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    _ensure_user_can_login(user)
+    _ensure_tenant_allows_access(store, user.tenant_id)
     raw_session_id, session = store.create_session(user.id, ttl_seconds=SESSION_TTL_SECONDS)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
