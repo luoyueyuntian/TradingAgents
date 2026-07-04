@@ -150,6 +150,36 @@ describe('session store', () => {
     expect(session.state.error).toBe('');
   });
 
+  it('clears the auth session when /api/auth/me reports a disabled tenant', async () => {
+    apiGetMock.mockRejectedValue(Object.assign(new Error('Tenant is disabled'), { status: 403 }));
+    const { useSession } = await loadSessionModule();
+
+    const session = useSession();
+    session.state.currentUser = makeAuthResponse().user;
+    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+    session.state.passwordReset = { available: true, reset_id: 'reset-1', detail: 'Reset is available' };
+
+    await expect(session.loadCurrentUser()).rejects.toThrow('Tenant is disabled');
+    expect(session.state.currentUser).toBeNull();
+    expect(session.state.sessionExpiresAt).toBe('');
+    expect(session.state.passwordReset).toEqual({ available: false, reset_id: null, detail: null });
+    expect(session.state.error).toBe('');
+  });
+
+  it('preserves the auth session on unrelated forbidden /api/auth/me failures', async () => {
+    apiGetMock.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+    const { useSession } = await loadSessionModule();
+
+    const session = useSession();
+    session.state.currentUser = makeAuthResponse().user;
+    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+
+    await expect(session.loadCurrentUser()).rejects.toThrow('Forbidden');
+    expect(session.state.currentUser?.username).toBe('alice');
+    expect(session.state.sessionExpiresAt).toBe('2026-07-03T00:00:00Z');
+    expect(session.state.error).toBe('Forbidden');
+  });
+
   it('logs in and stores returned user session data', async () => {
     apiPostMock.mockResolvedValue(makeAuthResponse());
     const { useSession } = await loadSessionModule();

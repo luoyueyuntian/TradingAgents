@@ -1336,8 +1336,13 @@ def bootstrap_admin_from_env(store: UserStore) -> BootstrapResult:
         display_name = username
 
     validate_password_policy(password, username=username, email=email)
-    if store.get_tenant(tenant_id) is None:
+    tenant = store.get_tenant(tenant_id)
+    if tenant is None:
         store.create_tenant(tenant_id, display_name=tenant_id.strip())
+    elif tenant.disabled:
+        return BootstrapResult(created=False, reason="tenant_disabled")
+    elif tenant.archived:
+        return BootstrapResult(created=False, reason="tenant_archived")
     password_record = hash_password(password)
     user = store.create_user(
         username=username,
