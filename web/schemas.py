@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
@@ -85,6 +86,17 @@ def _normalize_string_id_list(value) -> list[str]:
         seen.add(normalized)
         ids.append(normalized)
     return ids
+
+
+def _validate_exact_datetime_format(value: str, field_name: str, pattern: str, fmt: str, display_fmt: str) -> str:
+    trimmed = _normalize_required_text(value, field_name)
+    if not re.fullmatch(pattern, trimmed):
+        raise ValueError(f"{field_name} must be in {display_fmt} format")
+    try:
+        datetime.strptime(trimmed, fmt)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be in {display_fmt} format") from exc
+    return trimmed
 
 
 def _normalize_blank_optional_string(value: str | None) -> str | None:
@@ -692,12 +704,20 @@ class OneTimeTaskSelectionSnapshot(BaseModel):
     group_snapshots: list[OneTimeTaskGroupSnapshot] = Field(default_factory=list)
     include_watchlist: bool = False
     watchlist_snapshot: list[str] = Field(default_factory=list)
-    resolved_tickers: list[str] = Field(default_factory=list)
+    resolved_tickers: list[str]
 
-    @field_validator("watchlist_snapshot", "resolved_tickers", mode="before")
+    @field_validator("watchlist_snapshot", mode="before")
     @classmethod
-    def _normalize_tickers(cls, value) -> list[str]:
+    def _normalize_watchlist_snapshot(cls, value) -> list[str]:
         return _normalize_ticker_list(value)
+
+    @field_validator("resolved_tickers", mode="before")
+    @classmethod
+    def _normalize_resolved_tickers(cls, value) -> list[str]:
+        tickers = _normalize_ticker_list(value)
+        if not tickers:
+            raise ValueError("resolved_tickers must not be empty")
+        return tickers
 
 
 class OneTimeTaskCreate(BaseModel):
@@ -719,22 +739,24 @@ class OneTimeTaskCreate(BaseModel):
     @field_validator("scheduled_for")
     @classmethod
     def _validate_scheduled_for(cls, value: str) -> str:
-        trimmed = _normalize_required_text(value, "scheduled_for")
-        try:
-            datetime.strptime(trimmed, "%Y-%m-%d %H:%M")
-        except ValueError as exc:
-            raise ValueError("scheduled_for must be in YYYY-MM-DD HH:MM format") from exc
-        return trimmed
+        return _validate_exact_datetime_format(
+            value,
+            "scheduled_for",
+            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}",
+            "%Y-%m-%d %H:%M",
+            "YYYY-MM-DD HH:MM",
+        )
 
     @field_validator("analysis_date")
     @classmethod
     def _validate_analysis_date(cls, value: str) -> str:
-        trimmed = _normalize_required_text(value, "analysis_date")
-        try:
-            datetime.strptime(trimmed, "%Y-%m-%d")
-        except ValueError as exc:
-            raise ValueError("analysis_date must be in YYYY-MM-DD format") from exc
-        return trimmed
+        return _validate_exact_datetime_format(
+            value,
+            "analysis_date",
+            r"\d{4}-\d{2}-\d{2}",
+            "%Y-%m-%d",
+            "YYYY-MM-DD",
+        )
 
     @field_validator("group_ids", mode="before")
     @classmethod
@@ -795,22 +817,24 @@ class OneTimeTask(BaseModel):
     @field_validator("scheduled_for")
     @classmethod
     def _validate_scheduled_for(cls, value: str) -> str:
-        trimmed = _normalize_required_text(value, "scheduled_for")
-        try:
-            datetime.strptime(trimmed, "%Y-%m-%d %H:%M")
-        except ValueError as exc:
-            raise ValueError("scheduled_for must be in YYYY-MM-DD HH:MM format") from exc
-        return trimmed
+        return _validate_exact_datetime_format(
+            value,
+            "scheduled_for",
+            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}",
+            "%Y-%m-%d %H:%M",
+            "YYYY-MM-DD HH:MM",
+        )
 
     @field_validator("analysis_date")
     @classmethod
     def _validate_analysis_date(cls, value: str) -> str:
-        trimmed = _normalize_required_text(value, "analysis_date")
-        try:
-            datetime.strptime(trimmed, "%Y-%m-%d")
-        except ValueError as exc:
-            raise ValueError("analysis_date must be in YYYY-MM-DD format") from exc
-        return trimmed
+        return _validate_exact_datetime_format(
+            value,
+            "analysis_date",
+            r"\d{4}-\d{2}-\d{2}",
+            "%Y-%m-%d",
+            "YYYY-MM-DD",
+        )
 
     @field_validator("run_ids", mode="before")
     @classmethod
