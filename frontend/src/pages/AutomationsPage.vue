@@ -145,25 +145,17 @@
                   />
                 </label>
                 <label class="uno-grid uno-gap-1">
-                  <span>Stock</span>
-                  <Select
-                    v-model="selectedManualStockSymbol"
-                    data-testid="manual-stock-option"
+                  <span>Stocks</span>
+                  <MultiSelect
+                    v-model="selectedManualStockSymbols"
+                    data-testid="manual-stock-multi"
                     :options="manualStockOptions"
                     option-label="label"
                     option-value="symbol"
                     :disabled="!canWrite"
+                    @change="handleManualStockSelectionChange"
                   />
                 </label>
-                <div class="uno-flex uno-items-end">
-                  <Button
-                    icon="pi pi-plus"
-                    :label="t('common.add')"
-                    data-testid="manual-stock-add"
-                    :disabled="!canWrite"
-                    @click="addManualStock"
-                  />
-                </div>
               </div>
               <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
                 <div
@@ -364,6 +356,20 @@
                   @click="cancelOneTimeTask(task)"
                 />
               </div>
+              <div
+                v-else-if="String(task.status || '').toLowerCase() === 'completed' && oneTimeTaskRunIds(task).length"
+                class="uno-mt-[0.6rem] uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]"
+              >
+                <a
+                  v-for="runId in oneTimeTaskRunIds(task)"
+                  :key="runId"
+                  :data-testid="`completed-task-run-${runId}`"
+                  :href="`/runs/${encodeURIComponent(runId)}`"
+                  class="uno-rounded-full uno-border uno-border-[#dce7e7] uno-bg-white uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
+                >
+                  {{ runId }}
+                </a>
+              </div>
             </div>
           </div>
           <p v-if="!oneTimeTasks.length" class="uno-text-[#6f8183]">No one-time tasks yet.</p>
@@ -378,6 +384,7 @@ import Button from 'primevue/button';
 import Card from 'primevue/card';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
+import MultiSelect from 'primevue/multiselect';
 import Select from 'primevue/select';
 import Tag from 'primevue/tag';
 import Textarea from 'primevue/textarea';
@@ -398,7 +405,6 @@ import { buildOneTimeTaskPayload } from './oneTimeTaskPayload';
 import {
   mergeResolvedTickers,
   removeManualStock,
-  upsertManualStock,
   type ManualStockPick,
   type SelectedGroup,
 } from './oneTimeTaskSelection';
@@ -412,9 +418,8 @@ const stockGroups = ref<SelectedGroup[]>([]);
 const watchlist = ref<JsonRecord[]>([]);
 const manualStockOptions = ref<Required<StockCatalogOption>[]>([]);
 const manualStockMarket = ref('us');
-const selectedManualStockSymbol = ref('');
+const selectedManualStockSymbols = ref<string[]>([]);
 const editingOneTimeTaskId = ref('');
-const excludedResolvedTickers = ref<string[]>([]);
 const error = ref('');
 const { t } = useI18n();
 const form = reactive({
@@ -531,7 +536,7 @@ const resolvedTickers = computed(() => mergeResolvedTickers({
   includeWatchlist: oneTimeForm.includeWatchlist,
   watchlistTickers: watchlistTickers.value,
 }));
-const visibleResolvedTickers = computed(() => resolvedTickers.value.filter((ticker) => !excludedResolvedTickers.value.includes(ticker)));
+const visibleResolvedTickers = computed(() => resolvedTickers.value);
 const resolvedUniverseCountLabel = computed(() => `${visibleResolvedTickers.value.length} stocks`);
 
 function syncProviderModels() {
@@ -622,29 +627,79 @@ async function loadManualStockOptions() {
     session.apiContext.value,
   );
   manualStockOptions.value = normalizeStockOptions(rows);
+  syncSelectedManualStockSymbols();
+}
+
+function inferMarketFromSymbol(symbol: string) {
+  const normalized = symbol.trim().toUpperCase();
+  if (normalized.endsWith('.HK')) {
+    return 'hk';
+  }
+  if (normalized.endsWith('.SH') || normalized.endsWith('.SZ') || normalized.endsWith('.SS')) {
+    return 'cn_a';
+  }
+  return 'us';
+}
+
+function manualStockFromSymbol(symbol: string): ManualStockPick {
+  const normalized = symbol.trim().toUpperCase();
+  const knownFromCurrentOptions = manualStockOptions.value.find((item) => item.symbol === normalized);
+  const knownFromForm = oneTimeForm.manualStocks.find((item) => item.symbol === normalized);
+  if (knownFromCurrentOptions) {
+    return {
+      market: knownFromCurrentOptions.market,
+      symbol: knownFromCurrentOptions.symbol,
+      name: knownFromCurrentOptions.name,
+      exchange: knownFromCurrentOptions.exchange,
+    };
+  }
+  if (knownFromForm) {
+    return { ...knownFromForm };
+  }
+  return {
+    market: inferMarketFromSymbol(normalized),
+    symbol: normalized,
+    name: '',
+    exchange: '',
+  };
+}
+
+function manualStocksFromResolvedTickers(tickers: string[]) {
+  return tickers.map((ticker) => manualStockFromSymbol(ticker));
+}
+
+function syncSelectedManualStockSymbols() {
+  selectedManualStockSymbols.value = oneTimeForm.manualStocks
+    .filter((stock) => stock.market === manualStockMarket.value)
+    .map((stock) => stock.symbol);
+}
+
+function applyCurrentMarketSelections(symbols: string[]) {
+  const normalizedSymbols = symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean);
+  const otherMarkets = oneTimeForm.manualStocks.filter((stock) => stock.market !== manualStockMarket.value);
+  const currentMarketStocks = normalizedSymbols.map((symbol) => manualStockFromSymbol(symbol));
+  oneTimeForm.manualStocks = [...otherMarkets, ...currentMarketStocks];
+  syncSelectedManualStockSymbols();
+}
+
+function normalizeToFinalResolvedTickers(tickers: string[]) {
+  oneTimeForm.manualStocks = manualStocksFromResolvedTickers(tickers);
+  oneTimeForm.selectedGroupIds = [];
+  oneTimeForm.includeWatchlist = false;
+  syncSelectedManualStockSymbols();
 }
 
 async function handleManualStockMarketChange() {
-  selectedManualStockSymbol.value = '';
   await loadManualStockOptions();
 }
 
-function addManualStock() {
-  const selectedStock = manualStockOptions.value.find((item) => item.symbol === selectedManualStockSymbol.value);
-  if (!selectedStock) {
-    return;
-  }
-  oneTimeForm.manualStocks = upsertManualStock(oneTimeForm.manualStocks, {
-    market: selectedStock.market,
-    symbol: selectedStock.symbol,
-    name: selectedStock.name,
-    exchange: selectedStock.exchange,
-  });
+function handleManualStockSelectionChange(event: { value?: string[] }) {
+  applyCurrentMarketSelections(event.value || []);
 }
 
 function removeManualStockItem(symbol: string) {
   oneTimeForm.manualStocks = removeManualStock(oneTimeForm.manualStocks, symbol);
-  excludedResolvedTickers.value = excludedResolvedTickers.value.filter((ticker) => ticker !== symbol.trim().toUpperCase());
+  syncSelectedManualStockSymbols();
 }
 
 function toggleSelectedGroup(groupId: string, checked: boolean) {
@@ -663,20 +718,10 @@ function removeSelectedGroup(groupId: string) {
 
 function removeResolvedTicker(ticker: string) {
   const normalizedTicker = ticker.trim().toUpperCase();
-  if (!normalizedTicker || excludedResolvedTickers.value.includes(normalizedTicker)) {
+  if (!normalizedTicker) {
     return;
   }
-  oneTimeForm.manualStocks = removeManualStock(oneTimeForm.manualStocks, normalizedTicker);
-  const groupWithTicker = selectedGroups.value.find((group) => group.tickers.map((value) => value.trim().toUpperCase()).includes(normalizedTicker));
-  if (groupWithTicker) {
-    removeSelectedGroup(groupWithTicker.id);
-  }
-  if (oneTimeForm.includeWatchlist && watchlistTickers.value.map((value) => value.trim().toUpperCase()).includes(normalizedTicker)) {
-    oneTimeForm.includeWatchlist = false;
-  }
-  if (!excludedResolvedTickers.value.includes(normalizedTicker)) {
-    excludedResolvedTickers.value = [...excludedResolvedTickers.value, normalizedTicker];
-  }
+  normalizeToFinalResolvedTickers(visibleResolvedTickers.value.filter((value) => value !== normalizedTicker));
 }
 
 function resetOneTimeBuilderState() {
@@ -689,8 +734,7 @@ function resetOneTimeBuilderState() {
     includeWatchlist: false,
   });
   editingOneTimeTaskId.value = '';
-  excludedResolvedTickers.value = [];
-  selectedManualStockSymbol.value = '';
+  selectedManualStockSymbols.value = [];
 }
 
 async function saveRule() {
@@ -714,11 +758,13 @@ async function saveOneTimeTask() {
   if (!oneTimeForm.name.trim() || !oneTimeForm.scheduledFor.trim() || !oneTimeForm.analysisDate || !visibleResolvedTickers.value.length) {
     return;
   }
+  const exactManualStocks = manualStocksFromResolvedTickers(visibleResolvedTickers.value);
   const payloadForm = {
     ...oneTimeForm,
     analysts: [...oneTimeForm.analysts],
-    manualStocks: oneTimeForm.manualStocks.map((stock) => ({ ...stock })),
-    selectedGroupIds: [...oneTimeForm.selectedGroupIds],
+    manualStocks: exactManualStocks,
+    selectedGroupIds: [],
+    includeWatchlist: false,
     ...(editingOneTimeTaskId.value ? { id: editingOneTimeTaskId.value } : {}),
   };
   const requestBody = buildOneTimeTaskPayload(payloadForm as typeof oneTimeForm);
@@ -801,30 +847,28 @@ function oneTimeTaskFinalCount(task: JsonRecord) {
 }
 
 function editOneTimeTask(task: JsonRecord) {
-  const snapshot = typeof task.selection_snapshot === 'object' && task.selection_snapshot ? task.selection_snapshot as JsonRecord : null;
   editingOneTimeTaskId.value = String(task.id || '');
-  excludedResolvedTickers.value = [];
   Object.assign(oneTimeForm, {
     name: String(task.name || ''),
     scheduledFor: String(task.scheduled_for || ''),
     analysisDate: String(task.analysis_date || ''),
-    manualStocks: Array.isArray(snapshot?.manual_stocks)
-      ? (snapshot.manual_stocks as ManualStockPick[]).map((stock) => ({ ...stock }))
-      : Array.isArray(task.manual_stocks)
-        ? (task.manual_stocks as ManualStockPick[]).map((stock) => ({ ...stock }))
-        : [],
-    selectedGroupIds: Array.isArray(snapshot?.group_snapshots)
-      ? (snapshot.group_snapshots as JsonRecord[]).map((group) => String(group.id || ''))
-      : Array.isArray(task.group_ids)
-        ? (task.group_ids as unknown[]).map((groupId) => String(groupId))
-        : [],
-    includeWatchlist: snapshot?.include_watchlist === true || task.include_watchlist === true,
+    manualStocks: manualStocksFromResolvedTickers(oneTimeTaskTickers(task)),
+    selectedGroupIds: [],
+    includeWatchlist: false,
   });
+  syncSelectedManualStockSymbols();
 }
 
 async function cancelOneTimeTask(task: JsonRecord) {
   await apiPost(`/api/one-time-tasks/${encodeURIComponent(String(task.id || ''))}/cancel`, {}, session.apiContext.value);
   await loadOneTimeTasks();
+}
+
+function oneTimeTaskRunIds(task: JsonRecord) {
+  if (!Array.isArray(task.run_ids)) {
+    return [];
+  }
+  return (task.run_ids as unknown[]).map((value) => String(value)).filter(Boolean);
 }
 
 onMounted(async () => {

@@ -117,6 +117,50 @@ const SelectStub = {
   `,
 };
 
+const MultiSelectStub = {
+  props: ['modelValue', 'options', 'optionLabel', 'optionValue', 'disabled'],
+  emits: ['update:modelValue', 'change'],
+  methods: {
+    optionValueFor(option: Record<string, unknown>) {
+      if (!option) {
+        return '';
+      }
+      if (this.optionValue && option[this.optionValue] !== undefined) {
+        return String(option[this.optionValue]);
+      }
+      return String(option.value ?? option);
+    },
+    optionLabelFor(option: Record<string, unknown>) {
+      if (!option) {
+        return '';
+      }
+      if (this.optionLabel && option[this.optionLabel] !== undefined) {
+        return String(option[this.optionLabel]);
+      }
+      return String(option.label ?? option.value ?? option);
+    },
+    selectedValues(event: Event) {
+      return Array.from((event.target as HTMLSelectElement).selectedOptions).map((option) => option.value);
+    },
+  },
+  template: `
+    <select
+      multiple
+      :value="modelValue"
+      :disabled="disabled"
+      @change="$emit('update:modelValue', selectedValues($event)); $emit('change', { value: selectedValues($event) })"
+    >
+      <option
+        v-for="option in options || []"
+        :key="optionValueFor(option)"
+        :value="optionValueFor(option)"
+      >
+        {{ optionLabelFor(option) }}
+      </option>
+    </select>
+  `,
+};
+
 function mountPage() {
   return mount(AutomationsPage, {
     global: {
@@ -125,6 +169,7 @@ function mountPage() {
         Card: { template: '<div><slot name="title" /><slot name="content" /></div>' },
         InputText: InputTextStub,
         Message: { template: '<div><slot /></div>' },
+        MultiSelect: MultiSelectStub,
         PageHeader: { template: '<div><slot name="actions" /></div>' },
         Select: SelectStub,
         Tag: { props: ['value'], template: '<span>{{ value }}</span>' },
@@ -193,6 +238,20 @@ describe('AutomationsPage', () => {
                 resolved_tickers: ['AAPL', 'NVDA', 'MSFT'],
               },
             },
+            {
+              id: 'task-2',
+              name: 'Completed basket',
+              status: 'completed',
+              scheduled_for: '2026-07-09 21:30',
+              analysis_date: '2026-07-10',
+              run_ids: ['run-7', 'run-8'],
+              selection_snapshot: {
+                manual_stocks: [],
+                group_snapshots: [],
+                include_watchlist: false,
+                resolved_tickers: ['NVDA', 'MSFT'],
+              },
+            },
           ],
         });
       }
@@ -243,9 +302,10 @@ describe('AutomationsPage', () => {
     expect(wrapper.find('[data-testid="one-time-task-list"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="edit-one-time-task-task-1"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="cancel-one-time-task-task-1"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="completed-task-run-run-7"]').attributes('href')).toBe('/runs/run-7');
   });
 
-  it('shows selected-group tokens, supports universe removals, and saves or edits one-time tasks', async () => {
+  it('uses manual multi-select across markets and persists the exact final visible ticker set on save and edit', async () => {
     apiPost.mockResolvedValue({ id: 'task-2' });
     apiPatch.mockResolvedValue({ id: 'task-1' });
 
@@ -266,13 +326,11 @@ describe('AutomationsPage', () => {
 
     await wrapper.get('[data-testid="manual-stock-market"]').setValue('us');
     await flushPromises();
-    await wrapper.get('[data-testid="manual-stock-option"]').setValue('AAPL');
-    await wrapper.get('[data-testid="manual-stock-add"]').trigger('click');
+    await wrapper.get('[data-testid="manual-stock-multi"]').setValue(['AAPL']);
 
     await wrapper.get('[data-testid="manual-stock-market"]').setValue('hk');
     await flushPromises();
-    await wrapper.get('[data-testid="manual-stock-option"]').setValue('0700.HK');
-    await wrapper.get('[data-testid="manual-stock-add"]').trigger('click');
+    await wrapper.get('[data-testid="manual-stock-multi"]').setValue(['0700.HK']);
 
     const manualSymbols = wrapper.findAll('[data-testid="manual-stock-symbol"]').map((node) => node.text());
     expect(manualSymbols).toEqual(['AAPL', '0700.HK']);
@@ -292,13 +350,13 @@ describe('AutomationsPage', () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="resolved-ticker-TSLA"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('4 stocks');
-
-    await wrapper.get('[data-testid="remove-selected-group-group-1"]').trigger('click');
-    await flushPromises();
     expect(wrapper.find('[data-testid="selected-group-chip-group-1"]').exists()).toBe(false);
+
+    await wrapper.get('[data-testid="remove-resolved-ticker-NVDA"]').trigger('click');
+    await flushPromises();
     expect(wrapper.find('[data-testid="resolved-ticker-NVDA"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="resolved-ticker-MSFT"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('2 stocks');
+    expect(wrapper.find('[data-testid="resolved-ticker-MSFT"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('3 stocks');
 
     await wrapper.get('[data-testid="one-time-save"]').trigger('click');
     await flushPromises();
@@ -312,14 +370,16 @@ describe('AutomationsPage', () => {
       includeWatchlist: false,
       manualStocks: [
         expect.objectContaining({ market: 'us', symbol: 'AAPL' }),
-        expect.objectContaining({ market: 'hk', symbol: '0700.HK' }),
+        expect.objectContaining({ symbol: '0700.HK' }),
+        expect.objectContaining({ symbol: 'MSFT' }),
       ],
     }));
     expect(apiPost).toHaveBeenCalledWith('/api/one-time-tasks', {
       builtFromName: 'Night basket',
       manualStocks: [
         expect.objectContaining({ market: 'us', symbol: 'AAPL' }),
-        expect.objectContaining({ market: 'hk', symbol: '0700.HK' }),
+        expect.objectContaining({ symbol: '0700.HK' }),
+        expect.objectContaining({ symbol: 'MSFT' }),
       ],
       selectedGroupIds: [],
       includeWatchlist: false,
@@ -330,11 +390,13 @@ describe('AutomationsPage', () => {
     expect((wrapper.get('[data-testid="one-time-name"]').element as HTMLInputElement).value).toBe('Night basket');
     expect((wrapper.get('[data-testid="one-time-scheduled-for"]').element as HTMLInputElement).value).toBe('2026-07-10 21:30');
     expect((wrapper.get('[data-testid="one-time-analysis-date"]').element as HTMLInputElement).value).toBe('2026-07-11');
-    expect(wrapper.find('[data-testid="selected-group-chip-group-1"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="resolved-ticker-AAPL"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="resolved-ticker-NVDA"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="resolved-ticker-MSFT"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid="manual-stock-symbol"]').map((node) => node.text())).toEqual(['AAPL', 'NVDA', 'MSFT']);
 
+    await wrapper.get('[data-testid="remove-resolved-ticker-MSFT"]').trigger('click');
+    await flushPromises();
     await wrapper.get('[data-testid="one-time-name"]').setValue('Night basket updated');
     await wrapper.get('[data-testid="one-time-save"]').trigger('click');
     await flushPromises();
@@ -342,9 +404,12 @@ describe('AutomationsPage', () => {
     expect(apiPatch).toHaveBeenCalledWith('/api/one-time-tasks/task-1', {
       id: 'task-1',
       builtFromName: 'Night basket updated',
-      manualStocks: [expect.objectContaining({ symbol: 'AAPL' })],
-      selectedGroupIds: ['group-1'],
-      includeWatchlist: true,
+      manualStocks: [
+        expect.objectContaining({ symbol: 'AAPL' }),
+        expect.objectContaining({ symbol: 'NVDA' }),
+      ],
+      selectedGroupIds: [],
+      includeWatchlist: false,
     }, { tenantId: 'tenant-a', apiToken: 'token-a' });
 
     await wrapper.get('[data-testid="cancel-one-time-task-task-1"]').trigger('click');
