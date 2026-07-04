@@ -19,18 +19,6 @@ export type NavigationGroup = {
   minRole?: RouteMinRole;
 };
 
-const pageModules = import.meta.glob('../pages/*.vue');
-
-function loadPage(path: string, fallbackPath = '../pages/DashboardPage.vue') {
-  return () => {
-    const loader = pageModules[path] ?? pageModules[fallbackPath];
-    if (!loader) {
-      throw new Error(`Missing page component for route: ${path}`);
-    }
-    return loader();
-  };
-}
-
 export const navigationGroups: NavigationGroup[] = [
   {
     labelKey: 'nav.dashboard',
@@ -148,7 +136,7 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/tenants',
     name: 'tenants',
-    component: loadPage('../pages/TenantsPage.vue'),
+    component: () => import('../pages/TenantsPage.vue'),
     meta: {
       requiresAuth: true,
       minRole: 'admin',
@@ -157,7 +145,7 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/tenants/:tenantId',
     name: 'tenant-detail',
-    component: loadPage('../pages/TenantDetailPage.vue'),
+    component: () => import('../pages/TenantDetailPage.vue'),
     meta: {
       requiresAuth: true,
       minRole: 'admin',
