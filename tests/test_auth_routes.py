@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 
 import web.auth_routes as auth_routes
@@ -806,3 +807,28 @@ def test_admin_cannot_expire_last_active_admin_into_the_past(monkeypatch, tmp_pa
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Cannot remove the last active admin from tenant"
+
+
+@pytest.mark.parametrize("field_name", ["display_name", "role", "disabled"])
+def test_admin_user_update_rejects_explicit_null_fields(monkeypatch, tmp_path, field_name: str):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    target = _create_user(
+        store,
+        username="target",
+        email="target@example.com",
+        display_name="Target User",
+        role="viewer",
+        must_change_password=False,
+    )
+    _login(client)
+
+    response = client.patch(f"/api/admin/users/{target.id}", json={field_name: None})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == f"{field_name} must not be null"
+    refreshed = store.get_user(target.id)
+    assert refreshed is not None
+    assert refreshed.display_name == "Target User"
+    assert refreshed.role == "viewer"
+    assert refreshed.disabled is False

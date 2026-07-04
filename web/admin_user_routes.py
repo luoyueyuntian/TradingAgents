@@ -144,6 +144,10 @@ def update_user_for_tenant(
     payload: AdminUserUpdate,
 ) -> dict[str, AdminUserResponse]:
     target_user = _get_tenant_user(store, tenant_id, user_id)
+    try:
+        payload.require_non_null_fields()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     updates = payload.model_dump(exclude_unset=True)
     if not updates:

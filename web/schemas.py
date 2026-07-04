@@ -53,6 +53,12 @@ def _normalize_blank_optional_string(value: str | None) -> str | None:
     return value
 
 
+def _require_non_null_patch_fields(model: BaseModel, field_names: tuple[str, ...]) -> None:
+    for field_name in field_names:
+        if field_name in model.model_fields_set and getattr(model, field_name) is None:
+            raise ValueError(f"{field_name} must not be null")
+
+
 class AnalysisRequest(BaseModel):
     """Request body for creating an analysis run."""
 
@@ -354,6 +360,9 @@ class AdminUserUpdate(BaseModel):
     def _normalize_expires_at(cls, value: str | None) -> str | None:
         return _normalize_blank_optional_string(value)
 
+    def require_non_null_fields(self) -> None:
+        _require_non_null_patch_fields(self, ("display_name", "role", "disabled"))
+
 
 class AdminUserResponse(BaseModel):
     id: str
@@ -418,6 +427,9 @@ class AdminTenantUpdate(BaseModel):
     def _normalize_display_name(cls, value: str | None) -> str | None:
         normalized = _normalize_blank_optional_string(value)
         return _normalize_display_name(normalized) if normalized is not None else None
+
+    def require_non_null_fields(self) -> None:
+        _require_non_null_patch_fields(self, ("display_name", "disabled", "archived"))
 
 
 class AdminTenantResponse(BaseModel):
