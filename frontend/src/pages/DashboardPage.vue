@@ -45,7 +45,7 @@
           </div>
           <div class="uno-mb-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
             <Button icon="pi pi-filter" :label="t('common.refresh')" severity="secondary" @click="loadNotifications" />
-            <Button icon="pi pi-check" :label="t('dashboard.markNotificationsRead')" severity="secondary" @click="markNotificationsRead" />
+            <Button icon="pi pi-check" :label="t('dashboard.markNotificationsRead')" severity="secondary" :disabled="!canWrite" @click="markNotificationsRead" />
             <Button icon="pi pi-download" :label="t('dashboard.exportNotifications')" severity="secondary" @click="exportNotifications" />
           </div>
           <div class="uno-grid uno-gap-[0.65rem]">
@@ -120,6 +120,7 @@ import { useSession } from '../stores/session';
 import { asArray, compactText, signalSeverity, type JsonRecord } from '../utils/format';
 
 const session = useSession();
+const canWrite = computed(() => session.canWrite.value);
 const dashboard = ref<JsonRecord | null>(null);
 const briefing = ref<JsonRecord | null>(null);
 const notifications = ref<JsonRecord | null>(null);

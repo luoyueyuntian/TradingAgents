@@ -402,11 +402,13 @@ async function loadSettingsDefaults() {
     const settings = await apiGet<JsonRecord>('/api/settings', session.apiContext.value);
     const llm = settings.llm || {};
     const analysis = settings.analysis || {};
+    const configuredMarketProfile = String(analysis.market_profile || form.market_profile);
     form.llm_provider = String(llm.provider || form.llm_provider);
     form.quick_think_model = String(llm.quick_think_model || form.quick_think_model);
     form.deep_think_model = String(llm.deep_think_model || form.deep_think_model);
     form.output_language = String(analysis.output_language || form.output_language);
-    form.market_profile = String(analysis.market_profile || form.market_profile);
+    form.stock_market = configuredMarketProfile === 'cn_a' ? 'cn_a' : form.stock_market;
+    form.market_profile = marketProfileForStockMarket(form.stock_market);
     form.research_depth = Number(analysis.research_depth || form.research_depth);
     form.max_risk_discuss_rounds = String(analysis.max_risk_discuss_rounds ?? form.max_risk_discuss_rounds);
     form.max_recur_limit = String(analysis.max_recur_limit ?? form.max_recur_limit);
