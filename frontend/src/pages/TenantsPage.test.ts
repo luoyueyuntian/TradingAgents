@@ -326,6 +326,38 @@ describe('TenantsPage', () => {
     expect(apiPatch).toHaveBeenCalledWith('/api/admin/tenants/tenant-b', { archived: false });
   });
 
+  it('does not offer disable or enable actions for archived tenants in the directory', async () => {
+    apiGet.mockImplementation((path: string) => {
+      if (path === '/api/admin/tenants?include_archived=true') {
+        return Promise.resolve({
+          tenants: [
+            {
+              id: 'tenant-row-2',
+              tenant_id: 'tenant-b',
+              display_name: 'Tenant B',
+              disabled: false,
+              archived: true,
+              user_count: 1,
+              active_admin_count: 0,
+              created_at: '2026-07-04T10:00:00Z',
+              updated_at: '2026-07-04T11:00:00Z',
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ tenants: [] });
+    });
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="show-archived-toggle"]').setValue(true);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="toggle-tenant-tenant-b"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="archive-tenant-tenant-b"]').exists()).toBe(true);
+  });
+
   it('renders a row-level patch error when a tenant update fails', async () => {
     apiGet.mockResolvedValue({
       tenants: [

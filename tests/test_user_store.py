@@ -959,6 +959,56 @@ def test_list_tenants_sorts_by_tenant_id_and_hides_archived_by_default(tmp_path)
     ]
 
 
+def test_update_tenant_transactionally_rejects_non_unarchive_writes_for_archived_tenant(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    store.create_tenant("tenant-a", display_name="Tenant A")
+    store.update_tenant("tenant-a", archived=True)
+
+    with pytest.raises(ValueError, match="Archived tenants are read-only"):
+        store.update_tenant("tenant-a", disabled=True)
+
+    with pytest.raises(ValueError, match="Archived tenants are read-only"):
+        store.update_tenant("tenant-a", display_name="Tenant Alpha")
+
+    archived = store.get_tenant("tenant-a")
+    assert archived is not None
+    assert archived.display_name == "Tenant A"
+    assert archived.disabled is False
+    assert archived.archived is True
+
+    unarchived = store.update_tenant("tenant-a", archived=False)
+    assert unarchived.archived is False
+
+
+def test_update_tenant_transactionally_protects_last_login_capable_admin_tenant(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    _create_user(
+        store,
+        username="tenant-a-admin",
+        email="tenant-a-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+        must_change_password=False,
+    )
+    _create_user(
+        store,
+        username="tenant-b-admin",
+        email="tenant-b-admin@example.com",
+        role="admin",
+        tenant_id="tenant-b",
+        must_change_password=False,
+    )
+    store.update_tenant("tenant-a", disabled=True)
+
+    with pytest.raises(ValueError, match="Cannot disable or archive the last tenant with a login-capable admin"):
+        store.update_tenant("tenant-b", archived=True)
+
+    tenant_b = store.get_tenant("tenant-b")
+    assert tenant_b is not None
+    assert tenant_b.disabled is False
+    assert tenant_b.archived is False
+
+
 def test_tenant_user_counts_are_scoped_to_target_tenant(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     store.create_tenant("tenant-a", display_name="Tenant A")
