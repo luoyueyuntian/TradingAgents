@@ -53,6 +53,15 @@ def _is_write_method(method: str) -> bool:
     return method.upper() not in {"GET", "HEAD", "OPTIONS"}
 
 
+def _should_resume_startup_work(store: UserStore, tenant_id: str | None) -> bool:
+    if tenant_id is None:
+        return True
+    tenant = store.get_tenant(tenant_id)
+    if tenant is None:
+        return True
+    return not tenant.archived and not tenant.disabled
+
+
 app = FastAPI(
     title="TradingAgents Web",
     description="Multi-Agents LLM Financial Trading Framework - Web Interface",
@@ -159,11 +168,12 @@ async def _resolve_request_auth(request, call_next):
 @app.on_event("startup")
 async def _load_persisted_runs() -> None:
     """Restore persisted run history when the app boots."""
-    bootstrap_admin_from_env(UserStore(get_web_auth_db_path()))
+    store = UserStore(get_web_auth_db_path())
+    bootstrap_admin_from_env(store)
     tenant_ids: list[str | None] = [None, *list_web_tenant_ids()]
     local_thread_mode = get_execution_mode() == "local_thread"
     for tenant_id in tenant_ids:
         load_runs_index(tenant_id)
-        if local_thread_mode:
+        if local_thread_mode and _should_resume_startup_work(store, tenant_id):
             ensure_worker_started(tenant_id)
             resume_incomplete_runs(tenant_id)
