@@ -305,7 +305,7 @@ describe('AutomationsPage', () => {
     expect(wrapper.find('[data-testid="completed-task-run-run-7"]').attributes('href')).toBe('/runs/run-7');
   });
 
-  it('uses manual multi-select across markets and persists the exact final visible ticker set on save and edit', async () => {
+  it('preserves source composition while only normalizing the affected source on resolved ticker removal', async () => {
     apiPost.mockResolvedValue({ id: 'task-2' });
     apiPatch.mockResolvedValue({ id: 'task-1' });
 
@@ -350,13 +350,16 @@ describe('AutomationsPage', () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="resolved-ticker-TSLA"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('4 stocks');
-    expect(wrapper.find('[data-testid="selected-group-chip-group-1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="selected-group-chip-group-1"]').exists()).toBe(true);
+    expect((wrapper.get('[data-testid="one-time-include-watchlist"]').element as HTMLInputElement).checked).toBe(false);
 
     await wrapper.get('[data-testid="remove-resolved-ticker-NVDA"]').trigger('click');
     await flushPromises();
     expect(wrapper.find('[data-testid="resolved-ticker-NVDA"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="resolved-ticker-MSFT"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('3 stocks');
+    expect(wrapper.find('[data-testid="selected-group-chip-group-1"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="manual-stock-symbol"]').map((node) => node.text())).toEqual(['AAPL', '0700.HK', 'MSFT']);
 
     await wrapper.get('[data-testid="one-time-save"]').trigger('click');
     await flushPromises();
@@ -393,7 +396,9 @@ describe('AutomationsPage', () => {
     expect(wrapper.find('[data-testid="resolved-ticker-AAPL"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="resolved-ticker-NVDA"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="resolved-ticker-MSFT"]').exists()).toBe(true);
-    expect(wrapper.findAll('[data-testid="manual-stock-symbol"]').map((node) => node.text())).toEqual(['AAPL', 'NVDA', 'MSFT']);
+    expect(wrapper.findAll('[data-testid="manual-stock-symbol"]').map((node) => node.text())).toEqual(['AAPL']);
+    expect(wrapper.find('[data-testid="selected-group-chip-group-1"]').exists()).toBe(true);
+    expect((wrapper.get('[data-testid="one-time-include-watchlist"]').element as HTMLInputElement).checked).toBe(true);
 
     await wrapper.get('[data-testid="remove-resolved-ticker-MSFT"]').trigger('click');
     await flushPromises();
@@ -407,6 +412,7 @@ describe('AutomationsPage', () => {
       manualStocks: [
         expect.objectContaining({ symbol: 'AAPL' }),
         expect.objectContaining({ symbol: 'NVDA' }),
+        expect.objectContaining({ symbol: 'TSLA' }),
       ],
       selectedGroupIds: [],
       includeWatchlist: false,
