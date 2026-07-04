@@ -92,8 +92,6 @@ def test_vue_router_splits_primary_workflows_into_pages():
         "workspace": ("/workspace", "WorkspacePage.vue"),
         "automations": ("/automations", "AutomationsPage.vue"),
         "settings": ("/settings", "SettingsPage.vue"),
-        "tenants": ("/tenants", "TenantsPage.vue"),
-        "tenant-detail": ("/tenants/:tenantId", "TenantDetailPage.vue"),
         "users": ("/users", "UserManagementPage.vue"),
         "login": ("/login", "LoginPage.vue"),
         "change-password": ("/change-password", "ForcePasswordChangePage.vue"),
@@ -102,7 +100,7 @@ def test_vue_router_splits_primary_workflows_into_pages():
     for route_name, (path, component) in expected_routes.items():
         assert f"path: '{path}'" in pages_ts
         assert f"name: '{route_name}'" in pages_ts
-        if route_name in {"dashboard", "analysis", "runs", "portfolio", "workspace", "automations", "settings", "tenants", "users"}:
+        if route_name in {"dashboard", "analysis", "runs", "portfolio", "workspace", "automations", "settings", "users"}:
             assert f"labelKey: 'nav.{route_name}'" in pages_ts
         if component:
             assert component in pages_ts
@@ -128,34 +126,49 @@ def test_vue_i18n_sources_include_english_and_chinese_copy():
 def test_page_components_keep_existing_backend_api_boundaries():
     page_expectations = {
         "DashboardPage.vue": ["/api/dashboard", "/api/briefing/daily", "/api/notifications"],
-        "AnalyzePage.vue": ["/api/providers", "/api/runs", "/cancel", "/api/stocks", "buildStockSearchPath"],
+        "AnalyzePage.vue": ["/api/providers", "/api/runs", "/events", "/cancel"],
         "RunsPage.vue": ["/api/runs"],
         "RunDetailPage.vue": ["/api/runs", "/artifacts", "/retry", "/terminal-output"],
         "PortfolioPage.vue": ["/api/watchlist", "/api/portfolio", "/api/alerts", "/api/screener"],
         "WorkspacePage.vue": ["/api/search", "/api/notes", "/api/members", "/api/views", "/api/public-shares"],
-        "AutomationsPage.vue": [
-            "/api/automations",
-            "/api/one-time-tasks",
-            "/api/stock-groups",
-            "/api/watchlist",
-            "/api/stocks",
-            "/run-now",
-            "time_of_day",
-            "analysis_config",
-            "resolved_tickers",
-        ],
+        "AutomationsPage.vue": ["/api/automations", "/run-now", "time_of_day", "analysis_config"],
         "SettingsPage.vue": ["/api/settings", "/api/providers"],
-        "UserManagementPage.vue": ["/api/admin/users", "AdminUserDirectory", "loadUsers", "userPath"],
+        "UserManagementPage.vue": ["/api/admin/users", "resetPassword", "expires_at", "disabled"],
     }
 
     for filename, api_markers in page_expectations.items():
         source = _read(FRONTEND_SRC / "pages" / filename)
         if filename == "AutomationsPage.vue":
             source += _read(FRONTEND_SRC / "pages" / "automationPayload.ts")
-            source += _read(FRONTEND_SRC / "pages" / "analyzeStockSelection.ts")
         assert "PageHeader" in source
         for marker in api_markers:
             assert marker in source
+
+
+def test_automations_page_includes_one_time_task_backend_boundaries():
+    source = _read(FRONTEND_SRC / "pages" / "AutomationsPage.vue")
+    source += _read(FRONTEND_SRC / "pages" / "automationPayload.ts")
+    source += _read(FRONTEND_SRC / "pages" / "oneTimeTaskPayload.ts")
+    source += _read(FRONTEND_SRC / "pages" / "oneTimeTaskSelection.ts")
+    source += _read(FRONTEND_SRC / "pages" / "analyzeStockSelection.ts")
+
+    expected_markers = [
+        "/api/one-time-tasks",
+        "/api/stock-groups",
+        "/api/watchlist",
+        "/api/stocks",
+        "/cancel",
+        "scheduled_for",
+        "resolved_tickers",
+        "group_snapshots",
+        "buildOneTimeTaskPayload",
+        "mergeResolvedTickers",
+        "buildStockSearchPath",
+    ]
+
+    assert "PageHeader" in source
+    for marker in expected_markers:
+        assert marker in source
 
 
 def test_api_service_preserves_tenant_context_for_existing_backend():
