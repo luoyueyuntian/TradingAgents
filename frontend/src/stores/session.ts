@@ -130,6 +130,17 @@ function isUnauthorizedError(error: unknown): error is ApiRequestError {
   return requestError.status === 401 || /unauthorized/i.test(error.message);
 }
 
+function isTenantUnavailableSessionError(error: unknown): error is ApiRequestError {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const requestError = error as Partial<ApiRequestError>;
+  if (requestError.status !== 403) {
+    return false;
+  }
+  return /tenant is (disabled|archived)/i.test(error.message);
+}
+
 async function withLoading<T>(operation: () => Promise<T>): Promise<T> {
   state.loading = true;
   try {
@@ -160,7 +171,7 @@ export function useSession() {
         applyAuthSession(payload);
         return payload;
       } catch (error) {
-        if (isUnauthorizedError(error)) {
+        if (isUnauthorizedError(error) || isTenantUnavailableSessionError(error)) {
           clearAuthSession();
         } else if (error instanceof Error) {
           state.error = error.message;

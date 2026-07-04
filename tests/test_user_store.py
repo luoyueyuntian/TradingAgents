@@ -1231,3 +1231,32 @@ def test_bootstrap_admin_from_env_validates_password_policy(monkeypatch, tmp_pat
         user_store_module.bootstrap_admin_from_env(store)
 
     assert store.count_users() == 0
+
+
+@pytest.mark.parametrize(
+    ("tenant_update", "expected_reason"),
+    [
+        ({"disabled": True}, "tenant_disabled"),
+        ({"archived": True}, "tenant_archived"),
+    ],
+)
+def test_bootstrap_admin_from_env_rejects_unavailable_existing_tenants(
+    monkeypatch,
+    tmp_path,
+    tenant_update,
+    expected_reason,
+):
+    store = UserStore(tmp_path / "auth.db")
+    store.create_tenant("tenant-a", display_name="Tenant A")
+    store.update_tenant("tenant-a", **tenant_update)
+    monkeypatch.setenv("TRADINGAGENTS_ADMIN_EMAIL", "admin@example.com")
+    monkeypatch.setenv("TRADINGAGENTS_ADMIN_PASSWORD", "StrongAdmin123!")
+    monkeypatch.setenv("TRADINGAGENTS_ADMIN_TENANT_ID", "tenant-a")
+
+    result = user_store_module.bootstrap_admin_from_env(store)
+
+    assert result.created is False
+    assert result.user_id is None
+    assert result.reason == expected_reason
+    assert store.count_users() == 0
+    assert store.get_user_by_identifier("admin@example.com") is None
