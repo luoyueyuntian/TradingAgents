@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, status
 
+from tradingagents.service.timestamps import current_timestamp_ms
 from tradingagents.service.web_state import get_web_auth_db_path
 
 from .auth import get_request_user
@@ -89,7 +90,7 @@ def create_user_for_tenant(
             tenant_id=tenant_id,
             password_hash=password_record.encoded_hash,
             password_salt=password_record.salt,
-            password_updated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            password_updated_at=current_timestamp_ms(datetime.now(timezone.utc)),
             must_change_password=True,
             expires_at=payload.expires_at,
         )
@@ -127,7 +128,7 @@ def update_user_for_tenant(
         updates.pop("password")
         updates["password_hash"] = password_record.encoded_hash
         updates["password_salt"] = password_record.salt
-        updates["password_updated_at"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        updates["password_updated_at"] = current_timestamp_ms(datetime.now(timezone.utc))
         updates["must_change_password"] = True
 
     if "password_hash" in updates:

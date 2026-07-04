@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from tradingagents.service import web_state as web_state_module
@@ -113,3 +115,88 @@ def test_list_web_tenant_ids_honors_env_override(monkeypatch, tmp_path):
     tenant_ids = web_state_module.list_web_tenant_ids()
 
     assert tenant_ids == ["tenant-a"]
+
+
+def test_migrate_all_web_settings_timestamps_to_ms_rewrites_default_and_tenant_settings(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRADINGAGENTS_WEB_STATE_DIR", str(tmp_path / "web-state"))
+    default_settings_path = tmp_path / "web-state" / "settings.json"
+    tenant_settings_path = tmp_path / "web-state" / "tenants" / "tenant-a" / "settings.json"
+    tenant_settings_path.parent.mkdir(parents=True, exist_ok=True)
+
+    default_settings_path.write_text(json.dumps({
+        "notes": {
+            "items": [
+                {
+                    "id": "note-1",
+                    "content": "hello",
+                    "created_at": "2026-07-04T08:00:00+00:00",
+                    "updated_at": "2026-07-04T09:00:00+00:00",
+                }
+            ]
+        },
+        "notifications": {
+            "read_items": [
+                {
+                    "id": "notif-1",
+                    "read_at": "2026-07-04T10:00:00+00:00",
+                }
+            ]
+        },
+    }), encoding="utf-8")
+    tenant_settings_path.write_text(json.dumps({
+        "automations": {
+            "items": [
+                {
+                    "id": "rule-1",
+                    "name": "Daily",
+                    "enabled": True,
+                    "source": "watchlist",
+                    "tickers": [],
+                    "cadence": "daily",
+                    "time_of_day": "09:00",
+                    "created_at": "2026-07-04T11:00:00+00:00",
+                    "updated_at": "2026-07-04T12:00:00+00:00",
+                    "last_triggered_at": "2026-07-04T13:00:00+00:00",
+                    "next_run_at": "2026-07-05T09:00:00+00:00",
+                    "analysis_config": {
+                        "analysts": ["market"],
+                        "llm_provider": "openai",
+                        "research_depth": 1,
+                        "output_language": "English",
+                    },
+                }
+            ]
+        },
+        "pinned_runs": {
+            "items": [
+                {
+                    "run_id": "run-1",
+                    "created_at": "2026-07-04T14:00:00+00:00",
+                    "due_date": "2026-07-06",
+                }
+            ]
+        },
+    }), encoding="utf-8")
+
+    updated = web_state_module.migrate_all_web_settings_timestamps_to_ms()
+
+    assert updated == 2
+
+    default_payload = json.loads(default_settings_path.read_text(encoding="utf-8"))
+    tenant_payload = json.loads(tenant_settings_path.read_text(encoding="utf-8"))
+
+    note = default_payload["notes"]["items"][0]
+    read_item = default_payload["notifications"]["read_items"][0]
+    rule = tenant_payload["automations"]["items"][0]
+    pinned = tenant_payload["pinned_runs"]["items"][0]
+
+    assert isinstance(note["created_at"], int)
+    assert isinstance(note["updated_at"], int)
+    assert isinstance(read_item["read_at"], int)
+    assert isinstance(rule["created_at"], int)
+    assert isinstance(rule["updated_at"], int)
+    assert isinstance(rule["last_triggered_at"], int)
+    assert isinstance(rule["next_run_at"], int)
+    assert isinstance(pinned["created_at"], int)
+    assert pinned["due_date"] == "2026-07-06"
+    assert rule["time_of_day"] == "09:00"

@@ -2,8 +2,43 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type JsonRecord = Record<string, any>;
 
+const ISO_DATE_TIME_WITHOUT_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/;
+
 export function asArray<T = JsonRecord>(value: unknown): T[] {
   return Array.isArray(value) ? value as T[] : [];
+}
+
+function localTimeZone(): string | undefined {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+}
+
+function padTwoDigits(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+export function parseDateTime(value: unknown): Date | null {
+  if (!value) {
+    return null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+    const numeric = Number(value.trim());
+    const date = new Date(numeric);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const text = String(value).trim();
+  if (!text) {
+    return null;
+  }
+  const normalized = ISO_DATE_TIME_WITHOUT_ZONE.test(text) ? `${text}Z` : text;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date;
 }
 
 export function formatDateTime(value: unknown): string {
@@ -11,11 +46,27 @@ export function formatDateTime(value: unknown): string {
     return 'n/a';
   }
   const text = String(value);
-  const date = new Date(text);
-  if (Number.isNaN(date.getTime())) {
+  const date = parseDateTime(text);
+  if (!date) {
     return text;
   }
-  return date.toLocaleString();
+  const timeZone = localTimeZone();
+  return timeZone
+    ? date.toLocaleString(undefined, { timeZone })
+    : date.toLocaleString();
+}
+
+export function formatDateTimeInputValue(value: unknown): string {
+  const date = parseDateTime(value);
+  if (!date) {
+    return '';
+  }
+  const year = date.getFullYear();
+  const month = padTwoDigits(date.getMonth() + 1);
+  const day = padTwoDigits(date.getDate());
+  const hours = padTwoDigits(date.getHours());
+  const minutes = padTwoDigits(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 export function compactText(value: unknown, fallback = 'n/a'): string {
