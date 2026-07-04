@@ -15,6 +15,15 @@ from web.passwords import hash_secret, verify_password
 from web.user_store import UserStore
 
 EXPECTED_SCHEMA = {
+    "tenants": [
+        "id",
+        "tenant_id",
+        "display_name",
+        "disabled",
+        "archived",
+        "created_at",
+        "updated_at",
+    ],
     "users": [
         "id",
         "username",
@@ -155,6 +164,62 @@ def test_ensure_schema_creates_auth_tables_and_enables_wal(tmp_path):
     for table_name, expected_columns in EXPECTED_SCHEMA.items():
         assert _table_columns(db_path, table_name) == expected_columns
     assert _table_info_by_column(db_path, "users")["tenant_id"][3] == 1
+
+
+def test_ensure_schema_creates_tenants_table(tmp_path):
+    db_path = tmp_path / "auth.db"
+
+    UserStore(db_path).ensure_schema()
+
+    assert _table_columns(db_path, "tenants") == EXPECTED_SCHEMA["tenants"]
+    tenant_info = _table_info_by_column(db_path, "tenants")
+    assert tenant_info["tenant_id"][3] == 1
+    assert tenant_info["display_name"][3] == 1
+    assert tenant_info["disabled"][4] == "0"
+    assert tenant_info["archived"][4] == "0"
+
+
+def test_ensure_schema_backfills_tenants_from_existing_user_rows(tmp_path):
+    db_path = tmp_path / "auth.db"
+    store = UserStore(db_path)
+    store.ensure_schema()
+    _insert_user_direct(
+        db_path,
+        id="user-a",
+        username="user-a",
+        email="user-a@example.com",
+        tenant_id="tenant-a",
+    )
+    _insert_user_direct(
+        db_path,
+        id="user-b",
+        username="user-b",
+        email="user-b@example.com",
+        tenant_id="tenant-b",
+    )
+    _insert_user_direct(
+        db_path,
+        id="user-c",
+        username="user-c",
+        email="user-c@example.com",
+        tenant_id="tenant-a",
+    )
+
+    store.ensure_schema()
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT tenant_id, display_name, disabled, archived
+            FROM tenants
+            ORDER BY tenant_id
+            """
+        ).fetchall()
+
+    assert rows == [
+        ("tenant-a", "tenant-a", 0, 0),
+        ("tenant-b", "tenant-b", 0, 0),
+    ]
 
 
 def test_create_user_persists_record_and_looks_up_identifier_case_insensitively(tmp_path):
@@ -792,6 +857,97 @@ def test_active_admin_count_is_scoped_and_excludes_disabled_or_expired_users(tmp
     assert store.active_admin_count("tenant-a") == 1
     assert store.get_user(tenant_b_admin.id) is not None
     assert store.get_user(tenant_admin.id) is not None
+
+
+def test_archive_tenant_lifecycle_create_update_and_list(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+
+    created = store.create_tenant(" tenant-a ", display_name=" Tenant A ")
+
+    assert created.tenant_id == "tenant-a"
+    assert created.display_name == "Tenant A"
+    assert created.disabled is False
+    assert created.archived is False
+    assert store.get_tenant("tenant-a") == created
+    assert store.list_tenants() == [created]
+
+    updated = store.update_tenant(
+        "tenant-a",
+        display_name="Tenant Alpha",
+        disabled=True,
+        archived=True,
+    )
+
+    assert updated.tenant_id == "tenant-a"
+    assert updated.display_name == "Tenant Alpha"
+    assert updated.disabled is True
+    assert updated.archived is True
+    assert store.get_tenant(" tenant-a ") == updated
+    assert store.list_tenants() == []
+    assert store.list_tenants(include_archived=True) == [updated]
+
+    with pytest.raises(ValueError, match="display_name"):
+        store.create_tenant("tenant-b", display_name=" ")
+    with pytest.raises(ValueError, match="display_name"):
+        store.update_tenant("tenant-a", display_name=" ")
+    with pytest.raises(ValueError, match="tenant_id"):
+        store.create_tenant("../escape", display_name="Nope")
+    with pytest.raises(ValueError, match="no fields to update"):
+        store.update_tenant("tenant-a")
+    with pytest.raises(ValueError, match="tenant not found"):
+        store.update_tenant("missing-tenant", display_name="Missing")
+
+
+def test_tenant_user_counts_are_scoped_to_target_tenant(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    store.create_tenant("tenant-a", display_name="Tenant A")
+    store.create_tenant("tenant-b", display_name="Tenant B")
+    _create_user(
+        store,
+        username="tenant-a-admin",
+        email="tenant-a-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+    _create_user(
+        store,
+        username="tenant-a-analyst",
+        email="tenant-a-analyst@example.com",
+        role="analyst",
+        tenant_id="tenant-a",
+    )
+    _create_user(
+        store,
+        username="tenant-a-disabled-admin",
+        email="tenant-a-disabled-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+        disabled=True,
+    )
+    _create_user(
+        store,
+        username="tenant-a-expired-admin",
+        email="tenant-a-expired-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+        expires_at="2000-01-01T00:00:00+00:00",
+    )
+    _create_user(
+        store,
+        username="tenant-b-admin",
+        email="tenant-b-admin@example.com",
+        role="admin",
+        tenant_id="tenant-b",
+    )
+
+    assert store.get_tenant_stats("tenant-a") == {
+        "user_count": 4,
+        "active_admin_count": 1,
+    }
+    assert store.get_tenant_stats(" tenant-b ") == {
+        "user_count": 1,
+        "active_admin_count": 1,
+    }
 
 
 def test_record_audit_event_persists_normalized_tenant_and_metadata(tmp_path):
