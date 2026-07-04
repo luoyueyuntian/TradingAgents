@@ -125,6 +125,14 @@ async def _resolve_request_auth(request, call_next):
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
         request.state.auth_mode = "token"
         request.state.effective_tenant_id = get_request_tenant_id(request)
+        if request.state.effective_tenant_id is not None:
+            try:
+                _ensure_tenant_allows_access(
+                    UserStore(get_web_auth_db_path()),
+                    request.state.effective_tenant_id,
+                )
+            except HTTPException as exc:
+                return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         return await call_next(request)
 
     if path.startswith("/api/") and is_user_auth_required():

@@ -3,7 +3,7 @@
     <Message v-if="pageError" severity="error" :closable="false">{{ pageError }}</Message>
     <Message v-if="notice" severity="success" :closable="false">{{ notice }}</Message>
 
-    <Card>
+    <Card v-if="!readOnly">
       <template #title>{{ t('users.createUser') }}</template>
       <template #content>
         <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(180px,1fr))] uno-gap-3">
@@ -66,23 +66,30 @@
                   <div class="uno-grid uno-gap-1">
                     <strong class="uno-break-words uno-text-[#132a2d]">{{ user.username }}</strong>
                     <span class="uno-break-words">{{ user.email }}</span>
-                    <InputText v-model="user.draftDisplayName" />
+                    <InputText v-model="user.draftDisplayName" :disabled="readOnly" />
                   </div>
                 </td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">
-                  <Select v-model="user.draftRole" :options="roleOptions" option-label="label" option-value="value" class="uno-min-w-[8rem]" />
+                  <Select
+                    v-model="user.draftRole"
+                    :options="roleOptions"
+                    option-label="label"
+                    option-value="value"
+                    class="uno-min-w-[8rem]"
+                    :disabled="readOnly"
+                  />
                 </td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">
-                  <InputText v-model="user.draftExpiresAt" type="datetime-local" />
+                  <InputText v-model="user.draftExpiresAt" type="datetime-local" :disabled="readOnly" />
                 </td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">
                   <label class="uno-flex uno-items-center uno-gap-2">
-                    <input v-model="user.draftDisabled" type="checkbox">
+                    <input v-model="user.draftDisabled" type="checkbox" :disabled="readOnly">
                     <span>{{ user.draftDisabled ? t('users.disabled') : t('users.active') }}</span>
                   </label>
                 </td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">
-                  <div class="uno-grid uno-gap-2">
+                  <div v-if="!readOnly" class="uno-grid uno-gap-2">
                     <InputText v-model="user.resetPassword" type="password" :placeholder="t('users.newPasswordPlaceholder')" />
                     <Button
                       :data-testid="`reset-password-${user.id}`"
@@ -95,7 +102,7 @@
                   </div>
                 </td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">
-                  <div class="uno-grid uno-gap-2">
+                  <div v-if="!readOnly" class="uno-grid uno-gap-2">
                     <Button
                       :data-testid="`save-user-${user.id}`"
                       icon="pi pi-save"
@@ -165,6 +172,7 @@ const props = defineProps<{
   createPath: string;
   updatePath: (userId: string) => string;
   deletePath: (userId: string) => string;
+  readOnly?: boolean;
 }>();
 
 const { t } = useI18n();
@@ -188,6 +196,8 @@ const roleOptions = computed(() => [
   { label: t('auth.roleAnalyst'), value: 'analyst' },
   { label: t('auth.roleAdmin'), value: 'admin' },
 ]);
+
+const readOnly = computed(() => props.readOnly ?? false);
 
 function toLocalDateTime(value: string | null): string {
   if (!value) {

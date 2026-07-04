@@ -69,6 +69,7 @@ function mountComponent() {
       createPath: '/api/admin/tenants/tenant-a/users',
       updatePath: (userId: string) => `/api/admin/tenants/tenant-a/users/${userId}`,
       deletePath: (userId: string) => `/api/admin/tenants/tenant-a/users/${userId}`,
+      readOnly: false,
     },
     global: {
       stubs: {
@@ -196,5 +197,53 @@ describe('AdminUserDirectory', () => {
     await flushPromises();
 
     expect(apiDelete).toHaveBeenCalledWith('/api/admin/tenants/tenant-a/users/user-1');
+  });
+
+  it('renders the directory in read-only mode for archived tenants', async () => {
+    apiGet.mockResolvedValue({
+      users: [
+        {
+          id: 'user-1',
+          username: 'alice',
+          email: 'alice@example.com',
+          display_name: 'Alice',
+          role: 'analyst',
+          tenant_id: 'tenant-a',
+          expires_at: null,
+          must_change_password: false,
+          disabled: false,
+        },
+      ],
+    });
+
+    const wrapper = mount(AdminUserDirectory, {
+      props: {
+        listPath: '/api/admin/tenants/tenant-a/users',
+        createPath: '/api/admin/tenants/tenant-a/users',
+        updatePath: (userId: string) => `/api/admin/tenants/tenant-a/users/${userId}`,
+        deletePath: (userId: string) => `/api/admin/tenants/tenant-a/users/${userId}`,
+        readOnly: true,
+      },
+      global: {
+        stubs: {
+          Button: ButtonStub,
+          Card: { template: '<div><slot name="title" /><slot name="content" /></div>' },
+          InputText: InputTextStub,
+          Message: { template: '<div><slot /></div>' },
+          Select: SelectStub,
+        },
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="create-user-submit"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="save-user-user-1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="delete-user-user-1"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="reset-password-user-1"]').exists()).toBe(false);
+    expect(wrapper.findAll('input').every((input) => input.element.disabled)).toBe(true);
+    expect(wrapper.findAll('select').every((select) => select.element.disabled)).toBe(true);
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(apiPatch).not.toHaveBeenCalled();
+    expect(apiDelete).not.toHaveBeenCalled();
   });
 });

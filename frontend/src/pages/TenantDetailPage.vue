@@ -79,6 +79,7 @@
       :create-path="tenantUsersPath"
       :update-path="tenantUserPath"
       :delete-path="tenantUserPath"
+      :read-only="tenant.archived"
     />
   </section>
 </template>

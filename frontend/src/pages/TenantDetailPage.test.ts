@@ -33,7 +33,7 @@ vi.mock('vue-router', () => ({
 
 vi.mock('../components/AdminUserDirectory.vue', () => ({
   default: {
-    props: ['listPath', 'createPath', 'updatePath', 'deletePath'],
+    props: ['listPath', 'createPath', 'updatePath', 'deletePath', 'readOnly'],
     template: '<div data-testid="admin-user-directory-stub" />',
     setup(props: Record<string, unknown>, { expose }: { expose: (value: unknown) => void }) {
       adminUserDirectoryProps(props);
@@ -119,6 +119,7 @@ describe('TenantDetailPage', () => {
         createPath: '/api/admin/tenants/tenant-a/users',
         updatePath: expect.any(Function),
         deletePath: expect.any(Function),
+        readOnly: false,
       }),
     );
   });
@@ -309,5 +310,10 @@ describe('TenantDetailPage', () => {
 
     expect(wrapper.find('[data-testid="toggle-tenant-disabled"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="archive-tenant"]').exists()).toBe(true);
+    expect(adminUserDirectoryProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        readOnly: true,
+      }),
+    );
   });
 });
