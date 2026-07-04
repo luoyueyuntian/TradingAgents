@@ -488,6 +488,30 @@ def test_tenant_scoped_user_create_writes_to_target_tenant(monkeypatch, tmp_path
     assert created.must_change_password is True
 
 
+def test_tenant_scoped_user_create_rejects_archived_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
+    store.update_tenant("tenant-b", archived=True)
+    _login(client)
+
+    response = client.post(
+        "/api/admin/tenants/tenant-b/users",
+        json={
+            "username": "archived-user",
+            "email": "archived-user@example.com",
+            "display_name": "Archived User",
+            "role": "viewer",
+            "password": "AnotherStrong123!",
+            "expires_at": "",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Archived tenants are read-only"
+    assert store.get_user_by_identifier("archived-user") is None
+
+
 def test_tenant_scoped_user_delete_protects_last_active_admin(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", must_change_password=False)
@@ -506,6 +530,55 @@ def test_tenant_scoped_user_delete_protects_last_active_admin(monkeypatch, tmp_p
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Cannot remove the last active admin from tenant"
+
+
+def test_tenant_scoped_user_update_rejects_archived_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    archived_user = _create_user(
+        store,
+        username="tenant-b-viewer",
+        email="tenant-b-viewer@example.com",
+        display_name="Tenant B Viewer",
+        role="viewer",
+        tenant_id="tenant-b",
+        must_change_password=False,
+    )
+    store.update_tenant("tenant-b", archived=True)
+    _login(client)
+
+    response = client.patch(
+        f"/api/admin/tenants/tenant-b/users/{archived_user.id}",
+        json={"role": "analyst"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Archived tenants are read-only"
+    refreshed = store.get_user(archived_user.id)
+    assert refreshed is not None
+    assert refreshed.role == "viewer"
+
+
+def test_tenant_scoped_user_delete_rejects_archived_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    archived_user = _create_user(
+        store,
+        username="tenant-b-viewer",
+        email="tenant-b-viewer@example.com",
+        display_name="Tenant B Viewer",
+        role="viewer",
+        tenant_id="tenant-b",
+        must_change_password=False,
+    )
+    store.update_tenant("tenant-b", archived=True)
+    _login(client)
+
+    response = client.delete(f"/api/admin/tenants/tenant-b/users/{archived_user.id}")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Archived tenants are read-only"
+    assert store.get_user(archived_user.id) is not None
 
 
 def test_tenant_scoped_user_update_and_delete_reject_out_of_tenant_user_ids(monkeypatch, tmp_path):
