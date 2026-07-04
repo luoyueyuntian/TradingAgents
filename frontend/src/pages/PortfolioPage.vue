@@ -54,6 +54,75 @@
       </Card>
 
       <Card>
+        <template #title>{{ t('portfolio.stockGroups') }}</template>
+        <template #content>
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+            <InputText
+              v-model="stockGroupForm.name"
+              data-testid="stock-group-name"
+              :placeholder="t('portfolio.stockGroupName')"
+              :disabled="!canWrite"
+            />
+            <InputText
+              v-model="stockGroupForm.tickers"
+              data-testid="stock-group-tickers"
+              :placeholder="t('portfolio.stockGroupTickers')"
+              :disabled="!canWrite"
+            />
+          </div>
+          <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+            <Button
+              :icon="stockGroupSubmitIcon"
+              :label="stockGroupSubmitLabel"
+              data-testid="stock-group-save"
+              :disabled="!canWrite"
+              @click="addStockGroup"
+            />
+            <Button
+              v-if="canWrite && stockGroupForm.id"
+              :label="t('common.cancel')"
+              severity="secondary"
+              text
+              data-testid="stock-group-cancel"
+              @click="resetStockGroupForm"
+            />
+          </div>
+          <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
+            <div
+              v-for="group in stockGroups"
+              :key="group.id"
+              class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3"
+            >
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
+                <span>{{ group.name }}</span>
+                <div class="uno-flex uno-items-center uno-gap-2">
+                  <Button
+                    v-if="canWrite"
+                    icon="pi pi-pencil"
+                    text
+                    severity="secondary"
+                    :data-testid="`stock-group-edit-${group.id}`"
+                    :aria-label="`Edit ${group.name}`"
+                    @click="loadStockGroupIntoForm(group)"
+                  />
+                  <Button
+                    v-if="canWrite"
+                    icon="pi pi-trash"
+                    text
+                    severity="danger"
+                    :data-testid="`stock-group-delete-${group.id}`"
+                    :aria-label="`Delete ${group.name}`"
+                    @click="deleteStockGroup(String(group.id))"
+                  />
+                </div>
+              </div>
+              <small class="uno-text-[#6f8183]">{{ asArray(group.tickers).join(', ') || t('common.na') }}</small>
+            </div>
+          </div>
+        </template>
+      </Card>
+
+      <Card>
         <template #title>{{ t('portfolio.alerts') }}</template>
         <template #content>
           <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
@@ -106,7 +175,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import MetricGrid from '../components/MetricGrid.vue';
 import PageHeader from '../components/PageHeader.vue';
 import { useI18n } from '../i18n';
-import { apiDelete, apiGet, apiPost } from '../services/api';
+import { apiDelete, apiGet, apiPatch, apiPost } from '../services/api';
 import { useSession } from '../stores/session';
 import { asArray, signalSeverity, type JsonRecord } from '../utils/format';
 
@@ -116,11 +185,13 @@ const watchlist = ref<JsonRecord[]>([]);
 const portfolio = ref<JsonRecord | null>(null);
 const alerts = ref<JsonRecord | null>(null);
 const screener = ref<JsonRecord | null>(null);
+const stockGroups = ref<JsonRecord[]>([]);
 const error = ref('');
 const watchTicker = ref('');
 const screenerScope = ref('all');
 const screenerQuery = ref('');
 const position = reactive({ ticker: '', quantity: '', average_cost: '' });
+const stockGroupForm = reactive({ id: '', name: '', tickers: '' });
 const alertRule = reactive({ ticker: '', field: 'signal', value: '' });
 const { t } = useI18n();
 
@@ -140,6 +211,8 @@ const metrics = computed(() => [
   { label: t('portfolio.alertRules'), value: asArray(alerts.value?.rules).length },
   { label: t('portfolio.screenerRows'), value: asArray(screener.value?.rows).length },
 ]);
+const stockGroupSubmitLabel = computed(() => (stockGroupForm.id ? t('common.save') : t('common.add')));
+const stockGroupSubmitIcon = computed(() => (stockGroupForm.id ? 'pi pi-check' : 'pi pi-plus'));
 
 async function loadWatchlist() {
   watchlist.value = await apiGet<JsonRecord[]>('/api/watchlist', session.apiContext.value);
@@ -153,6 +226,10 @@ async function loadAlerts() {
   alerts.value = await apiGet<JsonRecord>('/api/alerts', session.apiContext.value);
 }
 
+async function loadStockGroups() {
+  stockGroups.value = await apiGet<JsonRecord[]>('/api/stock-groups', session.apiContext.value);
+}
+
 async function loadScreener() {
   const params = new URLSearchParams();
   params.set('scope', screenerScope.value);
@@ -163,7 +240,7 @@ async function loadScreener() {
 async function loadAll() {
   error.value = '';
   try {
-    await Promise.all([loadWatchlist(), loadPortfolio(), loadAlerts(), loadScreener()]);
+    await Promise.all([loadWatchlist(), loadPortfolio(), loadAlerts(), loadStockGroups(), loadScreener()]);
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('portfolio.loadError');
   }
@@ -187,6 +264,42 @@ async function addPosition() {
   await loadPortfolio();
 }
 
+function normalizeStockGroupTickers(value: string): string[] {
+  return value
+    .split(/[\s,]+/)
+    .map((ticker) => ticker.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function resetStockGroupForm() {
+  Object.assign(stockGroupForm, { id: '', name: '', tickers: '' });
+}
+
+function loadStockGroupIntoForm(group: JsonRecord) {
+  Object.assign(stockGroupForm, {
+    id: String(group.id || ''),
+    name: String(group.name || ''),
+    tickers: asArray(group.tickers).join(', '),
+  });
+}
+
+async function addStockGroup() {
+  const name = stockGroupForm.name.trim();
+  const tickers = normalizeStockGroupTickers(stockGroupForm.tickers);
+  if (!name || !tickers.length) return;
+  if (stockGroupForm.id) {
+    await apiPatch(
+      `/api/stock-groups/${encodeURIComponent(stockGroupForm.id)}`,
+      { name, tickers },
+      session.apiContext.value,
+    );
+  } else {
+    await apiPost('/api/stock-groups', { name, tickers }, session.apiContext.value);
+  }
+  resetStockGroupForm();
+  await loadStockGroups();
+}
+
 async function addAlert() {
   if (!alertRule.ticker.trim() || !alertRule.value.trim()) return;
   await apiPost('/api/alerts/rules', {
@@ -201,6 +314,14 @@ async function addAlert() {
 async function deleteAlert(ruleId: string) {
   await apiDelete(`/api/alerts/rules/${encodeURIComponent(ruleId)}`, session.apiContext.value);
   await loadAlerts();
+}
+
+async function deleteStockGroup(groupId: string) {
+  await apiDelete(`/api/stock-groups/${encodeURIComponent(groupId)}`, session.apiContext.value);
+  if (stockGroupForm.id === groupId) {
+    resetStockGroupForm();
+  }
+  await loadStockGroups();
 }
 
 onMounted(loadAll);

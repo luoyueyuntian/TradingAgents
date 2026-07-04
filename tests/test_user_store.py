@@ -15,6 +15,15 @@ from web.passwords import hash_secret, verify_password
 from web.user_store import UserStore
 
 EXPECTED_SCHEMA = {
+    "tenants": [
+        "id",
+        "tenant_id",
+        "display_name",
+        "disabled",
+        "archived",
+        "created_at",
+        "updated_at",
+    ],
     "users": [
         "id",
         "username",
@@ -72,6 +81,22 @@ def _table_info_by_column(db_path, table_name):
     return {row[1]: row for row in rows}
 
 
+def _ensure_tenant(store, tenant_id, display_name=None):
+    if tenant_id is None:
+        return None
+    try:
+        normalized_tenant_id = web_state_module.normalize_web_tenant_id(tenant_id)
+    except ValueError:
+        return None
+    tenant = store.get_tenant(normalized_tenant_id)
+    if tenant is None:
+        tenant = store.create_tenant(
+            normalized_tenant_id,
+            display_name=display_name or normalized_tenant_id,
+        )
+    return tenant
+
+
 def _create_user(store, **overrides):
     values = {
         "username": "alice",
@@ -84,6 +109,7 @@ def _create_user(store, **overrides):
         "must_change_password": False,
     }
     values.update(overrides)
+    _ensure_tenant(store, values["tenant_id"])
     return store.create_user(**values)
 
 
@@ -155,6 +181,84 @@ def test_ensure_schema_creates_auth_tables_and_enables_wal(tmp_path):
     for table_name, expected_columns in EXPECTED_SCHEMA.items():
         assert _table_columns(db_path, table_name) == expected_columns
     assert _table_info_by_column(db_path, "users")["tenant_id"][3] == 1
+
+
+def test_ensure_schema_creates_tenants_table(tmp_path):
+    db_path = tmp_path / "auth.db"
+
+    UserStore(db_path).ensure_schema()
+
+    assert _table_columns(db_path, "tenants") == EXPECTED_SCHEMA["tenants"]
+    tenant_info = _table_info_by_column(db_path, "tenants")
+    assert tenant_info["tenant_id"][3] == 1
+    assert tenant_info["display_name"][3] == 1
+    assert tenant_info["disabled"][4] == "0"
+    assert tenant_info["archived"][4] == "0"
+
+
+def test_ensure_schema_backfills_tenants_from_existing_user_rows(tmp_path):
+    db_path = tmp_path / "auth.db"
+    store = UserStore(db_path)
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                email TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                password_salt TEXT NOT NULL,
+                password_updated_at TEXT,
+                must_change_password INTEGER NOT NULL DEFAULT 1,
+                expires_at TEXT,
+                disabled INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_login_at TEXT
+            )
+            """
+        )
+    _insert_user_direct(
+        db_path,
+        id="user-a",
+        username="user-a",
+        email="user-a@example.com",
+        tenant_id="tenant-a",
+    )
+    _insert_user_direct(
+        db_path,
+        id="user-b",
+        username="user-b",
+        email="user-b@example.com",
+        tenant_id="tenant-b",
+    )
+    _insert_user_direct(
+        db_path,
+        id="user-c",
+        username="user-c",
+        email="user-c@example.com",
+        tenant_id="tenant-a",
+    )
+
+    store.ensure_schema()
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT tenant_id, display_name, disabled, archived
+            FROM tenants
+            ORDER BY tenant_id
+            """
+        ).fetchall()
+
+    assert rows == [
+        ("tenant-a", "tenant-a", 0, 0),
+        ("tenant-b", "tenant-b", 0, 0),
+    ]
 
 
 def test_create_user_persists_record_and_looks_up_identifier_case_insensitively(tmp_path):
@@ -592,6 +696,27 @@ def test_touch_session_returns_none_for_missing_or_expired_sessions(
         assert store.touch_session(raw_session_id) is None
 
 
+def test_get_and_touch_session_ignore_malformed_expiry_values(monkeypatch, tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    user = _create_user(store)
+    monkeypatch.setattr(
+        user_store_module,
+        "secrets",
+        SimpleNamespace(token_urlsafe=lambda length: "malformed-session"),
+        raising=False,
+    )
+    raw_session_id, session = store.create_session(user.id, ttl_seconds=60)
+
+    with store._connect() as conn:  # noqa: SLF001
+        conn.execute(
+            "UPDATE sessions SET expires_at = ? WHERE id_hash = ?",
+            (0, session.id_hash),
+        )
+
+    assert store.get_session(raw_session_id) is None
+    assert store.touch_session(raw_session_id) is None
+
+
 def test_password_reset_tokens_track_attempts_used_at_and_expiry(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     user = _create_user(store)
@@ -794,6 +919,293 @@ def test_active_admin_count_is_scoped_and_excludes_disabled_or_expired_users(tmp
     assert store.get_user(tenant_admin.id) is not None
 
 
+@pytest.mark.parametrize(
+    ("updates", "expected_message"),
+    [
+        ({"disabled": True}, "Cannot remove the last active admin from tenant"),
+        ({"role": "viewer"}, "Cannot remove the last active admin from tenant"),
+        ({"expires_at": "2000-01-01T00:00:00+00:00"}, "Cannot remove the last active admin from tenant"),
+    ],
+)
+def test_update_user_transactionally_protects_last_active_admin(tmp_path, updates, expected_message):
+    store = UserStore(tmp_path / "auth.db")
+    sole_admin = _create_user(
+        store,
+        username="sole-admin",
+        email="sole-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+
+    with pytest.raises(ValueError, match=expected_message):
+        store.update_user(sole_admin.id, **updates)
+
+    refreshed = store.get_user(sole_admin.id)
+    assert refreshed is not None
+    assert refreshed.role == "admin"
+    assert refreshed.disabled is False
+    assert refreshed.expires_at is None
+
+
+def test_delete_user_transactionally_protects_last_active_admin(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    sole_admin = _create_user(
+        store,
+        username="sole-admin",
+        email="sole-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+
+    with pytest.raises(ValueError, match="Cannot remove the last active admin from tenant"):
+        store.delete_user(sole_admin.id)
+
+    refreshed = store.get_user(sole_admin.id)
+    assert refreshed is not None
+    assert refreshed.disabled is False
+
+
+@pytest.mark.parametrize("tenant_updates", [{"disabled": True}, {"archived": True}])
+def test_update_user_allows_last_admin_cleanup_when_tenant_is_unavailable(tmp_path, tenant_updates):
+    store = UserStore(tmp_path / "auth.db")
+    _create_user(
+        store,
+        username="other-admin",
+        email="other-admin@example.com",
+        role="admin",
+        tenant_id="tenant-b",
+    )
+    sole_admin = _create_user(
+        store,
+        username="sole-admin",
+        email="sole-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+    store.update_tenant("tenant-a", **tenant_updates)
+
+    updated = store.update_user(sole_admin.id, role="viewer")
+
+    assert updated.role == "viewer"
+    refreshed = store.get_user(sole_admin.id)
+    assert refreshed is not None
+    assert refreshed.role == "viewer"
+
+
+@pytest.mark.parametrize("tenant_updates", [{"disabled": True}, {"archived": True}])
+def test_delete_user_allows_last_admin_cleanup_when_tenant_is_unavailable(tmp_path, tenant_updates):
+    store = UserStore(tmp_path / "auth.db")
+    _create_user(
+        store,
+        username="other-admin",
+        email="other-admin@example.com",
+        role="admin",
+        tenant_id="tenant-b",
+    )
+    sole_admin = _create_user(
+        store,
+        username="sole-admin",
+        email="sole-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+    store.update_tenant("tenant-a", **tenant_updates)
+
+    deleted = store.delete_user(sole_admin.id)
+
+    assert deleted.disabled is True
+    refreshed = store.get_user(sole_admin.id)
+    assert refreshed is not None
+    assert refreshed.disabled is True
+
+
+def test_archive_tenant_lifecycle_create_update_and_list(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+
+    created = store.create_tenant(" tenant-a ", display_name=" Tenant A ")
+
+    assert created.tenant_id == "tenant-a"
+    assert created.display_name == "Tenant A"
+    assert created.disabled is False
+    assert created.archived is False
+    assert store.get_tenant("tenant-a") == created
+    assert store.list_tenants() == [created]
+
+    updated = store.update_tenant(
+        "tenant-a",
+        display_name="Tenant Alpha",
+        disabled=True,
+        archived=True,
+    )
+
+    assert updated.tenant_id == "tenant-a"
+    assert updated.display_name == "Tenant Alpha"
+    assert updated.disabled is True
+    assert updated.archived is True
+    assert store.get_tenant(" tenant-a ") == updated
+    assert store.list_tenants() == []
+    assert store.list_tenants(include_archived=True) == [updated]
+
+    with pytest.raises(ValueError, match="display_name"):
+        store.create_tenant("tenant-b", display_name=" ")
+    with pytest.raises(ValueError, match="display_name"):
+        store.update_tenant("tenant-a", display_name=" ")
+    with pytest.raises(ValueError, match="tenant_id"):
+        store.create_tenant("../escape", display_name="Nope")
+    with pytest.raises(ValueError, match="disabled"):
+        store.update_tenant("tenant-a", disabled=2)
+    with pytest.raises(ValueError, match="archived"):
+        store.update_tenant("tenant-a", archived=-1)
+    with pytest.raises(ValueError, match="no fields to update"):
+        store.update_tenant("tenant-a")
+    with pytest.raises(ValueError, match="tenant not found"):
+        store.update_tenant("missing-tenant", display_name="Missing")
+
+
+def test_list_tenants_sorts_by_tenant_id_and_hides_archived_by_default(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    store.create_tenant("tenant-b", display_name="Tenant B")
+    store.create_tenant("tenant-a", display_name="Tenant A")
+    store.create_tenant("tenant-c", display_name="Tenant C")
+    store.update_tenant("tenant-b", archived=True)
+
+    assert [tenant.tenant_id for tenant in store.list_tenants()] == [
+        "tenant-a",
+        "tenant-c",
+    ]
+    assert [tenant.tenant_id for tenant in store.list_tenants(include_archived=True)] == [
+        "tenant-a",
+        "tenant-b",
+        "tenant-c",
+    ]
+
+
+def test_update_tenant_transactionally_rejects_non_unarchive_writes_for_archived_tenant(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    store.create_tenant("tenant-a", display_name="Tenant A")
+    store.update_tenant("tenant-a", archived=True)
+
+    with pytest.raises(ValueError, match="Archived tenants are read-only"):
+        store.update_tenant("tenant-a", disabled=True)
+
+    with pytest.raises(ValueError, match="Archived tenants are read-only"):
+        store.update_tenant("tenant-a", display_name="Tenant Alpha")
+
+    archived = store.get_tenant("tenant-a")
+    assert archived is not None
+    assert archived.display_name == "Tenant A"
+    assert archived.disabled is False
+    assert archived.archived is True
+
+    unarchived = store.update_tenant("tenant-a", archived=False)
+    assert unarchived.archived is False
+
+
+def test_update_tenant_transactionally_protects_last_login_capable_admin_tenant(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    _create_user(
+        store,
+        username="tenant-a-admin",
+        email="tenant-a-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+        must_change_password=False,
+    )
+    _create_user(
+        store,
+        username="tenant-b-admin",
+        email="tenant-b-admin@example.com",
+        role="admin",
+        tenant_id="tenant-b",
+        must_change_password=False,
+    )
+    store.update_tenant("tenant-a", disabled=True)
+
+    with pytest.raises(ValueError, match="Cannot disable or archive the last tenant with a login-capable admin"):
+        store.update_tenant("tenant-b", archived=True)
+
+    tenant_b = store.get_tenant("tenant-b")
+    assert tenant_b is not None
+    assert tenant_b.disabled is False
+    assert tenant_b.archived is False
+
+
+def test_tenant_user_counts_are_scoped_to_target_tenant(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    store.create_tenant("tenant-a", display_name="Tenant A")
+    store.create_tenant("tenant-b", display_name="Tenant B")
+    _create_user(
+        store,
+        username="tenant-a-admin",
+        email="tenant-a-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+    _create_user(
+        store,
+        username="tenant-a-analyst",
+        email="tenant-a-analyst@example.com",
+        role="analyst",
+        tenant_id="tenant-a",
+    )
+    _create_user(
+        store,
+        username="tenant-a-disabled-admin",
+        email="tenant-a-disabled-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+        disabled=True,
+    )
+    _create_user(
+        store,
+        username="tenant-a-expired-admin",
+        email="tenant-a-expired-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+        expires_at="2000-01-01T00:00:00+00:00",
+    )
+    _create_user(
+        store,
+        username="tenant-b-admin",
+        email="tenant-b-admin@example.com",
+        role="admin",
+        tenant_id="tenant-b",
+    )
+
+    assert store.get_tenant_stats("tenant-a") == {
+        "user_count": 4,
+        "active_admin_count": 1,
+    }
+    assert store.get_tenant_stats(" tenant-b ") == {
+        "user_count": 1,
+        "active_admin_count": 1,
+    }
+
+
+def test_user_writes_reject_unknown_tenants_and_do_not_create_registry_rows(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    _ensure_tenant(store, "tenant-a")
+
+    with pytest.raises(ValueError, match="tenant not found"):
+        store.create_user(
+            username="unknown-tenant-user",
+            email="unknown-tenant-user@example.com",
+            display_name="Unknown Tenant User",
+            role="analyst",
+            tenant_id="tenant-missing",
+            password_hash="hash-missing",
+            password_salt="salt-missing",
+            must_change_password=False,
+        )
+    assert store.get_tenant("tenant-missing") is None
+
+    user = _create_user(store, tenant_id="tenant-a")
+
+    with pytest.raises(ValueError, match="tenant not found"):
+        store.update_user(user.id, tenant_id="tenant-other")
+    assert store.get_tenant("tenant-other") is None
+
+
 def test_record_audit_event_persists_normalized_tenant_and_metadata(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     actor = _create_user(store, username="actor", email="actor@example.com")
@@ -894,3 +1306,32 @@ def test_bootstrap_admin_from_env_validates_password_policy(monkeypatch, tmp_pat
         user_store_module.bootstrap_admin_from_env(store)
 
     assert store.count_users() == 0
+
+
+@pytest.mark.parametrize(
+    ("tenant_update", "expected_reason"),
+    [
+        ({"disabled": True}, "tenant_disabled"),
+        ({"archived": True}, "tenant_archived"),
+    ],
+)
+def test_bootstrap_admin_from_env_rejects_unavailable_existing_tenants(
+    monkeypatch,
+    tmp_path,
+    tenant_update,
+    expected_reason,
+):
+    store = UserStore(tmp_path / "auth.db")
+    store.create_tenant("tenant-a", display_name="Tenant A")
+    store.update_tenant("tenant-a", **tenant_update)
+    monkeypatch.setenv("TRADINGAGENTS_ADMIN_EMAIL", "admin@example.com")
+    monkeypatch.setenv("TRADINGAGENTS_ADMIN_PASSWORD", "StrongAdmin123!")
+    monkeypatch.setenv("TRADINGAGENTS_ADMIN_TENANT_ID", "tenant-a")
+
+    result = user_store_module.bootstrap_admin_from_env(store)
+
+    assert result.created is False
+    assert result.user_id is None
+    assert result.reason == expected_reason
+    assert store.count_users() == 0
+    assert store.get_user_by_identifier("admin@example.com") is None

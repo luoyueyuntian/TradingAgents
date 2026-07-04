@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.service.runtime_context import build_runtime_context
-from web import automation as web_automation, routes as web_routes
+from web import automation as web_automation, one_time_tasks as web_one_time_tasks, routes as web_routes
+from web import stock_groups as stock_groups_module
 from web.app import app
 from web.runner import RunState
 
@@ -245,6 +246,189 @@ def test_list_runs_can_filter_by_archive_scope(monkeypatch, tmp_path):
     assert [item["run_id"] for item in archived_resp.json()] == ["archived-run"]
     assert [item["run_id"] for item in all_resp.json()] == ["active-run", "archived-run"]
     assert all_resp.json()[1]["archived"] is True
+
+
+def test_stock_group_crud_round_trip(monkeypatch, tmp_path):
+    client = TestClient(app)
+    monkeypatch.setattr(
+        stock_groups_module,
+        "get_web_settings_path",
+        lambda tenant_id=None: tmp_path / f"{tenant_id or 'default'}.json",
+    )
+
+    created = client.post("/api/stock-groups", json={"name": "AI Leaders", "tickers": ["nvda", "msft"]})
+    assert created.status_code == 201
+    group_id = created.json()["id"]
+    assert created.json()["tickers"] == ["NVDA", "MSFT"]
+
+    listed = client.get("/api/stock-groups")
+    assert listed.status_code == 200
+    assert [item["name"] for item in listed.json()] == ["AI Leaders"]
+
+    updated = client.patch(f"/api/stock-groups/{group_id}", json={"name": "AI Basket", "tickers": ["nvda", "aapl"]})
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "AI Basket"
+    assert updated.json()["tickers"] == ["NVDA", "AAPL"]
+
+    deleted = client.delete(f"/api/stock-groups/{group_id}")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted": 1}
+
+
+def test_stock_group_names_are_unique_per_tenant(monkeypatch, tmp_path):
+    client = TestClient(app)
+    monkeypatch.setattr(stock_groups_module, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant-a.json")
+
+    first = client.post("/api/stock-groups", json={"name": "China Internet", "tickers": ["0700.HK"]})
+    second = client.post("/api/stock-groups", json={"name": "China Internet", "tickers": ["BABA"]})
+
+    assert first.status_code == 201
+    assert second.status_code == 400
+    assert "already exists" in second.json()["detail"]
+
+
+def test_one_time_task_routes_round_trip_patch_and_cancel(monkeypatch, tmp_path):
+    client = TestClient(app)
+    monkeypatch.setattr(
+        web_one_time_tasks,
+        "get_web_settings_path",
+        lambda tenant_id=None: tmp_path / f"{tenant_id or 'default'}.json",
+    )
+
+    payload = {
+        "name": "Night basket",
+        "scheduled_for": "2026-07-10 21:30",
+        "analysis_date": "2026-07-11",
+        "manual_stocks": [{"market": "us", "symbol": "AAPL"}],
+        "group_ids": [],
+        "include_watchlist": False,
+        "analysis_config": {
+            "analysts": ["market"],
+            "llm_provider": "openai",
+            "quick_think_model": "gpt-5.4-mini",
+            "deep_think_model": "gpt-5.5",
+            "research_depth": 1,
+            "output_language": "English",
+        },
+    }
+
+    created = client.post("/api/one-time-tasks", json=payload)
+    assert created.status_code == 201
+    task_id = created.json()["id"]
+
+    listed = client.get("/api/one-time-tasks")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["name"] == "Night basket"
+
+    updated = client.patch(
+        f"/api/one-time-tasks/{task_id}",
+        json={**payload, "name": "Night basket updated", "scheduled_for": "2026-07-10 21:31"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Night basket updated"
+    assert updated.json()["scheduled_for"] == "2026-07-10 21:31"
+
+    cancelled = client.post(f"/api/one-time-tasks/{task_id}/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+
+
+def test_one_time_task_routes_return_400_and_404_for_invalid_updates(monkeypatch, tmp_path):
+    client = TestClient(app)
+    monkeypatch.setattr(
+        web_one_time_tasks,
+        "get_web_settings_path",
+        lambda tenant_id=None: tmp_path / f"{tenant_id or 'default'}.json",
+    )
+
+    payload = {
+        "name": "Night basket",
+        "scheduled_for": "2026-07-10 21:30",
+        "analysis_date": "2026-07-11",
+        "manual_stocks": [{"market": "us", "symbol": "AAPL"}],
+        "group_ids": [],
+        "include_watchlist": False,
+        "analysis_config": {
+            "analysts": ["market"],
+            "llm_provider": "openai",
+            "quick_think_model": "gpt-5.4-mini",
+            "deep_think_model": "gpt-5.5",
+            "research_depth": 1,
+            "output_language": "English",
+        },
+    }
+
+    created = client.post("/api/one-time-tasks", json=payload)
+    assert created.status_code == 201
+    task_id = created.json()["id"]
+
+    cancelled = client.post(f"/api/one-time-tasks/{task_id}/cancel")
+    assert cancelled.status_code == 200
+
+    invalid_patch = client.patch(f"/api/one-time-tasks/{task_id}", json=payload)
+    assert invalid_patch.status_code == 400
+
+    invalid_cancel = client.post(f"/api/one-time-tasks/{task_id}/cancel")
+    assert invalid_cancel.status_code == 400
+
+    missing_patch = client.patch("/api/one-time-tasks/missing-task", json=payload)
+    assert missing_patch.status_code == 404
+
+    missing_cancel = client.post("/api/one-time-tasks/missing-task/cancel")
+    assert missing_cancel.status_code == 404
+
+
+def test_get_system_status_processes_one_time_tasks_in_local_mode(monkeypatch):
+    client = TestClient(app)
+    calls: list[tuple[str | None, str]] = []
+
+    monkeypatch.setattr(web_routes, "get_execution_mode", lambda: "local_thread")
+    monkeypatch.setattr(web_routes, "get_service_status", lambda tenant_id=None: {"queued_runs": 0})
+    monkeypatch.setattr(web_routes, "get_tenant_id", lambda tenant_id=None: tenant_id)
+    monkeypatch.setattr(web_routes, "get_auth_scope", lambda tenant_id=None: "admin")
+    monkeypatch.setattr(web_routes, "process_due_automation_rules", lambda tenant_id=None, start_worker=True: calls.append((tenant_id, "automations")))
+    monkeypatch.setattr(web_routes, "refresh_one_time_tasks", lambda tenant_id=None: calls.append((tenant_id, "refresh-one-time")))
+    monkeypatch.setattr(web_routes, "process_due_one_time_tasks", lambda tenant_id=None, start_worker=True: calls.append((tenant_id, "process-one-time")))
+    monkeypatch.setattr(web_routes, "process_pending_webhook_notifications", lambda tenant_id=None: calls.append((tenant_id, "webhooks")))
+
+    response = client.get("/api/system/status", headers={"X-TradingAgents-Tenant": "tenant-a"})
+
+    assert response.status_code == 200
+    assert calls == [
+        ("tenant-a", "automations"),
+        ("tenant-a", "refresh-one-time"),
+        ("tenant-a", "process-one-time"),
+        ("tenant-a", "webhooks"),
+    ]
+
+
+def test_stock_group_list_skips_malformed_persisted_rows(monkeypatch, tmp_path):
+    client = TestClient(app)
+    monkeypatch.setattr(stock_groups_module, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant-a.json")
+    monkeypatch.setattr(
+        stock_groups_module,
+        "load_settings",
+        lambda path=None: {
+            "stock_groups": {
+                "items": [
+                    {
+                        "id": "group-1",
+                        "name": "AI Leaders",
+                        "tickers": ["NVDA", "MSFT"],
+                        "created_at": "2026-07-01T12:00:00",
+                        "updated_at": "2026-07-01T12:00:00",
+                    },
+                    {"id": "bad-row", "name": "Broken Group"},
+                    "not-a-dict",
+                ]
+            }
+        },
+    )
+
+    response = client.get("/api/stock-groups")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == ["group-1"]
 
 
 def test_run_history_export_csv_returns_filtered_rows(monkeypatch):

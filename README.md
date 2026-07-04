@@ -289,6 +289,23 @@ export TRADINGAGENTS_WEB_API_TOKEN="choose-a-long-random-token"
 export TRADINGAGENTS_WEB_CORS_ORIGINS="http://localhost:8000"
 ```
 
+On a fresh Web UI install, there is no hard-coded default login. The first
+admin user is bootstrapped at startup only when the auth database is empty and
+these environment variables are set:
+```bash
+export TRADINGAGENTS_ADMIN_EMAIL="admin@example.com"
+export TRADINGAGENTS_ADMIN_PASSWORD="StrongAdmin123!"
+export TRADINGAGENTS_ADMIN_TENANT_ID="default"
+# Optional:
+export TRADINGAGENTS_ADMIN_USERNAME="root-admin"
+export TRADINGAGENTS_ADMIN_DISPLAY_NAME="Root Admin"
+```
+
+After the first successful sign-in, the UI forces that bootstrap admin to
+change the password. If you forgot to set these variables on the very first
+boot, add them and restart the app. If an existing auth database already
+contains users, the bootstrap step is skipped to avoid overwriting accounts.
+
 To run the API without executing analyses in-process, start it with:
 ```bash
 TRADINGAGENTS_WEB_RUN_MODE=external_worker uvicorn web.app:app --host 0.0.0.0 --port 8000
@@ -297,6 +314,7 @@ python -m web.worker
 
 Open http://localhost:8000 to access the interface. From there you can:
 - Configure API keys and LLM provider (Settings gear icon)
+- Open `/tenants` as an admin to create tenant workspaces, bootstrap their first admin account, and manage tenant status across the platform
 - Select ticker, date, research depth, analysts, and one-off advanced run overrides
 - Run analysis and watch real-time progress via SSE streaming
 - View tabbed reports (Market, Sentiment, News, Fundamentals, Research, Trading, Decision)

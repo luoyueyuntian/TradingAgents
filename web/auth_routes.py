@@ -62,6 +62,16 @@ def _ensure_user_can_login(user: UserRecord) -> None:
         raise HTTPException(status_code=403, detail="User account has expired")
 
 
+def _ensure_tenant_allows_access(store: UserStore, tenant_id: str) -> None:
+    tenant = store.get_tenant(tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=403, detail="Tenant not found")
+    if tenant.disabled:
+        raise HTTPException(status_code=403, detail="Tenant is disabled")
+    if tenant.archived:
+        raise HTTPException(status_code=403, detail="Tenant is archived")
+
+
 def _password_reset_available() -> bool:
     return password_reset_mail_available()
 
@@ -156,9 +166,10 @@ def login(payload: AuthLoginRequest, request: Request, response: Response) -> Au
     user = store.get_user_by_identifier(payload.identifier)
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    _ensure_user_can_login(user)
     if not verify_password(payload.password, user.password_hash, user.password_salt):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    _ensure_user_can_login(user)
+    _ensure_tenant_allows_access(store, user.tenant_id)
     raw_session_id, session = store.create_session(user.id, ttl_seconds=SESSION_TTL_SECONDS)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -246,6 +257,11 @@ def password_reset_request(
     if user is None or user.disabled or _is_user_expired(user):
         hash_verification_code(code)
         return PasswordResetAvailability(available=True, reset_id=fallback_reset_id)
+    try:
+        _ensure_tenant_allows_access(store, user.tenant_id)
+    except HTTPException:
+        hash_verification_code(code)
+        return PasswordResetAvailability(available=True, reset_id=fallback_reset_id)
 
     token = store.create_password_reset_token(user.id, hash_verification_code(code))
     background_tasks.add_task(
@@ -286,6 +302,11 @@ def password_reset_confirm(payload: PasswordResetConfirm) -> dict[str, str]:
     if user is None or user.disabled or _is_user_expired(user):
         _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
+    try:
+        _ensure_tenant_allows_access(store, user.tenant_id)
+    except HTTPException as exc:
+        _burn_reset_code_verification(payload.code)
+        raise _invalid_reset_code_error() from exc
     try:
         validate_password_policy(
             payload.new_password,

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
+import { defineComponent } from 'vue';
 
 const sessionState = {
   loading: false,
@@ -42,8 +43,21 @@ function makeUser(overrides: Partial<NonNullable<typeof sessionState.currentUser
 
 async function loadRouterModule() {
   vi.resetModules();
+  const pagesModule = await import('./pages');
+  const tenantRoute = pagesModule.routes.find((route) => route.path === '/tenants');
+  const tenantDetailRoute = pagesModule.routes.find((route) => route.path === '/tenants/:tenantId');
+
+  if (tenantRoute) {
+    tenantRoute.component = stubRouteComponent;
+  }
+  if (tenantDetailRoute) {
+    tenantDetailRoute.component = stubRouteComponent;
+  }
+
   return import('./index');
 }
+
+const stubRouteComponent = () => Promise.resolve({ default: defineComponent({ name: 'TenantRouteStub', template: '<div />' }) });
 
 describe('router auth guards', () => {
   beforeEach(() => {
@@ -60,6 +74,16 @@ describe('router auth guards', () => {
     await router.push('/analysis');
 
     expect(router.currentRoute.value.fullPath).toBe('/login');
+  });
+
+  it('strips the deployed SPA base from the initial browser location', async () => {
+    window.history.replaceState({}, '', '/static/spa/');
+
+    const { createAppRouter } = await loadRouterModule();
+    const router = createAppRouter();
+
+    expect(router.options.history.location).toBe('/');
+    expect(router.options.history.createHref('/analysis')).toBe('/static/spa/analysis');
   });
 
   it('bootstraps authenticated cold starts on /login and redirects to /', async () => {
@@ -139,7 +163,7 @@ describe('router auth guards', () => {
     expect(router.currentRoute.value.fullPath).toBe('/');
   });
 
-  it.each(['/settings', '/users'])('blocks non-admin users from navigating to %s', async (path) => {
+  it.each(['/settings', '/tenants', '/users'])('blocks non-admin users from navigating to %s', async (path) => {
     sessionState.currentUser = makeUser({ role: 'analyst' });
     const { createAppRouter } = await loadRouterModule();
     const router = createAppRouter(createMemoryHistory());
@@ -149,7 +173,7 @@ describe('router auth guards', () => {
     expect(router.currentRoute.value.fullPath).toBe('/');
   });
 
-  it.each(['/settings', '/users'])('allows admin users to navigate to %s', async (path) => {
+  it.each(['/settings', '/tenants', '/users'])('allows admin users to navigate to %s', async (path) => {
     sessionState.currentUser = makeUser({ role: 'admin' });
     const { createAppRouter } = await loadRouterModule();
     const router = createAppRouter(createMemoryHistory());

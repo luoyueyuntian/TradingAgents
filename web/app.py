@@ -5,13 +5,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from tradingagents.service.web_state import get_web_auth_db_path, list_web_tenant_ids
 
+from .admin_tenant_routes import router as admin_tenant_router
 from .admin_user_routes import router as admin_user_router
 from .auth import (
     get_presented_api_token,
@@ -20,7 +21,7 @@ from .auth import (
     get_session_user,
     is_user_auth_required,
 )
-from .auth_routes import router as auth_router
+from .auth_routes import _ensure_tenant_allows_access, router as auth_router
 from .permissions import (
     has_required_role,
     is_auth_path,
@@ -48,6 +49,19 @@ def _get_cors_origins() -> list[str]:
     ]
 
 
+def _is_write_method(method: str) -> bool:
+    return method.upper() not in {"GET", "HEAD", "OPTIONS"}
+
+
+def _should_resume_startup_work(store: UserStore, tenant_id: str | None) -> bool:
+    if tenant_id is None:
+        return True
+    tenant = store.get_tenant(tenant_id)
+    if tenant is None:
+        return True
+    return not tenant.archived and not tenant.disabled
+
+
 app = FastAPI(
     title="TradingAgents Web",
     description="Multi-Agents LLM Financial Trading Framework - Web Interface",
@@ -68,6 +82,7 @@ app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 # Include API routes
 app.include_router(auth_router)
+app.include_router(admin_tenant_router)
 app.include_router(admin_user_router)
 app.include_router(router)
 
@@ -93,6 +108,10 @@ async def _resolve_request_auth(request, call_next):
         return await call_next(request)
 
     if session_user is not None:
+        try:
+            _ensure_tenant_allows_access(UserStore(get_web_auth_db_path()), session_user.tenant_id)
+        except HTTPException as exc:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         if session_user.must_change_password and not is_password_change_allowed_path(path, method):
             return JSONResponse(
                 {
@@ -119,6 +138,14 @@ async def _resolve_request_auth(request, call_next):
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
         request.state.auth_mode = "token"
         request.state.effective_tenant_id = get_request_tenant_id(request)
+        if request.state.effective_tenant_id is not None:
+            try:
+                _ensure_tenant_allows_access(
+                    UserStore(get_web_auth_db_path()),
+                    request.state.effective_tenant_id,
+                )
+            except HTTPException as exc:
+                return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         return await call_next(request)
 
     if path.startswith("/api/") and is_user_auth_required():
@@ -127,17 +154,26 @@ async def _resolve_request_auth(request, call_next):
     if path.startswith("/api/"):
         request.state.auth_mode = "legacy"
         request.state.effective_tenant_id = get_request_tenant_id(request)
+        if request.state.effective_tenant_id is not None and _is_write_method(method):
+            try:
+                _ensure_tenant_allows_access(
+                    UserStore(get_web_auth_db_path()),
+                    request.state.effective_tenant_id,
+                )
+            except HTTPException as exc:
+                return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
     return await call_next(request)
 
 
 @app.on_event("startup")
 async def _load_persisted_runs() -> None:
     """Restore persisted run history when the app boots."""
-    bootstrap_admin_from_env(UserStore(get_web_auth_db_path()))
+    store = UserStore(get_web_auth_db_path())
+    bootstrap_admin_from_env(store)
     tenant_ids: list[str | None] = [None, *list_web_tenant_ids()]
     local_thread_mode = get_execution_mode() == "local_thread"
     for tenant_id in tenant_ids:
         load_runs_index(tenant_id)
-        if local_thread_mode:
+        if local_thread_mode and _should_resume_startup_work(store, tenant_id):
             ensure_worker_started(tenant_id)
             resume_incomplete_runs(tenant_id)
