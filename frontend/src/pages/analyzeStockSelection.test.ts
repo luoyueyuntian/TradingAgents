@@ -43,7 +43,7 @@ describe('analyze stock selection helpers', () => {
     ]);
   });
 
-  it('derives the request market profile from the selected market', () => {
+  it('derives the request market profile from the selected market when no explicit override is set', () => {
     const payload = buildAnalysisRequestPayload({
       stock_market: 'cn_a',
       ticker: '600519.SS',
@@ -54,7 +54,7 @@ describe('analyze stock selection helpers', () => {
       deep_think_model: 'deep-model',
       research_depth: 3,
       output_language: 'Chinese',
-      market_profile: 'default',
+      market_profile: '',
       max_risk_discuss_rounds: 2,
       max_recur_limit: 150,
       checkpoint_enabled: true,
@@ -77,6 +77,35 @@ describe('analyze stock selection helpers', () => {
     expect(payload.google_thinking_level).toBe('high');
     expect(payload.openai_reasoning_effort).toBe('medium');
     expect(payload.anthropic_effort).toBe('low');
+  });
+
+  it('prefers the explicit form market profile and omits cleared optional numeric overrides', () => {
+    const payload = buildAnalysisRequestPayload({
+      stock_market: 'us',
+      ticker: 'NVDA',
+      date: '2026-06-30',
+      analysts: ['market'],
+      llm_provider: 'openai',
+      quick_think_model: 'quick-model',
+      deep_think_model: 'deep-model',
+      research_depth: 3,
+      output_language: 'English',
+      market_profile: 'cn_a',
+      max_risk_discuss_rounds: '',
+      max_recur_limit: '',
+      checkpoint_enabled: false,
+      benchmark_ticker: '',
+      backend_url: '',
+      temperature: '',
+      google_thinking_level: '',
+      openai_reasoning_effort: '',
+      anthropic_effort: '',
+    });
+
+    expect(payload.market_profile).toBe('cn_a');
+    expect(payload.max_risk_discuss_rounds).toBeNull();
+    expect(payload.max_recur_limit).toBeNull();
+    expect(payload.temperature).toBeNull();
   });
 
   it('round-trips date picker values as yyyy-mm-dd strings', () => {

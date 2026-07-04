@@ -92,4 +92,35 @@ describe('automation payload helpers', () => {
     expect(payload.weekday).toBeNull();
     expect(payload.tickers).toEqual([]);
   });
+
+  it('omits cleared optional numeric overrides from automation analysis config', () => {
+    const payload = buildAutomationPayload({
+      name: 'Watchlist',
+      source: 'watchlist',
+      cadence: 'daily',
+      weekday: 'fri',
+      time: '08:45',
+      tickers: '',
+      enabled: true,
+      llm_provider: 'openai',
+      quick_think_model: '',
+      deep_think_model: '',
+      research_depth: 1,
+      output_language: 'English',
+      market_profile: 'default',
+      max_risk_discuss_rounds: '',
+      max_recur_limit: '',
+      checkpoint_enabled: false,
+      benchmark_ticker: '',
+      backend_url: '',
+      temperature: '',
+      google_thinking_level: '',
+      openai_reasoning_effort: '',
+      anthropic_effort: '',
+    });
+
+    expect(payload.analysis_config.max_risk_discuss_rounds).toBeNull();
+    expect(payload.analysis_config.max_recur_limit).toBeNull();
+    expect(payload.analysis_config.temperature).toBeNull();
+  });
 });

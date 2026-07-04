@@ -77,33 +77,33 @@
                 <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(180px,1fr))] uno-gap-[0.8rem]">
                   <label class="uno-grid uno-gap-[0.35rem]">
                     <span class="uno-text-[#6f8183]">{{ t('runs.pinCategory') }}</span>
-                    <Select v-model="pinForm.category" :options="categoryOptions" option-label="label" option-value="value" />
+                    <Select v-model="pinForm.category" :options="categoryOptions" option-label="label" option-value="value" :disabled="!canWrite" />
                   </label>
                   <label class="uno-grid uno-gap-[0.35rem]">
                     <span class="uno-text-[#6f8183]">{{ t('runs.pinPriority') }}</span>
-                    <Select v-model="pinForm.priority" :options="priorityOptions" option-label="label" option-value="value" />
+                    <Select v-model="pinForm.priority" :options="priorityOptions" option-label="label" option-value="value" :disabled="!canWrite" />
                   </label>
                   <label class="uno-grid uno-gap-[0.35rem]">
                     <span class="uno-text-[#6f8183]">{{ t('runs.pinStatus') }}</span>
-                    <Select v-model="pinForm.action_status" :options="actionStatusOptions" option-label="label" option-value="value" />
+                    <Select v-model="pinForm.action_status" :options="actionStatusOptions" option-label="label" option-value="value" :disabled="!canWrite" />
                   </label>
                   <label class="uno-grid uno-gap-[0.35rem]">
                     <span class="uno-text-[#6f8183]">{{ t('runs.pinAssignee') }}</span>
-                    <Select v-model="pinForm.assignee" :options="memberOptions" option-label="label" option-value="value" :placeholder="t('common.optional')" />
+                    <Select v-model="pinForm.assignee" :options="memberOptions" option-label="label" option-value="value" :placeholder="t('common.optional')" :disabled="!canWrite" />
                   </label>
                   <label class="uno-grid uno-gap-[0.35rem]">
                     <span class="uno-text-[#6f8183]">{{ t('runs.pinNextAction') }}</span>
-                    <InputText v-model="pinForm.next_action" :placeholder="t('runs.pinNextAction')" />
+                    <InputText v-model="pinForm.next_action" :placeholder="t('runs.pinNextAction')" :disabled="!canWrite" />
                   </label>
                   <label class="uno-grid uno-gap-[0.35rem]">
                     <span class="uno-text-[#6f8183]">{{ t('runs.pinDueDate') }}</span>
-                    <InputText v-model="pinForm.due_date" type="date" />
+                    <InputText v-model="pinForm.due_date" type="date" :disabled="!canWrite" />
                   </label>
                 </div>
-                <Textarea v-model="pinForm.note" rows="3" auto-resize :placeholder="t('runs.pinNote')" class="uno-mt-3 uno-w-full" />
+                <Textarea v-model="pinForm.note" rows="3" auto-resize :placeholder="t('runs.pinNote')" class="uno-mt-3 uno-w-full" :disabled="!canWrite" />
                 <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-                  <Button icon="pi pi-bookmark" :label="t('runs.savePinnedAction')" severity="secondary" @click="savePinnedRun" />
-                  <Button v-if="currentPinnedRun" icon="pi pi-times" :label="t('runs.removePinnedAction')" severity="danger" outlined @click="deletePinnedRun" />
+                  <Button icon="pi pi-bookmark" :label="t('runs.savePinnedAction')" severity="secondary" :disabled="!canWrite" @click="savePinnedRun" />
+                  <Button v-if="currentPinnedRun" icon="pi pi-times" :label="t('runs.removePinnedAction')" severity="danger" outlined :disabled="!canWrite" @click="deletePinnedRun" />
                 </div>
               </template>
             </Card>
@@ -112,11 +112,11 @@
               <template #title>{{ t('runs.comments') }}</template>
               <template #content>
                 <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-                  <Select v-model="commentAuthor" :options="memberOptions" option-label="label" option-value="value" :placeholder="t('runs.commentAuthor')" />
+                  <Select v-model="commentAuthor" :options="memberOptions" option-label="label" option-value="value" :placeholder="t('runs.commentAuthor')" :disabled="!canWrite" />
                 </div>
-                <Textarea v-model="commentBody" rows="3" auto-resize :placeholder="t('runs.commentPlaceholder')" class="uno-mt-3 uno-w-full" />
+                <Textarea v-model="commentBody" rows="3" auto-resize :placeholder="t('runs.commentPlaceholder')" class="uno-mt-3 uno-w-full" :disabled="!canWrite" />
                 <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-                  <Button icon="pi pi-comment" :label="t('runs.addComment')" severity="secondary" @click="addRunComment" />
+                  <Button icon="pi pi-comment" :label="t('runs.addComment')" severity="secondary" :disabled="!canWrite" @click="addRunComment" />
                 </div>
                 <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
                   <div v-for="comment in comments" :key="comment.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
@@ -131,9 +131,10 @@
                         icon="pi pi-check"
                         :label="comment.resolved ? t('runs.reopenComment') : t('runs.resolveComment')"
                         severity="secondary"
+                        :disabled="!canWrite"
                         @click="toggleComment(comment)"
                       />
-                      <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined @click="deleteRunComment(comment.id)" />
+                      <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined :disabled="!canWrite" @click="deleteRunComment(comment.id)" />
                     </div>
                   </div>
                   <p v-if="!comments.length" class="uno-text-[#6f8183]">{{ t('runs.noComments') }}</p>
@@ -147,23 +148,24 @@
                 <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(180px,1fr))] uno-gap-[0.8rem]">
                   <label class="uno-grid uno-gap-[0.35rem]">
                     <span class="uno-text-[#6f8183]">{{ t('runs.shareTitle') }}</span>
-                    <InputText v-model="shareForm.share_title" :placeholder="t('common.optional')" />
+                    <InputText v-model="shareForm.share_title" :placeholder="t('common.optional')" :disabled="!canWrite" />
                   </label>
                   <label class="uno-grid uno-gap-[0.35rem]">
                     <span class="uno-text-[#6f8183]">{{ t('runs.shareExpiryDays') }}</span>
-                    <InputText v-model="shareForm.expires_in_days" type="number" :placeholder="t('common.optional')" />
+                    <InputText v-model="shareForm.expires_in_days" type="number" :placeholder="t('common.optional')" :disabled="!canWrite" />
                   </label>
                 </div>
-                <Textarea v-model="shareForm.share_summary" rows="3" auto-resize :placeholder="t('runs.shareSummary')" class="uno-mt-3 uno-w-full" />
+                <Textarea v-model="shareForm.share_summary" rows="3" auto-resize :placeholder="t('runs.shareSummary')" class="uno-mt-3 uno-w-full" :disabled="!canWrite" />
                 <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                   <Button
                     icon="pi pi-share-alt"
                     :label="currentPublicShare ? t('runs.updatePublicShare') : t('runs.createPublicShare')"
                     severity="secondary"
+                    :disabled="!canWrite"
                     @click="savePublicShare"
                   />
                   <Button v-if="currentPublicShare" icon="pi pi-external-link" :label="t('common.open')" severity="secondary" @click="openPublicShare" />
-                  <Button v-if="currentPublicShare" icon="pi pi-trash" :label="t('runs.deletePublicShare')" severity="danger" outlined @click="deletePublicShare" />
+                  <Button v-if="currentPublicShare" icon="pi pi-trash" :label="t('runs.deletePublicShare')" severity="danger" outlined :disabled="!canWrite" @click="deletePublicShare" />
                 </div>
                 <div v-if="currentPublicShare" class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
                   <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">

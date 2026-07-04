@@ -20,7 +20,7 @@
         <template #title>{{ t('workspace.importExport') }}</template>
         <template #content>
           <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-            <Select v-model="workspaceImport.mode" :options="importModes" option-label="label" option-value="value" />
+            <Select v-model="workspaceImport.mode" :options="importModes" option-label="label" option-value="value" :disabled="!canWrite" />
             <Button icon="pi pi-upload" :label="t('workspace.importWorkspace')" :disabled="!canWrite" @click="importWorkspaceSnapshot" />
           </div>
           <Textarea
@@ -210,6 +210,7 @@
                       :options="actionStatusOptions"
                       option-label="label"
                       option-value="value"
+                      :disabled="!canWrite"
                       @change="updatePinnedRunStatus(item.run_id, $event.value)"
                     />
                     <Select
@@ -218,6 +219,7 @@
                       option-label="label"
                       option-value="value"
                       :placeholder="t('common.optional')"
+                      :disabled="!canWrite"
                       @change="updatePinnedRunAssignee(item.run_id, $event.value)"
                     />
                   </div>
@@ -233,9 +235,9 @@
         <template #title>{{ t('workspace.savedViewsAndShares') }}</template>
         <template #content>
           <div class="uno-mb-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-            <InputText v-model="savedViewForm.name" :placeholder="t('workspace.saveCurrentView')" />
-            <InputText v-model="savedViewForm.group" :placeholder="t('workspace.viewGroup')" />
-            <Button icon="pi pi-save" :label="t('workspace.saveCurrentView')" severity="secondary" @click="saveCurrentView" />
+            <InputText v-model="savedViewForm.name" :placeholder="t('workspace.saveCurrentView')" :disabled="!canWrite" />
+            <InputText v-model="savedViewForm.group" :placeholder="t('workspace.viewGroup')" :disabled="!canWrite" />
+            <Button icon="pi pi-save" :label="t('workspace.saveCurrentView')" severity="secondary" :disabled="!canWrite" @click="saveCurrentView" />
             <Button icon="pi pi-download" :label="t('workspace.exportPublicShares')" severity="secondary" @click="exportPublicShares" />
           </div>
           <div class="uno-grid uno-gap-[0.65rem]">
@@ -246,14 +248,15 @@
               </div>
               <small class="uno-text-[#6f8183]">{{ view.url }}</small>
               <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-                <Button icon="pi pi-copy" :label="t('workspace.duplicateView')" severity="secondary" @click="duplicateView(view.id)" />
-                <Button
-                  :icon="view.archived ? 'pi pi-inbox' : 'pi pi-folder'"
-                  :label="view.archived ? t('workspace.restoreView') : t('workspace.archiveView')"
-                  severity="secondary"
-                  @click="toggleViewArchive(view)"
-                />
-                <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined @click="deleteView(view.id)" />
+                <Button icon="pi pi-copy" :label="t('workspace.duplicateView')" severity="secondary" :disabled="!canWrite" @click="duplicateView(view.id)" />
+                  <Button
+                    :icon="view.archived ? 'pi pi-inbox' : 'pi pi-folder'"
+                    :label="view.archived ? t('workspace.restoreView') : t('workspace.archiveView')"
+                    severity="secondary"
+                    :disabled="!canWrite"
+                    @click="toggleViewArchive(view)"
+                  />
+                <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined :disabled="!canWrite" @click="deleteView(view.id)" />
               </div>
             </div>
             <div v-for="share in shares" :key="share.share_id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
@@ -355,7 +358,6 @@ async function runSearch() {
 
 async function loadAll() {
   error.value = '';
-  notice.value = '';
   try {
     const context = session.apiContext.value;
     const [noteItems, memberItems, reviewPayload, timelinePayload, calendarPayload, actionBoardPayload, viewItems, shareItems] = await Promise.all([

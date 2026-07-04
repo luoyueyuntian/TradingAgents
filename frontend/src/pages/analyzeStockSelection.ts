@@ -86,6 +86,13 @@ export function normalizeStockOptions(rows: StockCatalogOption[]): Required<Stoc
 
 export function buildAnalysisRequestPayload(form: AnalysisStockForm) {
   const toInt = (value: number | string) => Number(value);
+  const toOptionalInt = (value: number | string) => {
+    if (value === '') {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  };
   const toOptionalFloat = (value: number | string | null) => {
     if (value === null || value === '') {
       return null;
@@ -93,6 +100,7 @@ export function buildAnalysisRequestPayload(form: AnalysisStockForm) {
     const parsed = Number(value);
     return Number.isNaN(parsed) ? null : parsed;
   };
+  const marketProfile = form.market_profile.trim() || marketProfileForStockMarket(form.stock_market);
 
   return {
     ticker: form.ticker.trim().toUpperCase(),
@@ -103,9 +111,9 @@ export function buildAnalysisRequestPayload(form: AnalysisStockForm) {
     deep_think_model: form.deep_think_model,
     research_depth: toInt(form.research_depth),
     output_language: form.output_language,
-    market_profile: marketProfileForStockMarket(form.stock_market),
-    max_risk_discuss_rounds: toInt(form.max_risk_discuss_rounds),
-    max_recur_limit: toInt(form.max_recur_limit),
+    market_profile: marketProfile,
+    max_risk_discuss_rounds: toOptionalInt(form.max_risk_discuss_rounds),
+    max_recur_limit: toOptionalInt(form.max_recur_limit),
     checkpoint_enabled: form.checkpoint_enabled,
     benchmark_ticker: form.benchmark_ticker.trim() || null,
     backend_url: form.backend_url.trim() || null,
