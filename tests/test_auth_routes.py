@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 
 import web.auth_routes as auth_routes
@@ -26,6 +27,9 @@ def _create_user(store: UserStore, **overrides):
         "must_change_password": True,
     }
     values.update(overrides)
+    tenant_id = values["tenant_id"]
+    if store.get_tenant(tenant_id) is None:
+        store.create_tenant(tenant_id, display_name=tenant_id)
     return store.create_user(**values)
 
 
@@ -61,6 +65,28 @@ def test_login_rejects_invalid_credentials(monkeypatch, tmp_path):
 def test_login_sets_session_cookie(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice@example.com", "password": "StrongPass123!"},
+    )
+
+    assert response.status_code == 200
+    assert response.cookies.get("tradingagents_session")
+
+
+def test_login_ignores_malformed_existing_session_cookie(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    user = _create_user(store)
+    raw_session_id, session = store.create_session(user.id)
+
+    with store._connect() as conn:  # noqa: SLF001
+        conn.execute(
+            "UPDATE sessions SET expires_at = ? WHERE id_hash = ?",
+            (0, session.id_hash),
+        )
+
+    client.cookies.set("tradingagents_session", raw_session_id)
 
     response = client.post(
         "/api/auth/login",
@@ -119,6 +145,32 @@ def test_logout_clears_session_cookie(monkeypatch, tmp_path):
     assert "Max-Age=0" in response.headers["set-cookie"]
 
 
+@pytest.mark.parametrize(
+    ("tenant_id", "tenant_update"),
+    [
+        ("tenant-disabled", {"disabled": True}),
+        ("tenant-archived", {"archived": True}),
+    ],
+)
+def test_logout_still_clears_session_when_tenant_becomes_unavailable(
+    monkeypatch,
+    tmp_path,
+    tenant_id,
+    tenant_update,
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant(tenant_id, display_name=tenant_id)
+    _create_user(store, tenant_id=tenant_id)
+    _login(client)
+    store.update_tenant(tenant_id, **tenant_update)
+
+    response = client.post("/api/auth/logout")
+
+    assert response.status_code == 200
+    assert "tradingagents_session=" in response.headers["set-cookie"]
+    assert "Max-Age=0" in response.headers["set-cookie"]
+
+
 def test_login_rejects_disabled_user_with_clear_403(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, disabled=True)
@@ -130,6 +182,19 @@ def test_login_rejects_disabled_user_with_clear_403(monkeypatch, tmp_path):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "User account is disabled"
+
+
+def test_login_hides_disabled_user_state_for_wrong_password(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, disabled=True)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid credentials"
 
 
 def test_login_rejects_expired_user_with_clear_403(monkeypatch, tmp_path):
@@ -146,6 +211,82 @@ def test_login_rejects_expired_user_with_clear_403(monkeypatch, tmp_path):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "User account has expired"
+
+
+def test_login_hides_expired_user_state_for_wrong_password(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(
+        store,
+        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+    )
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice@example.com", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid credentials"
+
+
+def test_login_rejects_disabled_tenant_with_clear_403(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
+    _create_user(store, tenant_id="tenant-disabled")
+    store.update_tenant("tenant-disabled", disabled=True)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice", "password": "StrongPass123!"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is disabled"
+
+
+def test_login_hides_disabled_tenant_state_for_wrong_password(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
+    _create_user(store, tenant_id="tenant-disabled")
+    store.update_tenant("tenant-disabled", disabled=True)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid credentials"
+
+
+def test_login_hides_archived_tenant_state_for_wrong_password(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-archived", display_name="Tenant Archived")
+    _create_user(store, tenant_id="tenant-archived")
+    store.update_tenant("tenant-archived", archived=True)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid credentials"
+
+
+def test_login_rejects_archived_tenant_with_clear_403(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-archived", display_name="Tenant Archived")
+    _create_user(store, tenant_id="tenant-archived")
+    store.update_tenant("tenant-archived", archived=True)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice", "password": "StrongPass123!"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is archived"
 
 
 def test_me_rejects_missing_or_expired_session(monkeypatch, tmp_path):
@@ -394,6 +535,41 @@ def test_password_reset_request_ignores_username_shadowing_email_value(
     assert len(sent_messages[0].code) == 6
 
 
+@pytest.mark.parametrize(
+    ("tenant_id", "tenant_update"),
+    [
+        ("tenant-disabled", {"disabled": True}),
+        ("tenant-archived", {"archived": True}),
+    ],
+)
+def test_password_reset_request_skips_unavailable_tenants_without_state_changes(
+    monkeypatch,
+    tmp_path,
+    tenant_id,
+    tenant_update,
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant(tenant_id, display_name=tenant_id)
+    _create_user(store, tenant_id=tenant_id)
+    sent_messages = []
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_PORT", "2525")
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_FROM", "noreply@example.com")
+    monkeypatch.setattr(auth_routes, "send_password_reset_email", sent_messages.append)
+    store.update_tenant(tenant_id, **tenant_update)
+
+    response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "alice@example.com"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["available"] is True
+    assert response.json()["reset_id"]
+    assert sent_messages == []
+    assert store.get_password_reset_token(response.json()["reset_id"]) is None
+
+
 def test_password_reset_confirm_rejects_invalid_expired_used_and_attempt_limited_codes(
     monkeypatch, tmp_path
 ):
@@ -469,6 +645,41 @@ def test_password_reset_confirm_does_not_distinguish_fake_and_limited_reset_ids(
     assert real_limited.status_code == 400
     assert fake.status_code == 400
     assert real_limited.json()["detail"] == fake.json()["detail"] == "Invalid or expired reset code"
+
+
+@pytest.mark.parametrize(
+    ("tenant_id", "tenant_update"),
+    [
+        ("tenant-disabled", {"disabled": True}),
+        ("tenant-archived", {"archived": True}),
+    ],
+)
+def test_password_reset_confirm_rejects_unavailable_tenant_without_updating_password(
+    monkeypatch,
+    tmp_path,
+    tenant_id,
+    tenant_update,
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant(tenant_id, display_name=tenant_id)
+    user = _create_user(store, tenant_id=tenant_id, must_change_password=True)
+    token = store.create_password_reset_token(user.id, hash_verification_code("444444"))
+    previous_hash = user.password_hash
+    previous_salt = user.password_salt
+    store.update_tenant(tenant_id, **tenant_update)
+
+    response = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"reset_id": token.id, "code": "444444", "new_password": "EvenStronger456!"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid or expired reset code"
+    refreshed = store.get_user(user.id)
+    assert refreshed is not None
+    assert refreshed.password_hash == previous_hash
+    assert refreshed.password_salt == previous_salt
+    assert refreshed.must_change_password is True
 
 
 def test_password_reset_confirm_updates_password_and_allows_login(monkeypatch, tmp_path):
@@ -773,3 +984,28 @@ def test_admin_cannot_expire_last_active_admin_into_the_past(monkeypatch, tmp_pa
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Cannot remove the last active admin from tenant"
+
+
+@pytest.mark.parametrize("field_name", ["display_name", "role", "disabled"])
+def test_admin_user_update_rejects_explicit_null_fields(monkeypatch, tmp_path, field_name: str):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    target = _create_user(
+        store,
+        username="target",
+        email="target@example.com",
+        display_name="Target User",
+        role="viewer",
+        must_change_password=False,
+    )
+    _login(client)
+
+    response = client.patch(f"/api/admin/users/{target.id}", json={field_name: None})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == f"{field_name} must not be null"
+    refreshed = store.get_user(target.id)
+    assert refreshed is not None
+    assert refreshed.display_name == "Target User"
+    assert refreshed.role == "viewer"
+    assert refreshed.disabled is False

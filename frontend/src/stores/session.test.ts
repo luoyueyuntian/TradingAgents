@@ -2,11 +2,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const apiGetMock = vi.fn();
 const apiPostMock = vi.fn();
+let registeredAuthInvalidationHandler: (() => void) | null = null;
+const registerApiAuthInvalidationHandlerMock = vi.fn((handler: () => void) => {
+  registeredAuthInvalidationHandler = handler;
+  return () => {
+    if (registeredAuthInvalidationHandler === handler) {
+      registeredAuthInvalidationHandler = null;
+    }
+  };
+});
 
-vi.mock('../services/api', () => ({
-  apiGet: apiGetMock,
-  apiPost: apiPostMock,
-}));
+vi.mock('../services/api', async () => {
+  const actual = await vi.importActual<typeof import('../services/api')>('../services/api');
+  return {
+    ...actual,
+    apiGet: apiGetMock,
+    apiPost: apiPostMock,
+    registerApiAuthInvalidationHandler: registerApiAuthInvalidationHandlerMock,
+  };
+});
 
 type AuthUser = {
   id: string;
@@ -71,6 +85,8 @@ describe('session store', () => {
   beforeEach(() => {
     apiGetMock.mockReset();
     apiPostMock.mockReset();
+    registerApiAuthInvalidationHandlerMock.mockClear();
+    registeredAuthInvalidationHandler = null;
     window.localStorage.clear();
   });
 
@@ -147,6 +163,54 @@ describe('session store', () => {
     await expect(session.loadCurrentUser()).rejects.toThrow('Unauthorized');
     expect(session.state.currentUser).toBeNull();
     expect(session.state.sessionExpiresAt).toBe('');
+    expect(session.state.error).toBe('');
+  });
+
+  it('clears the auth session when /api/auth/me reports a disabled tenant', async () => {
+    apiGetMock.mockRejectedValue(Object.assign(new Error('Tenant is disabled'), { status: 403 }));
+    const { useSession } = await loadSessionModule();
+
+    const session = useSession();
+    session.state.currentUser = makeAuthResponse().user;
+    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+    session.state.passwordReset = { available: true, reset_id: 'reset-1', detail: 'Reset is available' };
+
+    await expect(session.loadCurrentUser()).rejects.toThrow('Tenant is disabled');
+    expect(session.state.currentUser).toBeNull();
+    expect(session.state.sessionExpiresAt).toBe('');
+    expect(session.state.passwordReset).toEqual({ available: false, reset_id: null, detail: null });
+    expect(session.state.error).toBe('');
+  });
+
+  it('preserves the auth session on unrelated forbidden /api/auth/me failures', async () => {
+    apiGetMock.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }));
+    const { useSession } = await loadSessionModule();
+
+    const session = useSession();
+    session.state.currentUser = makeAuthResponse().user;
+    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+
+    await expect(session.loadCurrentUser()).rejects.toThrow('Forbidden');
+    expect(session.state.currentUser?.username).toBe('alice');
+    expect(session.state.sessionExpiresAt).toBe('2026-07-03T00:00:00Z');
+    expect(session.state.error).toBe('Forbidden');
+  });
+
+  it('clears the auth session when the shared API invalidation handler runs', async () => {
+    const { useSession } = await loadSessionModule();
+    const session = useSession();
+    session.state.currentUser = makeAuthResponse().user;
+    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+    session.state.passwordReset = { available: true, reset_id: 'reset-1', detail: 'Reset is available' };
+
+    expect(registerApiAuthInvalidationHandlerMock).toHaveBeenCalledTimes(1);
+    expect(registeredAuthInvalidationHandler).not.toBeNull();
+
+    registeredAuthInvalidationHandler?.();
+
+    expect(session.state.currentUser).toBeNull();
+    expect(session.state.sessionExpiresAt).toBe('');
+    expect(session.state.passwordReset).toEqual({ available: false, reset_id: null, detail: null });
     expect(session.state.error).toBe('');
   });
 

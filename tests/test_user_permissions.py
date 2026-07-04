@@ -24,6 +24,9 @@ def _create_user(store: UserStore, **overrides):
         "must_change_password": False,
     }
     values.update(overrides)
+    tenant_id = values["tenant_id"]
+    if store.get_tenant(tenant_id) is None:
+        store.create_tenant(tenant_id, display_name=tenant_id)
     return store.create_user(**values)
 
 
@@ -180,6 +183,7 @@ def test_viewer_cannot_access_admin_user_routes(monkeypatch, tmp_path):
 def test_token_authenticated_request_preserves_legacy_behavior(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="viewer", tenant_id="alpha")
+    store.create_tenant("beta", display_name="Beta")
     monkeypatch.setenv("TRADINGAGENTS_WEB_API_TOKEN", "secret-token")
     seen: dict[str, str | None] = {}
 
@@ -221,6 +225,112 @@ def test_forced_password_change_blocks_protected_routes(monkeypatch, tmp_path):
     assert allowed.status_code == 200
     assert blocked.status_code == 403
     assert blocked.json()["code"] == "password_change_required"
+
+
+def test_disabled_tenant_blocks_existing_session_requests(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
+    _create_user(store, role="viewer", tenant_id="tenant-disabled")
+    _login(client)
+    store.update_tenant("tenant-disabled", disabled=True)
+    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [])
+
+    response = client.get("/api/runs")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is disabled"
+
+
+def test_token_authenticated_write_request_rejects_disabled_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
+    store.update_tenant("tenant-disabled", disabled=True)
+    monkeypatch.setenv("TRADINGAGENTS_WEB_API_TOKEN", "secret-token")
+
+    class _Run:
+        run_id = "run-1"
+        status = "queued"
+        ticker = "NVDA"
+        date = "2026-07-02"
+
+    monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
+
+    response = client.post(
+        "/api/runs?tenant_id=tenant-disabled",
+        headers={"Authorization": "Bearer secret-token"},
+        json=_analysis_payload(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is disabled"
+
+
+def test_token_authenticated_write_request_rejects_archived_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-archived", display_name="Tenant Archived")
+    store.update_tenant("tenant-archived", archived=True)
+    monkeypatch.setenv("TRADINGAGENTS_WEB_API_TOKEN", "secret-token")
+
+    class _Run:
+        run_id = "run-1"
+        status = "queued"
+        ticker = "NVDA"
+        date = "2026-07-02"
+
+    monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
+
+    response = client.post(
+        "/api/runs?tenant_id=tenant-archived",
+        headers={"Authorization": "Bearer secret-token"},
+        json=_analysis_payload(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is archived"
+
+
+def test_legacy_write_request_rejects_disabled_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
+    store.update_tenant("tenant-disabled", disabled=True)
+
+    class _Run:
+        run_id = "run-1"
+        status = "queued"
+        ticker = "NVDA"
+        date = "2026-07-02"
+
+    monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
+
+    response = client.post(
+        "/api/runs?tenant_id=tenant-disabled",
+        json=_analysis_payload(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is disabled"
+
+
+def test_legacy_write_request_rejects_archived_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-archived", display_name="Tenant Archived")
+    store.update_tenant("tenant-archived", archived=True)
+
+    class _Run:
+        run_id = "run-1"
+        status = "queued"
+        ticker = "NVDA"
+        date = "2026-07-02"
+
+    monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
+
+    response = client.post(
+        "/api/runs?tenant_id=tenant-archived",
+        json=_analysis_payload(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is archived"
 
 
 def test_authenticated_me_request_populates_auth_state(monkeypatch, tmp_path):

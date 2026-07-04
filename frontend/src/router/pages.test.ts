@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
-import { navigationGroups, routes } from './pages';
+let navigationGroups: typeof import('./pages').navigationGroups;
+let routes: typeof import('./pages').routes;
+
+beforeAll(async () => {
+  ({ navigationGroups, routes } = await import('./pages'));
+});
 
 describe('page registry', () => {
   it('splits the workspace into the requested primary SPA pages', () => {
@@ -12,6 +17,7 @@ describe('page registry', () => {
       '/workspace',
       '/automations',
       '/settings',
+      '/tenants',
       '/users',
     ]);
     expect(navigationGroups.map((item) => item.labelKey)).toEqual([
@@ -22,10 +28,12 @@ describe('page registry', () => {
       'nav.workspace',
       'nav.automations',
       'nav.settings',
+      'nav.tenants',
       'nav.users',
     ]);
     expect(navigationGroups.every((item) => item.descriptionKey.endsWith('Desc'))).toBe(true);
     expect(navigationGroups.find((item) => item.path === '/settings')?.minRole).toBe('admin');
+    expect(navigationGroups.find((item) => item.path === '/tenants')?.minRole).toBe('admin');
     expect(navigationGroups.find((item) => item.path === '/users')?.minRole).toBe('admin');
   });
 
@@ -44,13 +52,28 @@ describe('page registry', () => {
       'workspace',
       'automations',
       'settings',
+      'tenants',
+      'tenant-detail',
       'users',
       'login',
       'change-password',
     ]);
     expect(routes.find((route) => route.path === '/runs/:runId')?.name).toBe('run-detail');
     expect(routes.find((route) => route.path === '/settings')?.meta?.minRole).toBe('admin');
+    expect(routes.find((route) => route.path === '/tenants')?.meta?.minRole).toBe('admin');
+    expect(routes.find((route) => route.path === '/tenants/:tenantId')?.meta?.minRole).toBe('admin');
     expect(routes.find((route) => route.path === '/users')?.meta?.minRole).toBe('admin');
-    expect(routes.filter((route) => route.meta?.requiresAuth).length).toBe(10);
+    expect(routes.filter((route) => route.meta?.requiresAuth).length).toBe(12);
+  });
+
+  it('keeps tenant route modules lazy-loadable until used', async () => {
+    const tenantRoute = routes.find((route) => route.path === '/tenants');
+    const tenantDetailRoute = routes.find((route) => route.path === '/tenants/:tenantId');
+
+    expect(tenantRoute?.component).toBeTypeOf('function');
+    expect(tenantDetailRoute?.component).toBeTypeOf('function');
+
+    await expect((tenantRoute?.component as () => Promise<unknown>)()).resolves.toBeDefined();
+    await expect((tenantDetailRoute?.component as () => Promise<unknown>)()).resolves.toBeDefined();
   });
 });

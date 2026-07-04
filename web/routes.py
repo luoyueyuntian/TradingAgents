@@ -57,6 +57,20 @@ from .automation import (
     run_automation_rule_now,
     update_automation_rule_enabled,
 )
+from .one_time_tasks import (
+    cancel_one_time_task,
+    create_one_time_task,
+    get_one_time_task_page,
+    process_due_one_time_tasks,
+    refresh_one_time_tasks,
+    update_one_time_task,
+)
+from .stock_groups import (
+    create_stock_group,
+    delete_stock_group,
+    list_stock_groups,
+    update_stock_group,
+)
 from .runner import (
     TERMINAL_RUN_STATUSES,
     build_terminal_event,
@@ -123,6 +137,10 @@ from .schemas import (
     NotificationCenterResponse,
     NotificationItem,
     NotificationReadResult,
+    OneTimeTask,
+    OneTimeTaskCreate,
+    OneTimeTaskPage,
+    OneTimeTaskUpdate,
     PinnedRun,
     PinnedRunAssigneeUpdate,
     PinnedRunCreate,
@@ -174,6 +192,9 @@ from .schemas import (
     StockCatalogRefreshRequest,
     StockCatalogRefreshResponse,
     StockMarketInfo,
+    StockGroup,
+    StockGroupCreate,
+    StockGroupUpdate,
     TenantInfo,
     TickerOverview,
     ToolVendorSettings,
@@ -253,6 +274,13 @@ def _process_due_automations_if_local(tenant_id: str | None = None) -> None:
     process_due_automation_rules(tenant_id, start_worker=True)
 
 
+def _process_due_one_time_tasks_if_local(tenant_id: str | None = None) -> None:
+    if get_execution_mode() == "external_worker":
+        return
+    refresh_one_time_tasks(tenant_id)
+    process_due_one_time_tasks(tenant_id, start_worker=True)
+
+
 def _process_webhook_notifications_if_local(tenant_id: str | None = None) -> None:
     if get_execution_mode() == "external_worker":
         return
@@ -301,6 +329,7 @@ async def get_system_status(request: Request):
     """Return a compact operational snapshot for the current Web runtime."""
     tenant_id = _request_tenant_id(request)
     _process_due_automations_if_local(tenant_id)
+    _process_due_one_time_tasks_if_local(tenant_id)
     _process_webhook_notifications_if_local(tenant_id)
     return {
         "execution_mode": get_execution_mode(),
@@ -310,6 +339,41 @@ async def get_system_status(request: Request):
         "state_location": get_state_location(tenant_id),
         **get_service_status(tenant_id),
     }
+
+
+@router.get("/api/one-time-tasks", response_model=OneTimeTaskPage)
+async def get_one_time_tasks(request: Request, status: str | None = None, page: int = 1, page_size: int = 20):
+    return get_one_time_task_page(_request_tenant_id(request), status=status, page=page, page_size=page_size)
+
+
+@router.post("/api/one-time-tasks", response_model=OneTimeTask, status_code=201)
+async def add_one_time_task(payload: OneTimeTaskCreate, request: Request):
+    try:
+        return create_one_time_task(payload, _request_tenant_id(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.patch("/api/one-time-tasks/{task_id}", response_model=OneTimeTask)
+async def patch_one_time_task(task_id: str, payload: OneTimeTaskUpdate, request: Request):
+    try:
+        updated = update_one_time_task(task_id, payload, _request_tenant_id(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail="One-time task not found")
+    return updated
+
+
+@router.post("/api/one-time-tasks/{task_id}/cancel", response_model=OneTimeTask)
+async def cancel_one_time_task_route(task_id: str, request: Request):
+    try:
+        cancelled = cancel_one_time_task(task_id, _request_tenant_id(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if cancelled is None:
+        raise HTTPException(status_code=404, detail="One-time task not found")
+    return cancelled
 
 
 @router.get("/api/system/tenants", response_model=list[TenantInfo])
@@ -5385,6 +5449,35 @@ async def get_run_timeline(run_id: str, request: Request):
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return list(run.event_history)
+
+
+@router.get("/api/stock-groups", response_model=list[StockGroup])
+async def get_stock_groups(request: Request):
+    return list_stock_groups(_request_tenant_id(request))
+
+
+@router.post("/api/stock-groups", response_model=StockGroup, status_code=201)
+async def add_stock_group(payload: StockGroupCreate, request: Request):
+    try:
+        return create_stock_group(payload, _request_tenant_id(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.patch("/api/stock-groups/{group_id}", response_model=StockGroup)
+async def patch_stock_group(group_id: str, payload: StockGroupUpdate, request: Request):
+    try:
+        updated = update_stock_group(group_id, payload, _request_tenant_id(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Stock group not found")
+    return updated
+
+
+@router.delete("/api/stock-groups/{group_id}", response_model=DeleteResult)
+async def remove_stock_group(group_id: str, request: Request):
+    return DeleteResult(deleted=delete_stock_group(group_id, _request_tenant_id(request)))
 
 
 def _read_run_terminal_output(run) -> str:

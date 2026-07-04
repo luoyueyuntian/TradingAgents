@@ -1,6 +1,12 @@
 import { computed, reactive } from 'vue';
 
-import { apiGet, apiPost, type ApiContext, type ApiRequestError } from '../services/api';
+import {
+  apiGet,
+  apiPost,
+  registerApiAuthInvalidationHandler,
+  type ApiContext,
+  type ApiRequestError,
+} from '../services/api';
 
 const TENANT_STORAGE_KEY = 'tradingagents.tenantId';
 const API_TOKEN_STORAGE_KEY = 'tradingagents.apiToken';
@@ -83,6 +89,8 @@ const state = reactive<SessionState>({
   error: '',
 });
 
+let authInvalidationHandlerRegistered = false;
+
 function setTenantId(value: string) {
   state.tenantId = value.trim();
   writeStorage(TENANT_STORAGE_KEY, state.tenantId);
@@ -122,12 +130,33 @@ function clearAuthSession() {
   clearCurrentMemberId();
 }
 
+function ensureAuthInvalidationHandlerRegistered() {
+  if (authInvalidationHandlerRegistered) {
+    return;
+  }
+  registerApiAuthInvalidationHandler(() => {
+    clearAuthSession();
+  });
+  authInvalidationHandlerRegistered = true;
+}
+
 function isUnauthorizedError(error: unknown): error is ApiRequestError {
   if (!(error instanceof Error)) {
     return false;
   }
   const requestError = error as Partial<ApiRequestError>;
   return requestError.status === 401 || /unauthorized/i.test(error.message);
+}
+
+function isTenantUnavailableSessionError(error: unknown): error is ApiRequestError {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const requestError = error as Partial<ApiRequestError>;
+  if (requestError.status !== 403) {
+    return false;
+  }
+  return /tenant is (disabled|archived)/i.test(error.message);
 }
 
 async function withLoading<T>(operation: () => Promise<T>): Promise<T> {
@@ -140,6 +169,8 @@ async function withLoading<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export function useSession() {
+  ensureAuthInvalidationHandlerRegistered();
+
   const authApiContext: ApiContext = {};
   const apiContext = computed<ApiContext>(() => {
     const context: ApiContext = {};
@@ -160,7 +191,7 @@ export function useSession() {
         applyAuthSession(payload);
         return payload;
       } catch (error) {
-        if (isUnauthorizedError(error)) {
+        if (isUnauthorizedError(error) || isTenantUnavailableSessionError(error)) {
           clearAuthSession();
         } else if (error instanceof Error) {
           state.error = error.message;
