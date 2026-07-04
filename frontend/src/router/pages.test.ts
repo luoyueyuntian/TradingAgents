@@ -66,18 +66,14 @@ describe('page registry', () => {
     expect(routes.filter((route) => route.meta?.requiresAuth).length).toBe(12);
   });
 
-  it('keeps tenant route modules unresolved until used and fails clearly if they are missing', async () => {
+  it('keeps tenant route modules lazy-loadable until used', async () => {
     const tenantRoute = routes.find((route) => route.path === '/tenants');
     const tenantDetailRoute = routes.find((route) => route.path === '/tenants/:tenantId');
 
     expect(tenantRoute?.component).toBeTypeOf('function');
     expect(tenantDetailRoute?.component).toBeTypeOf('function');
 
-    await expect((tenantRoute?.component as () => Promise<unknown>)()).rejects.toThrow(
-      /TenantsPage\.vue|Missing page component/i,
-    );
-    await expect((tenantDetailRoute?.component as () => Promise<unknown>)()).rejects.toThrow(
-      /TenantDetailPage\.vue|Missing page component/i,
-    );
+    await expect((tenantRoute?.component as () => Promise<unknown>)()).resolves.toBeDefined();
+    await expect((tenantDetailRoute?.component as () => Promise<unknown>)()).resolves.toBeDefined();
   });
 });
