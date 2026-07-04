@@ -75,6 +75,7 @@ describe('AppLayout', () => {
         plugins: [router],
         stubs: {
           Button: true,
+          Select: true,
           Tag: true,
         },
       },
