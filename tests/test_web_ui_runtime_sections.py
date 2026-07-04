@@ -158,12 +158,15 @@ def test_automations_page_includes_one_time_task_backend_boundaries():
         "/api/watchlist",
         "/api/stocks",
         "/cancel",
+        "/runs/",
+        "run_ids",
         "scheduled_for",
         "resolved_tickers",
         "group_snapshots",
         "buildOneTimeTaskPayload",
         "mergeResolvedTickers",
         "buildStockSearchPath",
+        "MultiSelect",
     ]
 
     assert "PageHeader" in source
