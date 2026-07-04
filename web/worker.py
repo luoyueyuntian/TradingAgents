@@ -8,6 +8,7 @@ import time
 from tradingagents.service.web_state import list_web_tenant_ids
 
 from .automation import process_due_automation_rules
+from .one_time_tasks import process_due_one_time_tasks, refresh_one_time_tasks
 from .runner import get_service
 from .webhook_delivery import process_pending_webhook_notifications
 
@@ -28,6 +29,8 @@ def process_worker_iteration() -> bool:
         service.load_runs_index()
         service.resume_incomplete_runs()
         process_due_automation_rules(tenant_id, start_worker=False)
+        refresh_one_time_tasks(tenant_id)
+        process_due_one_time_tasks(tenant_id, start_worker=False)
         process_pending_webhook_notifications(tenant_id)
         processed_any = service.process_next_queued_run() or processed_any
     return processed_any

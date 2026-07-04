@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 from copy import deepcopy
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -527,3 +528,187 @@ def test_get_one_time_task_page_filters_and_paginates(monkeypatch):
     assert page.page == 1
     assert page.page_size == 1
     assert [item.id for item in page.items] == ["task-1"]
+
+
+def test_refresh_one_time_tasks_moves_queued_and_running_tasks_forward(monkeypatch):
+    state = {
+        "one_time_tasks": {
+            "items": [
+                {
+                    "id": "queued-task",
+                    "name": "Queued task",
+                    "status": "queued",
+                    "scheduled_for": "2026-07-10 21:30",
+                    "analysis_date": "2026-07-11",
+                    "selection_snapshot": {
+                        "manual_stocks": [],
+                        "group_snapshots": [],
+                        "include_watchlist": False,
+                        "watchlist_snapshot": [],
+                        "resolved_tickers": ["AAPL"],
+                    },
+                    "analysis_config": {
+                        "analysts": ["market"],
+                        "llm_provider": "openai",
+                        "quick_think_model": "gpt-5.4-mini",
+                        "deep_think_model": "gpt-5.5",
+                        "research_depth": 1,
+                        "output_language": "English",
+                    },
+                    "created_at": "2026-07-04T10:00:00",
+                    "updated_at": "2026-07-04T10:00:00",
+                    "triggered_at": "2026-07-10T21:30:00",
+                    "completed_at": None,
+                    "last_error": None,
+                    "last_queued_count": 1,
+                    "run_ids": ["run-queued"],
+                },
+                {
+                    "id": "running-task",
+                    "name": "Running task",
+                    "status": "running",
+                    "scheduled_for": "2026-07-10 21:31",
+                    "analysis_date": "2026-07-11",
+                    "selection_snapshot": {
+                        "manual_stocks": [],
+                        "group_snapshots": [],
+                        "include_watchlist": False,
+                        "watchlist_snapshot": [],
+                        "resolved_tickers": ["NVDA"],
+                    },
+                    "analysis_config": {
+                        "analysts": ["market"],
+                        "llm_provider": "openai",
+                        "quick_think_model": "gpt-5.4-mini",
+                        "deep_think_model": "gpt-5.5",
+                        "research_depth": 1,
+                        "output_language": "English",
+                    },
+                    "created_at": "2026-07-04T10:00:00",
+                    "updated_at": "2026-07-04T10:00:00",
+                    "triggered_at": "2026-07-10T21:31:00",
+                    "completed_at": None,
+                    "last_error": None,
+                    "last_queued_count": 1,
+                    "run_ids": ["run-running"],
+                },
+            ]
+        }
+    }
+
+    class FakeService:
+        def get_run(self, run_id):
+            statuses = {
+                "run-queued": SimpleNamespace(status="completed"),
+                "run-running": SimpleNamespace(status="running"),
+            }
+            return statuses.get(run_id)
+
+    saved: list[dict[str, object]] = []
+    monkeypatch.setattr(task_module, "load_settings", lambda path=None: state)
+    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: saved.append(deepcopy(settings)))
+    monkeypatch.setattr(task_module, "get_service", lambda tenant_id=None: FakeService())
+
+    task_module.refresh_one_time_tasks(now=datetime.datetime(2026, 7, 10, 21, 35, 0))
+
+    assert saved
+    tasks = saved[-1]["one_time_tasks"]["items"]
+    assert tasks[0]["status"] == "completed"
+    assert tasks[0]["completed_at"] == "2026-07-10T21:35:00"
+    assert tasks[1]["status"] == "running"
+
+
+def test_process_due_one_time_tasks_marks_missed_and_queues_current_minute(monkeypatch):
+    state = {
+        "one_time_tasks": {
+            "items": [
+                {
+                    "id": "due-now",
+                    "name": "Due now",
+                    "status": "scheduled",
+                    "scheduled_for": "2026-07-10 21:30",
+                    "analysis_date": "2026-07-11",
+                    "selection_snapshot": {
+                        "manual_stocks": [],
+                        "group_snapshots": [],
+                        "include_watchlist": False,
+                        "watchlist_snapshot": [],
+                        "resolved_tickers": ["AAPL"],
+                    },
+                    "analysis_config": {
+                        "analysts": ["market"],
+                        "llm_provider": "openai",
+                        "quick_think_model": "gpt-5.4-mini",
+                        "deep_think_model": "gpt-5.5",
+                        "research_depth": 1,
+                        "output_language": "English",
+                    },
+                    "created_at": "2026-07-04T10:00:00",
+                    "updated_at": "2026-07-04T10:00:00",
+                    "triggered_at": None,
+                    "completed_at": None,
+                    "last_error": None,
+                    "last_queued_count": 0,
+                    "run_ids": [],
+                },
+                {
+                    "id": "missed",
+                    "name": "Missed",
+                    "status": "scheduled",
+                    "scheduled_for": "2026-07-10 21:29",
+                    "analysis_date": "2026-07-11",
+                    "selection_snapshot": {
+                        "manual_stocks": [],
+                        "group_snapshots": [],
+                        "include_watchlist": False,
+                        "watchlist_snapshot": [],
+                        "resolved_tickers": ["NVDA"],
+                    },
+                    "analysis_config": {
+                        "analysts": ["market"],
+                        "llm_provider": "openai",
+                        "quick_think_model": "gpt-5.4-mini",
+                        "deep_think_model": "gpt-5.5",
+                        "research_depth": 1,
+                        "output_language": "English",
+                    },
+                    "created_at": "2026-07-04T10:00:00",
+                    "updated_at": "2026-07-04T10:00:00",
+                    "triggered_at": None,
+                    "completed_at": None,
+                    "last_error": None,
+                    "last_queued_count": 0,
+                    "run_ids": [],
+                },
+            ]
+        }
+    }
+    saved: list[dict[str, object]] = []
+    created = []
+
+    class FakeService:
+        def load_tenant_settings(self):
+            return {}
+
+        def create_run(self, req, *, start_worker=True, settings=None):
+            created.append((req, start_worker, settings))
+            return SimpleNamespace(run_id=f"run-{len(created)}", status="queued", ticker=req.ticker, date=req.date)
+
+    monkeypatch.setattr(task_module, "load_settings", lambda path=None: state)
+    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: saved.append(deepcopy(settings)))
+    monkeypatch.setattr(task_module, "get_service", lambda tenant_id=None: FakeService())
+
+    queued = task_module.process_due_one_time_tasks(
+        now=datetime.datetime(2026, 7, 10, 21, 30, 5),
+        start_worker=False,
+    )
+
+    assert queued == 1
+    assert created[0][0].ticker == "AAPL"
+    assert created[0][0].date == "2026-07-11"
+    assert created[0][1] is False
+    tasks = saved[-1]["one_time_tasks"]["items"]
+    assert tasks[0]["status"] == "queued"
+    assert tasks[0]["triggered_at"] == "2026-07-10T21:30:05"
+    assert tasks[0]["run_ids"] == ["run-1"]
+    assert tasks[1]["status"] == "missed"
