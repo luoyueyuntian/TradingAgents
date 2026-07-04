@@ -131,7 +131,7 @@ def test_page_components_keep_existing_backend_api_boundaries():
         "AnalyzePage.vue": ["/api/providers", "/api/runs", "/cancel", "/api/stocks", "buildStockSearchPath"],
         "RunsPage.vue": ["/api/runs"],
         "RunDetailPage.vue": ["/api/runs", "/artifacts", "/retry", "/terminal-output"],
-        "PortfolioPage.vue": ["/api/watchlist", "/api/portfolio", "/api/alerts", "/api/screener"],
+        "PortfolioPage.vue": ["/api/watchlist", "/api/portfolio", "/api/alerts", "/api/screener", "/api/stock-groups"],
         "WorkspacePage.vue": ["/api/search", "/api/notes", "/api/members", "/api/views", "/api/public-shares"],
         "AutomationsPage.vue": ["/api/automations", "/run-now", "time_of_day", "analysis_config"],
         "SettingsPage.vue": ["/api/settings", "/api/providers"],
