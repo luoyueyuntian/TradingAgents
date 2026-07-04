@@ -459,9 +459,23 @@ describe('AutomationsPage', () => {
       selectedGroupIds: [],
       includeWatchlist: false,
     }, { tenantId: 'tenant-a', apiToken: 'token-a' });
+    expect((wrapper.get('[data-testid="one-time-name"]').element as HTMLInputElement).value).toBe('');
+    expect((wrapper.get('[data-testid="one-time-quick-model"]').element as HTMLInputElement).value).toBe('gpt-5.4-mini');
+    expect((wrapper.get('[data-testid="one-time-deep-model"]').element as HTMLInputElement).value).toBe('gpt-5.5');
+    expect((wrapper.get('[data-testid="one-time-research-depth"]').element as HTMLSelectElement).value).toBe('3');
+    expect((wrapper.get('[data-testid="one-time-output-language"]').element as HTMLSelectElement).value).toBe('English');
 
+    await wrapper.get('[data-testid="edit-one-time-task-task-1"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="one-time-quick-model"]').setValue('temporary-model');
     await wrapper.get('[data-testid="cancel-one-time-task-task-1"]').trigger('click');
     await flushPromises();
     expect(apiPost).toHaveBeenCalledWith('/api/one-time-tasks/task-1/cancel', {}, { tenantId: 'tenant-a', apiToken: 'token-a' });
+    expect((wrapper.get('[data-testid="one-time-name"]').element as HTMLInputElement).value).toBe('');
+    expect((wrapper.get('[data-testid="one-time-quick-model"]').element as HTMLInputElement).value).toBe('gpt-5.4-mini');
+    expect((wrapper.get('[data-testid="one-time-deep-model"]').element as HTMLInputElement).value).toBe('gpt-5.5');
+    expect((wrapper.get('[data-testid="one-time-research-depth"]').element as HTMLSelectElement).value).toBe('3');
+    expect((wrapper.get('[data-testid="one-time-output-language"]').element as HTMLSelectElement).value).toBe('English');
+    expect((wrapper.get('[data-testid="one-time-include-watchlist"]').element as HTMLInputElement).checked).toBe(false);
   });
 });
