@@ -96,6 +96,67 @@ describe('TenantsPage', () => {
     expect(wrapper.text()).toContain('tenant-a');
   });
 
+  it('only shows archived tenants after enabling the archived filter', async () => {
+    apiGet.mockImplementation((path: string) => {
+      if (path === '/api/admin/tenants?include_archived=true') {
+        return Promise.resolve({
+          tenants: [
+            {
+              id: 'tenant-row-1',
+              tenant_id: 'tenant-a',
+              display_name: 'Tenant A',
+              disabled: false,
+              archived: false,
+              user_count: 4,
+              active_admin_count: 2,
+              created_at: '2026-07-04T08:00:00Z',
+              updated_at: '2026-07-04T09:00:00Z',
+            },
+            {
+              id: 'tenant-row-2',
+              tenant_id: 'tenant-b',
+              display_name: 'Tenant B',
+              disabled: false,
+              archived: true,
+              user_count: 1,
+              active_admin_count: 0,
+              created_at: '2026-07-04T10:00:00Z',
+              updated_at: '2026-07-04T11:00:00Z',
+            },
+          ],
+        });
+      }
+      return Promise.resolve({
+        tenants: [
+          {
+            id: 'tenant-row-1',
+            tenant_id: 'tenant-a',
+            display_name: 'Tenant A',
+            disabled: false,
+            archived: false,
+            user_count: 4,
+            active_admin_count: 2,
+            created_at: '2026-07-04T08:00:00Z',
+            updated_at: '2026-07-04T09:00:00Z',
+          },
+        ],
+      });
+    });
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Tenant A');
+    expect(wrapper.text()).not.toContain('Tenant B');
+
+    await wrapper.get('[data-testid="show-archived-toggle"]').setValue(true);
+    await flushPromises();
+
+    expect(apiGet).toHaveBeenNthCalledWith(1, '/api/admin/tenants');
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/api/admin/tenants?include_archived=true');
+    expect(wrapper.text()).toContain('Tenant B');
+  });
+
   it('posts the create-tenant payload with initial admin fields', async () => {
     apiGet.mockResolvedValue({ tenants: [] });
     apiPost.mockResolvedValue({
@@ -217,6 +278,52 @@ describe('TenantsPage', () => {
     expect(apiPatch).toHaveBeenNthCalledWith(1, '/api/admin/tenants/tenant-a', { disabled: true });
     expect(apiPatch).toHaveBeenNthCalledWith(2, '/api/admin/tenants/tenant-b', { disabled: false });
     expect(apiPatch).toHaveBeenNthCalledWith(3, '/api/admin/tenants/tenant-a', { archived: true });
+  });
+
+  it('sends archived false when unarchiving from the directory', async () => {
+    apiGet.mockImplementation((path: string) => {
+      if (path === '/api/admin/tenants?include_archived=true') {
+        return Promise.resolve({
+          tenants: [
+            {
+              id: 'tenant-row-2',
+              tenant_id: 'tenant-b',
+              display_name: 'Tenant B',
+              disabled: false,
+              archived: true,
+              user_count: 1,
+              active_admin_count: 0,
+              created_at: '2026-07-04T10:00:00Z',
+              updated_at: '2026-07-04T11:00:00Z',
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ tenants: [] });
+    });
+    apiPatch.mockResolvedValue({
+      tenant: {
+        id: 'tenant-row-2',
+        tenant_id: 'tenant-b',
+        display_name: 'Tenant B',
+        disabled: false,
+        archived: false,
+        user_count: 1,
+        active_admin_count: 1,
+        created_at: '2026-07-04T10:00:00Z',
+        updated_at: '2026-07-04T11:30:00Z',
+      },
+    });
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="show-archived-toggle"]').setValue(true);
+    await flushPromises();
+    await wrapper.get('[data-testid="archive-tenant-tenant-b"]').trigger('click');
+    await flushPromises();
+
+    expect(apiPatch).toHaveBeenCalledWith('/api/admin/tenants/tenant-b', { archived: false });
   });
 
   it('renders a row-level patch error when a tenant update fails', async () => {

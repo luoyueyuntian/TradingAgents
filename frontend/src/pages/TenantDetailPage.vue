@@ -59,13 +59,12 @@
             />
             <Button
               data-testid="archive-tenant"
-              icon="pi pi-box"
-              :label="t('tenants.archiveTenant')"
-              severity="danger"
+              :icon="tenant.archived ? 'pi pi-history' : 'pi pi-box'"
+              :label="tenant.archived ? t('tenants.unarchiveTenant') : t('tenants.archiveTenant')"
+              :severity="tenant.archived ? 'secondary' : 'danger'"
               outlined
-              :disabled="tenant.archived"
               :loading="archiving"
-              @click="archiveTenant"
+              @click="toggleTenantArchived"
             />
           </div>
         </div>
@@ -185,7 +184,7 @@ async function toggleTenantDisabled() {
   }
 }
 
-async function archiveTenant() {
+async function toggleTenantArchived() {
   if (!tenant.value) {
     return;
   }
@@ -193,8 +192,11 @@ async function archiveTenant() {
   pageError.value = '';
   notice.value = '';
   try {
-    const payload = await apiPatch<{ tenant: AdminTenantResponse }>(tenantDetailPath.value, { archived: true });
-    notice.value = t('tenants.tenantArchived', { tenantId: payload.tenant.tenant_id });
+    const archived = !tenant.value.archived;
+    const payload = await apiPatch<{ tenant: AdminTenantResponse }>(tenantDetailPath.value, { archived });
+    notice.value = archived
+      ? t('tenants.tenantArchived', { tenantId: payload.tenant.tenant_id })
+      : t('tenants.tenantUnarchived', { tenantId: payload.tenant.tenant_id });
     tenant.value = payload.tenant;
   } catch (exc) {
     pageError.value = exc instanceof Error ? exc.message : t('tenants.updateError');
