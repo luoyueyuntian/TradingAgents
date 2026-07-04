@@ -95,13 +95,13 @@ def test_one_time_task_shared_models_round_trip():
         last_queued_count=0,
         run_ids=["run-1", "run-2"],
     )
-    page = OneTimeTaskPage(items=[task], page=1, page_size=20, total=1)
+    page = OneTimeTaskPage(items=[task], page=1, page_size=20, total_count=1)
 
     assert task.name == "Friday Basket"
     assert task.status == "scheduled"
     assert task.selection_snapshot.resolved_tickers == ["600519.SH", "NVDA", "MSFT", "AAPL", "0700.HK"]
     assert page.items[0].id == "task-1"
-    assert page.total == 1
+    assert page.total_count == 1
 
 
 def test_one_time_task_update_normalizes_selection_and_validates_dates():
@@ -157,4 +157,3 @@ def test_one_time_task_create_rejects_invalid_date_formats(kwargs, message):
 
     with pytest.raises(ValidationError, match=message):
         OneTimeTaskCreate(**base_kwargs)
-
