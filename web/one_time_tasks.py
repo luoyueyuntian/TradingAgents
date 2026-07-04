@@ -28,6 +28,9 @@ except ImportError:  # pragma: no cover
         return []
 
 
+_CRYPTO_TICKER_HINTS = ("BTC", "ETH", "USDT", "BNB", "SOL", "XRP", "DOGE", "ADA", "-USD")
+
+
 def _now(now: datetime.datetime | None = None) -> datetime.datetime:
     return now or datetime.datetime.now()
 
@@ -38,7 +41,7 @@ def _now_iso(now: datetime.datetime | None = None) -> str:
 
 def _infer_asset_type(ticker: str) -> str:
     normalized = ticker.strip().upper()
-    return "crypto" if "-USD" in normalized else "stock"
+    return "crypto" if any(hint in normalized for hint in _CRYPTO_TICKER_HINTS) else "stock"
 
 
 def _build_task_run_settings(task: OneTimeTask, tenant_settings: dict | None) -> dict:
