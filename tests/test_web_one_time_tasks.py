@@ -937,7 +937,7 @@ def test_process_due_one_time_tasks_passes_frozen_task_settings_not_live_analysi
     ]
 
 
-def test_process_due_one_time_tasks_does_not_mark_all_failed_attempts_as_queued(monkeypatch):
+def test_process_due_one_time_tasks_does_not_mark_all_failed_attempts_as_missed_on_next_poll(monkeypatch):
     state = {
         "one_time_tasks": {
             "items": [
@@ -985,19 +985,32 @@ def test_process_due_one_time_tasks_does_not_mark_all_failed_attempts_as_queued(
             raise RuntimeError(f"queue failed for {req.ticker}")
 
     monkeypatch.setattr(task_module, "load_settings", lambda path=None: state)
-    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: saved.append(deepcopy(settings)))
+
+    def _save(settings, path=None):
+        snapshot = deepcopy(settings)
+        saved.append(snapshot)
+        state.clear()
+        state.update(snapshot)
+
+    monkeypatch.setattr(task_module, "save_settings", _save)
     monkeypatch.setattr(task_module, "get_service", lambda tenant_id=None: FakeService())
 
-    queued = task_module.process_due_one_time_tasks(
+    first_queued = task_module.process_due_one_time_tasks(
         now=datetime.datetime(2026, 7, 10, 21, 30, 5),
         start_worker=False,
     )
 
-    assert queued == 0
+    second_queued = task_module.process_due_one_time_tasks(
+        now=datetime.datetime(2026, 7, 10, 21, 31, 5),
+        start_worker=False,
+    )
+
+    assert first_queued == 0
+    assert second_queued == 0
     assert attempted == ["AAPL", "MSFT"]
     task = saved[-1]["one_time_tasks"]["items"][0]
     assert task["status"] == "scheduled"
     assert task["run_ids"] == []
     assert task["last_queued_count"] == 0
     assert task["last_error"] == "queue failed for MSFT"
-    assert task["triggered_at"] is None
+    assert task["triggered_at"] == "2026-07-10T21:30:05"
