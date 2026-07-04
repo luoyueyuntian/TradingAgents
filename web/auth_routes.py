@@ -198,9 +198,8 @@ def logout(request: Request, response: Response) -> dict[str, str]:
 
 @router.get("/me", response_model=AuthMeResponse)
 def me(request: Request) -> AuthMeResponse:
-    store, _raw_session_id, session, user = _get_current_session(request)
+    _store, _raw_session_id, session, user = _get_current_session(request)
     _ensure_user_can_login(user)
-    _ensure_tenant_allows_access(store, user.tenant_id)
     return _build_me_response(user, session.expires_at)
 
 
@@ -211,7 +210,6 @@ def change_password(
 ) -> AuthMeResponse:
     store, _raw_session_id, session, user = _get_current_session(request)
     _ensure_user_can_login(user)
-    _ensure_tenant_allows_access(store, user.tenant_id)
     if not verify_password(payload.old_password, user.password_hash, user.password_salt):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     try:
