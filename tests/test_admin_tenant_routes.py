@@ -327,6 +327,125 @@ def test_disable_and_archive_tenant(monkeypatch, tmp_path):
     assert [tenant["tenant_id"] for tenant in listed.json()["tenants"]] == ["tenant-a"]
 
 
+def test_tenant_scoped_user_list_returns_only_target_tenant_users(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    tenant_b_admin = _create_user(
+        store,
+        username="tenant-b-admin",
+        email="tenant-b-admin@example.com",
+        display_name="Tenant B Admin",
+        role="admin",
+        tenant_id="tenant-b",
+        must_change_password=False,
+    )
+    _create_user(
+        store,
+        username="tenant-b-analyst",
+        email="tenant-b-analyst@example.com",
+        display_name="Tenant B Analyst",
+        role="analyst",
+        tenant_id="tenant-b",
+        must_change_password=False,
+    )
+    _create_user(
+        store,
+        username="tenant-c-user",
+        email="tenant-c-user@example.com",
+        display_name="Tenant C User",
+        role="viewer",
+        tenant_id="tenant-c",
+        must_change_password=False,
+    )
+    _login(client)
+
+    response = client.get("/api/admin/tenants/tenant-b/users")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [user["username"] for user in payload["users"]] == ["tenant-b-admin", "tenant-b-analyst"]
+    assert all(user["tenant_id"] == "tenant-b" for user in payload["users"])
+    assert payload["users"][0]["id"] == tenant_b_admin.id
+
+
+def test_tenant_scoped_user_create_writes_to_target_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
+    _login(client)
+
+    response = client.post(
+        "/api/admin/tenants/tenant-b/users",
+        json={
+            "username": "  scoped-user  ",
+            "email": "  scoped-user@example.com  ",
+            "display_name": "  Scoped User  ",
+            "role": " viewer ",
+            "password": "AnotherStrong123!",
+            "expires_at": "",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()["user"]
+    assert payload["username"] == "scoped-user"
+    assert payload["email"] == "scoped-user@example.com"
+    assert payload["display_name"] == "Scoped User"
+    assert payload["role"] == "viewer"
+    assert payload["tenant_id"] == "tenant-b"
+    created = store.get_user(payload["id"])
+    assert created is not None
+    assert created.tenant_id == "tenant-b"
+    assert created.must_change_password is True
+
+
+def test_tenant_scoped_user_delete_protects_last_active_admin(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    sole_tenant_b_admin = _create_user(
+        store,
+        username="tenant-b-admin",
+        email="tenant-b-admin@example.com",
+        display_name="Tenant B Admin",
+        role="admin",
+        tenant_id="tenant-b",
+        must_change_password=False,
+    )
+    _login(client)
+
+    response = client.delete(f"/api/admin/tenants/tenant-b/users/{sole_tenant_b_admin.id}")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Cannot remove the last active admin from tenant"
+
+
+def test_tenant_scoped_user_update_and_delete_reject_out_of_tenant_user_ids(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
+    other_tenant_user = _create_user(
+        store,
+        username="tenant-c-user",
+        email="tenant-c-user@example.com",
+        display_name="Tenant C User",
+        role="viewer",
+        tenant_id="tenant-c",
+        must_change_password=False,
+    )
+    _login(client)
+
+    update_response = client.patch(
+        f"/api/admin/tenants/tenant-b/users/{other_tenant_user.id}",
+        json={"role": "analyst"},
+    )
+    delete_response = client.delete(f"/api/admin/tenants/tenant-b/users/{other_tenant_user.id}")
+
+    assert update_response.status_code == 404
+    assert update_response.json()["detail"] == "User not found"
+    assert delete_response.status_code == 404
+    assert delete_response.json()["detail"] == "User not found"
+
+
 @pytest.mark.parametrize("method", ["get", "patch"])
 def test_malformed_tenant_id_returns_400(monkeypatch, tmp_path, method: str):
     client, store = _auth_client(monkeypatch, tmp_path)

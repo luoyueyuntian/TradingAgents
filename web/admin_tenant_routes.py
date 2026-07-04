@@ -8,9 +8,18 @@ from fastapi import APIRouter, HTTPException, Request, status
 
 from tradingagents.service.web_state import get_web_auth_db_path
 
+from .admin_user_routes import (
+    create_user_for_tenant,
+    delete_user_for_tenant,
+    list_users_for_tenant,
+    update_user_for_tenant,
+)
 from .auth import get_request_user
 from .passwords import hash_password, validate_password_policy
 from .schemas import (
+    AdminUserCreate,
+    AdminUserResponse,
+    AdminUserUpdate,
     AdminTenantCreate,
     AdminTenantResponse,
     AdminTenantUpdate,
@@ -137,3 +146,44 @@ def update_tenant(
     except ValueError as exc:
         raise _map_store_error(exc) from exc
     return {"tenant": _build_tenant_response(store, tenant)}
+
+
+@router.get("/{tenant_id}/users", response_model=dict[str, list[AdminUserResponse]])
+def list_tenant_users(tenant_id: str, request: Request) -> dict[str, list[AdminUserResponse]]:
+    _require_admin_user(request)
+    store = _get_store()
+    _get_existing_tenant(store, tenant_id)
+    return list_users_for_tenant(store, tenant_id)
+
+
+@router.post("/{tenant_id}/users", status_code=status.HTTP_201_CREATED, response_model=dict[str, AdminUserResponse])
+def create_tenant_user(
+    tenant_id: str,
+    payload: AdminUserCreate,
+    request: Request,
+) -> dict[str, AdminUserResponse]:
+    _require_admin_user(request)
+    store = _get_store()
+    _get_existing_tenant(store, tenant_id)
+    return create_user_for_tenant(store, tenant_id, payload)
+
+
+@router.patch("/{tenant_id}/users/{user_id}", response_model=dict[str, AdminUserResponse])
+def update_tenant_user(
+    tenant_id: str,
+    user_id: str,
+    payload: AdminUserUpdate,
+    request: Request,
+) -> dict[str, AdminUserResponse]:
+    _require_admin_user(request)
+    store = _get_store()
+    _get_existing_tenant(store, tenant_id)
+    return update_user_for_tenant(store, tenant_id, user_id, payload)
+
+
+@router.delete("/{tenant_id}/users/{user_id}", response_model=dict[str, AdminUserResponse])
+def delete_tenant_user(tenant_id: str, user_id: str, request: Request) -> dict[str, AdminUserResponse]:
+    _require_admin_user(request)
+    store = _get_store()
+    _get_existing_tenant(store, tenant_id)
+    return delete_user_for_tenant(store, tenant_id, user_id)

@@ -99,18 +99,16 @@ def _map_store_error(exc: ValueError) -> HTTPException:
     return HTTPException(status_code=status_code, detail=detail)
 
 
-@router.get("", response_model=dict[str, list[AdminUserResponse]])
-def list_users(request: Request) -> dict[str, list[AdminUserResponse]]:
-    admin_user = _require_admin_user(request)
-    store = _get_store()
-    users = store.list_users(tenant_id=admin_user.tenant_id)
+def list_users_for_tenant(store: UserStore, tenant_id: str) -> dict[str, list[AdminUserResponse]]:
+    users = store.list_users(tenant_id=tenant_id)
     return {"users": [_build_user_response(user) for user in users]}
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=dict[str, AdminUserResponse])
-def create_user(payload: AdminUserCreate, request: Request) -> dict[str, AdminUserResponse]:
-    admin_user = _require_admin_user(request)
-    store = _get_store()
+def create_user_for_tenant(
+    store: UserStore,
+    tenant_id: str,
+    payload: AdminUserCreate,
+) -> dict[str, AdminUserResponse]:
     try:
         validate_password_policy(
             payload.password,
@@ -127,7 +125,7 @@ def create_user(payload: AdminUserCreate, request: Request) -> dict[str, AdminUs
             email=payload.email,
             display_name=payload.display_name,
             role=payload.role,
-            tenant_id=admin_user.tenant_id,
+            tenant_id=tenant_id,
             password_hash=password_record.encoded_hash,
             password_salt=password_record.salt,
             password_updated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -139,21 +137,19 @@ def create_user(payload: AdminUserCreate, request: Request) -> dict[str, AdminUs
     return {"user": _build_user_response(user)}
 
 
-@router.patch("/{user_id}", response_model=dict[str, AdminUserResponse])
-def update_user(
+def update_user_for_tenant(
+    store: UserStore,
+    tenant_id: str,
     user_id: str,
     payload: AdminUserUpdate,
-    request: Request,
 ) -> dict[str, AdminUserResponse]:
-    admin_user = _require_admin_user(request)
-    store = _get_store()
-    target_user = _get_tenant_user(store, admin_user.tenant_id, user_id)
+    target_user = _get_tenant_user(store, tenant_id, user_id)
 
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
 
-    if _would_remove_last_active_admin(store, admin_user.tenant_id, target_user, payload):
+    if _would_remove_last_active_admin(store, tenant_id, target_user, payload):
         raise HTTPException(status_code=400, detail=_LAST_ADMIN_ERROR)
 
     if "password" in updates:
@@ -186,15 +182,44 @@ def update_user(
     return {"user": _build_user_response(updated_user)}
 
 
-@router.delete("/{user_id}", response_model=dict[str, AdminUserResponse])
-def delete_user(user_id: str, request: Request) -> dict[str, AdminUserResponse]:
-    admin_user = _require_admin_user(request)
-    store = _get_store()
-    target_user = _get_tenant_user(store, admin_user.tenant_id, user_id)
-    if _would_remove_last_active_admin(store, admin_user.tenant_id, target_user):
+def delete_user_for_tenant(store: UserStore, tenant_id: str, user_id: str) -> dict[str, AdminUserResponse]:
+    target_user = _get_tenant_user(store, tenant_id, user_id)
+    if _would_remove_last_active_admin(store, tenant_id, target_user):
         raise HTTPException(status_code=400, detail=_LAST_ADMIN_ERROR)
     try:
         deleted_user = store.delete_user(user_id)
     except ValueError as exc:
         raise _map_store_error(exc) from exc
     return {"user": _build_user_response(deleted_user)}
+
+
+@router.get("", response_model=dict[str, list[AdminUserResponse]])
+def list_users(request: Request) -> dict[str, list[AdminUserResponse]]:
+    admin_user = _require_admin_user(request)
+    store = _get_store()
+    return list_users_for_tenant(store, admin_user.tenant_id)
+
+
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=dict[str, AdminUserResponse])
+def create_user(payload: AdminUserCreate, request: Request) -> dict[str, AdminUserResponse]:
+    admin_user = _require_admin_user(request)
+    store = _get_store()
+    return create_user_for_tenant(store, admin_user.tenant_id, payload)
+
+
+@router.patch("/{user_id}", response_model=dict[str, AdminUserResponse])
+def update_user(
+    user_id: str,
+    payload: AdminUserUpdate,
+    request: Request,
+) -> dict[str, AdminUserResponse]:
+    admin_user = _require_admin_user(request)
+    store = _get_store()
+    return update_user_for_tenant(store, admin_user.tenant_id, user_id, payload)
+
+
+@router.delete("/{user_id}", response_model=dict[str, AdminUserResponse])
+def delete_user(user_id: str, request: Request) -> dict[str, AdminUserResponse]:
+    admin_user = _require_admin_user(request)
+    store = _get_store()
+    return delete_user_for_tenant(store, admin_user.tenant_id, user_id)
