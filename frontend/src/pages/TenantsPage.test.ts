@@ -136,6 +136,31 @@ describe('TenantsPage', () => {
     });
   });
 
+  it('opens the tenant detail route for the selected tenant', async () => {
+    apiGet.mockResolvedValue({
+      tenants: [
+        {
+          id: 'tenant-row-1',
+          tenant_id: 'tenant-a',
+          display_name: 'Tenant A',
+          disabled: false,
+          archived: false,
+          user_count: 4,
+          active_admin_count: 2,
+          created_at: '2026-07-04T08:00:00Z',
+          updated_at: '2026-07-04T09:00:00Z',
+        },
+      ],
+    });
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="open-tenant-tenant-a"]').trigger('click');
+
+    expect(push).toHaveBeenCalledWith({ name: 'tenant-detail', params: { tenantId: 'tenant-a' } });
+  });
+
   it('sends patch requests for disable, enable, and archive actions', async () => {
     apiGet.mockResolvedValue({
       tenants: [
@@ -192,5 +217,32 @@ describe('TenantsPage', () => {
     expect(apiPatch).toHaveBeenNthCalledWith(1, '/api/admin/tenants/tenant-a', { disabled: true });
     expect(apiPatch).toHaveBeenNthCalledWith(2, '/api/admin/tenants/tenant-b', { disabled: false });
     expect(apiPatch).toHaveBeenNthCalledWith(3, '/api/admin/tenants/tenant-a', { archived: true });
+  });
+
+  it('renders a row-level patch error when a tenant update fails', async () => {
+    apiGet.mockResolvedValue({
+      tenants: [
+        {
+          id: 'tenant-row-1',
+          tenant_id: 'tenant-a',
+          display_name: 'Tenant A',
+          disabled: false,
+          archived: false,
+          user_count: 4,
+          active_admin_count: 2,
+          created_at: '2026-07-04T08:00:00Z',
+          updated_at: '2026-07-04T09:00:00Z',
+        },
+      ],
+    });
+    apiPatch.mockRejectedValue(new Error('cannot disable tenant-a'));
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-testid="toggle-tenant-tenant-a"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('cannot disable tenant-a');
   });
 });
