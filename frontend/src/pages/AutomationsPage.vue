@@ -272,11 +272,11 @@
               <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3">
                 <summary class="uno-cursor-pointer uno-font-700 uno-text-[#243a3d]">{{ t('automations.analysisConfig') }}</summary>
                 <div class="uno-mt-3 uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
-                  <Select v-model="oneTimeForm.llm_provider" :options="providerOptions" option-label="label" option-value="value" :disabled="!canWrite" @change="syncProviderModels" />
-                  <InputText v-model="oneTimeForm.quick_think_model" :placeholder="t('analysis.quickModel')" :disabled="!canWrite" />
-                  <InputText v-model="oneTimeForm.deep_think_model" :placeholder="t('analysis.deepModel')" :disabled="!canWrite" />
-                  <Select v-model="oneTimeForm.research_depth" :options="depthOptions" option-label="label" option-value="value" :disabled="!canWrite" />
-                  <Select v-model="oneTimeForm.output_language" :options="languageOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+                  <Select v-model="oneTimeForm.llm_provider" data-testid="one-time-llm-provider" :options="providerOptions" option-label="label" option-value="value" :disabled="!canWrite" @change="syncProviderModels" />
+                  <InputText v-model="oneTimeForm.quick_think_model" data-testid="one-time-quick-model" :placeholder="t('analysis.quickModel')" :disabled="!canWrite" />
+                  <InputText v-model="oneTimeForm.deep_think_model" data-testid="one-time-deep-model" :placeholder="t('analysis.deepModel')" :disabled="!canWrite" />
+                  <Select v-model="oneTimeForm.research_depth" data-testid="one-time-research-depth" :options="depthOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+                  <Select v-model="oneTimeForm.output_language" data-testid="one-time-output-language" :options="languageOptions" option-label="label" option-value="value" :disabled="!canWrite" />
                   <Select v-model="oneTimeForm.market_profile" :options="marketProfileOptions" option-label="label" option-value="value" :disabled="!canWrite" />
                   <InputText v-model="oneTimeForm.max_risk_discuss_rounds" type="number" :placeholder="t('settings.riskRounds')" :disabled="!canWrite" />
                   <InputText v-model="oneTimeForm.max_recur_limit" type="number" :placeholder="t('settings.maxRecurLimit')" :disabled="!canWrite" />
@@ -840,6 +840,10 @@ async function loadAll() {
 
 function formatOneTimeTaskStatus(status: unknown) {
   switch (String(status || '').toLowerCase()) {
+    case 'queued':
+      return t('common.queued');
+    case 'running':
+      return t('common.running');
     case 'completed':
       return t('automations.taskStatusCompleted');
     case 'missed':
@@ -875,6 +879,7 @@ function oneTimeTaskFinalCount(task: JsonRecord) {
 
 function editOneTimeTask(task: JsonRecord) {
   const snapshot = typeof task.selection_snapshot === 'object' && task.selection_snapshot ? task.selection_snapshot as JsonRecord : null;
+  const analysisConfig = typeof task.analysis_config === 'object' && task.analysis_config ? task.analysis_config as JsonRecord : null;
   editingOneTimeTaskId.value = String(task.id || '');
   Object.assign(oneTimeForm, {
     name: String(task.name || ''),
@@ -891,6 +896,21 @@ function editOneTimeTask(task: JsonRecord) {
         ? (task.group_ids as unknown[]).map((groupId) => String(groupId)).filter(Boolean)
         : [],
     includeWatchlist: snapshot?.include_watchlist === true || task.include_watchlist === true,
+    llm_provider: String(analysisConfig?.llm_provider || oneTimeForm.llm_provider),
+    quick_think_model: String(analysisConfig?.quick_think_model || ''),
+    deep_think_model: String(analysisConfig?.deep_think_model || ''),
+    research_depth: Number(analysisConfig?.research_depth ?? oneTimeForm.research_depth),
+    output_language: String(analysisConfig?.output_language || oneTimeForm.output_language),
+    market_profile: String(analysisConfig?.market_profile || ''),
+    max_risk_discuss_rounds: analysisConfig?.max_risk_discuss_rounds === null || analysisConfig?.max_risk_discuss_rounds === undefined ? '' : String(analysisConfig.max_risk_discuss_rounds),
+    max_recur_limit: analysisConfig?.max_recur_limit === null || analysisConfig?.max_recur_limit === undefined ? '' : String(analysisConfig.max_recur_limit),
+    checkpoint_enabled: Boolean(analysisConfig?.checkpoint_enabled),
+    benchmark_ticker: String(analysisConfig?.benchmark_ticker || ''),
+    backend_url: String(analysisConfig?.backend_url || ''),
+    temperature: analysisConfig?.temperature === null || analysisConfig?.temperature === undefined ? '' : String(analysisConfig.temperature),
+    google_thinking_level: String(analysisConfig?.google_thinking_level || ''),
+    openai_reasoning_effort: String(analysisConfig?.openai_reasoning_effort || ''),
+    anthropic_effort: String(analysisConfig?.anthropic_effort || ''),
   });
   syncSelectedManualStockSymbols();
 }

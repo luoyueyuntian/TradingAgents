@@ -237,6 +237,14 @@ describe('AutomationsPage', () => {
                 include_watchlist: true,
                 resolved_tickers: ['AAPL', 'NVDA', 'MSFT'],
               },
+              analysis_config: {
+                analysts: ['market'],
+                llm_provider: 'openai',
+                quick_think_model: 'saved-quick-model',
+                deep_think_model: 'saved-deep-model',
+                research_depth: 5,
+                output_language: 'Chinese',
+              },
             },
             {
               id: 'task-2',
@@ -250,6 +258,34 @@ describe('AutomationsPage', () => {
                 group_snapshots: [],
                 include_watchlist: false,
                 resolved_tickers: ['NVDA', 'MSFT'],
+              },
+            },
+            {
+              id: 'task-3',
+              name: 'Queued basket',
+              status: 'queued',
+              scheduled_for: '2026-07-11 09:00',
+              analysis_date: '2026-07-11',
+              run_ids: ['run-9'],
+              selection_snapshot: {
+                manual_stocks: [],
+                group_snapshots: [],
+                include_watchlist: false,
+                resolved_tickers: ['AAPL'],
+              },
+            },
+            {
+              id: 'task-4',
+              name: 'Running basket',
+              status: 'running',
+              scheduled_for: '2026-07-11 09:01',
+              analysis_date: '2026-07-11',
+              run_ids: ['run-10'],
+              selection_snapshot: {
+                manual_stocks: [],
+                group_snapshots: [],
+                include_watchlist: false,
+                resolved_tickers: ['NVDA'],
               },
             },
           ],
@@ -294,6 +330,8 @@ describe('AutomationsPage', () => {
     expect(wrapper.text()).toContain('Night basket');
     expect(wrapper.text()).toContain('AAPL');
     expect(wrapper.text()).toContain('Scheduled');
+    expect(wrapper.text()).toContain('Queued');
+    expect(wrapper.text()).toContain('Running');
     expect(wrapper.text()).toContain('Manual 1');
     expect(wrapper.text()).toContain('Groups 1');
     expect(wrapper.text()).toContain('Watchlist included');
@@ -393,6 +431,10 @@ describe('AutomationsPage', () => {
     expect((wrapper.get('[data-testid="one-time-name"]').element as HTMLInputElement).value).toBe('Night basket');
     expect((wrapper.get('[data-testid="one-time-scheduled-for"]').element as HTMLInputElement).value).toBe('2026-07-10 21:30');
     expect((wrapper.get('[data-testid="one-time-analysis-date"]').element as HTMLInputElement).value).toBe('2026-07-11');
+    expect((wrapper.get('[data-testid="one-time-quick-model"]').element as HTMLInputElement).value).toBe('saved-quick-model');
+    expect((wrapper.get('[data-testid="one-time-deep-model"]').element as HTMLInputElement).value).toBe('saved-deep-model');
+    expect((wrapper.get('[data-testid="one-time-research-depth"]').element as HTMLSelectElement).value).toBe('5');
+    expect((wrapper.get('[data-testid="one-time-output-language"]').element as HTMLSelectElement).value).toBe('Chinese');
     expect(wrapper.find('[data-testid="resolved-ticker-AAPL"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="resolved-ticker-NVDA"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="resolved-ticker-MSFT"]').exists()).toBe(true);
