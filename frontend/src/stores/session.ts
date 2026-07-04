@@ -1,6 +1,12 @@
 import { computed, reactive } from 'vue';
 
-import { apiGet, apiPost, type ApiContext, type ApiRequestError } from '../services/api';
+import {
+  apiGet,
+  apiPost,
+  registerApiAuthInvalidationHandler,
+  type ApiContext,
+  type ApiRequestError,
+} from '../services/api';
 
 const TENANT_STORAGE_KEY = 'tradingagents.tenantId';
 const API_TOKEN_STORAGE_KEY = 'tradingagents.apiToken';
@@ -83,6 +89,8 @@ const state = reactive<SessionState>({
   error: '',
 });
 
+let authInvalidationHandlerRegistered = false;
+
 function setTenantId(value: string) {
   state.tenantId = value.trim();
   writeStorage(TENANT_STORAGE_KEY, state.tenantId);
@@ -122,6 +130,16 @@ function clearAuthSession() {
   clearCurrentMemberId();
 }
 
+function ensureAuthInvalidationHandlerRegistered() {
+  if (authInvalidationHandlerRegistered) {
+    return;
+  }
+  registerApiAuthInvalidationHandler(() => {
+    clearAuthSession();
+  });
+  authInvalidationHandlerRegistered = true;
+}
+
 function isUnauthorizedError(error: unknown): error is ApiRequestError {
   if (!(error instanceof Error)) {
     return false;
@@ -151,6 +169,8 @@ async function withLoading<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export function useSession() {
+  ensureAuthInvalidationHandlerRegistered();
+
   const authApiContext: ApiContext = {};
   const apiContext = computed<ApiContext>(() => {
     const context: ApiContext = {};

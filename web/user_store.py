@@ -872,6 +872,9 @@ class UserStore:
         if not _user_row_is_login_capable_admin(current):
             return False
         current_tenant_id = current["tenant_id"]
+        tenant = self._get_tenant_by_tenant_id(conn, current_tenant_id)
+        if tenant.disabled or tenant.archived:
+            return False
         if self._active_admin_count_in_connection(conn, current_tenant_id) != 1:
             return False
         if updates is None:

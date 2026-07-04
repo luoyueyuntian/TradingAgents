@@ -8,10 +8,14 @@ export type ApiRequestError = Error & {
   status: number;
 };
 
+type ApiAuthInvalidationHandler = () => void;
+
 type RequestBody = Record<string, unknown> | unknown[] | string | null;
 type ApiErrorDetail = {
   msg?: string;
 };
+
+const authInvalidationHandlers = new Set<ApiAuthInvalidationHandler>();
 
 export function buildApiUrl(path: string, context: ApiContext = {}): string {
   const url = new URL(path, window.location.origin);
@@ -28,6 +32,24 @@ export function buildApiUrl(path: string, context: ApiContext = {}): string {
 
 function withApiStatus(error: Error, response: Response): ApiRequestError {
   return Object.assign(error, { status: response.status });
+}
+
+function isTenantUnavailableError(error: ApiRequestError): boolean {
+  return error.status === 403 && /tenant is (disabled|archived)/i.test(error.message);
+}
+
+function notifyAuthInvalidationHandlers(error: ApiRequestError): void {
+  if (!isTenantUnavailableError(error)) {
+    return;
+  }
+  authInvalidationHandlers.forEach((handler) => handler());
+}
+
+export function registerApiAuthInvalidationHandler(handler: ApiAuthInvalidationHandler): () => void {
+  authInvalidationHandlers.add(handler);
+  return () => {
+    authInvalidationHandlers.delete(handler);
+  };
 }
 
 export async function createApiError(response: Response): Promise<ApiRequestError> {
@@ -85,7 +107,9 @@ async function apiRequest<T>(
 
   const response = await fetchImpl(buildApiUrl(path, context), init);
   if (!response.ok) {
-    throw await createApiError(response);
+    const error = await createApiError(response);
+    notifyAuthInvalidationHandlers(error);
+    throw error;
   }
   if (response.status === 204) {
     return undefined as T;

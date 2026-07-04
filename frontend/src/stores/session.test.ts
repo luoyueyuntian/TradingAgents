@@ -3,10 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const apiGetMock = vi.fn();
 const apiPostMock = vi.fn();
 
-vi.mock('../services/api', () => ({
-  apiGet: apiGetMock,
-  apiPost: apiPostMock,
-}));
+vi.mock('../services/api', async () => {
+  const actual = await vi.importActual<typeof import('../services/api')>('../services/api');
+  return {
+    ...actual,
+    __actualApi: actual,
+    apiGet: apiGetMock,
+    apiPost: apiPostMock,
+  };
+});
 
 type AuthUser = {
   id: string;
@@ -178,6 +183,58 @@ describe('session store', () => {
     expect(session.state.currentUser?.username).toBe('alice');
     expect(session.state.sessionExpiresAt).toBe('2026-07-03T00:00:00Z');
     expect(session.state.error).toBe('Forbidden');
+  });
+
+  it.each([
+    'Tenant is disabled',
+    'Tenant is archived',
+  ])('clears the auth session when another API request fails with %s', async (detail) => {
+    const { useSession } = await loadSessionModule();
+    const apiModule = await import('../services/api');
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail }), {
+      status: 403,
+      statusText: 'Forbidden',
+      headers: { 'Content-Type': 'application/json' },
+    }));
+
+    const session = useSession();
+    session.state.currentUser = makeAuthResponse().user;
+    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+    session.state.passwordReset = { available: true, reset_id: 'reset-1', detail: 'Reset is available' };
+
+    await expect(apiModule.__actualApi.apiGet('/api/runs', { fetchImpl: fetchMock })).rejects.toMatchObject({
+      message: detail,
+      status: 403,
+    });
+
+    expect(session.state.currentUser).toBeNull();
+    expect(session.state.sessionExpiresAt).toBe('');
+    expect(session.state.passwordReset).toEqual({ available: false, reset_id: null, detail: null });
+    expect(session.state.error).toBe('');
+  });
+
+  it('preserves the auth session when another API request fails with an unrelated forbidden response', async () => {
+    const { useSession } = await loadSessionModule();
+    const apiModule = await import('../services/api');
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: 'Forbidden' }), {
+      status: 403,
+      statusText: 'Forbidden',
+      headers: { 'Content-Type': 'application/json' },
+    }));
+
+    const session = useSession();
+    session.state.currentUser = makeAuthResponse().user;
+    session.state.sessionExpiresAt = '2026-07-03T00:00:00Z';
+    session.state.passwordReset = { available: true, reset_id: 'reset-1', detail: 'Reset is available' };
+
+    await expect(apiModule.__actualApi.apiGet('/api/runs', { fetchImpl: fetchMock })).rejects.toMatchObject({
+      message: 'Forbidden',
+      status: 403,
+    });
+
+    expect(session.state.currentUser?.username).toBe('alice');
+    expect(session.state.sessionExpiresAt).toBe('2026-07-03T00:00:00Z');
+    expect(session.state.passwordReset).toEqual({ available: true, reset_id: 'reset-1', detail: 'Reset is available' });
   });
 
   it('logs in and stores returned user session data', async () => {
