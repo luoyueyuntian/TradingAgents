@@ -123,6 +123,32 @@ def test_logout_clears_session_cookie(monkeypatch, tmp_path):
     assert "Max-Age=0" in response.headers["set-cookie"]
 
 
+@pytest.mark.parametrize(
+    ("tenant_id", "tenant_update"),
+    [
+        ("tenant-disabled", {"disabled": True}),
+        ("tenant-archived", {"archived": True}),
+    ],
+)
+def test_logout_still_clears_session_when_tenant_becomes_unavailable(
+    monkeypatch,
+    tmp_path,
+    tenant_id,
+    tenant_update,
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant(tenant_id, display_name=tenant_id)
+    _create_user(store, tenant_id=tenant_id)
+    _login(client)
+    store.update_tenant(tenant_id, **tenant_update)
+
+    response = client.post("/api/auth/logout")
+
+    assert response.status_code == 200
+    assert "tradingagents_session=" in response.headers["set-cookie"]
+    assert "Max-Age=0" in response.headers["set-cookie"]
+
+
 def test_login_rejects_disabled_user_with_clear_403(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, disabled=True)
