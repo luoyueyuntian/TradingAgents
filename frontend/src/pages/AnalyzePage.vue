@@ -22,14 +22,15 @@
               data-testid="analysis-form-row-primary"
               class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] uno-gap-[0.8rem]"
             >
-              <label class="uno-grid uno-gap-[0.35rem]">
+              <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
                 <span class="uno-text-[#6f8183]">{{ t('analysis.stockMarket') }}</span>
                 <Select
                   v-model="form.stock_market"
                   :options="stockMarketOptions"
                   option-label="label"
                   option-value="value"
-                  class="uno-w-full"
+                  class="uno-w-full uno-min-w-0"
+                  :pt="formSelectPt"
                   @change="handleStockMarketChange"
                 />
               </label>
@@ -46,7 +47,7 @@
                   force-selection
                   show-clear
                   fluid
-                  class="uno-w-full"
+                  class="uno-w-full uno-min-w-0"
                   @complete="onStockComplete"
                   @clear="clearSelectedStock"
                 >
@@ -58,18 +59,19 @@
                   </template>
                 </AutoComplete>
               </label>
-              <label class="uno-grid uno-gap-[0.35rem]">
+              <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
                 <span class="uno-text-[#6f8183]">{{ t('analysis.marketProfile') }}</span>
                 <Select
                   v-model="form.market_profile"
                   :options="marketProfileOptions"
                   option-label="label"
                   option-value="value"
-                  class="uno-w-full"
+                  class="uno-w-full uno-min-w-0"
+                  :pt="formSelectPt"
                   disabled
                 />
               </label>
-              <label class="uno-grid uno-gap-[0.35rem]">
+              <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
                 <span class="uno-text-[#6f8183]">{{ t('analysis.analysisDate') }}</span>
                 <DatePicker
                   v-model="analysisDate"
@@ -81,13 +83,17 @@
                   input-class="uno-w-full"
                 />
               </label>
+              <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('common.language') }}</span>
+                <Select v-model="form.output_language" :options="languageOptions" option-label="label" option-value="value" class="uno-w-full uno-min-w-0" :pt="formSelectPt" />
+              </label>
             </div>
 
             <div
               data-testid="analysis-form-row-models"
               class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] uno-gap-[0.8rem]"
             >
-              <label class="uno-grid uno-gap-[0.35rem]">
+              <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
                 <span class="uno-text-[#6f8183]">{{ t('common.provider') }}</span>
                 <Select
                   v-model="form.llm_provider"
@@ -95,46 +101,51 @@
                   option-label="label"
                   option-value="value"
                   :placeholder="t('common.provider')"
-                  class="uno-w-full"
-                  @change="syncProviderModels"
+                  class="uno-w-full uno-min-w-0"
+                  :pt="formSelectPt"
+                  @change="syncProviderModels(true)"
                 />
               </label>
               <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
                 <span class="uno-text-[#6f8183]">{{ t('analysis.quickModel') }}</span>
                 <Select
-                  v-model="form.quick_think_model"
+                  v-model="quickModelSelectValue"
                   :options="quickModelOptions"
                   option-label="label"
                   option-value="value"
-                  class="uno-w-full"
-                  :pt="modelSelectPt"
+                  class="uno-w-full uno-min-w-0"
+                  :pt="formSelectPt"
                 />
+              </label>
+              <label v-if="showQuickCustomModelInput" data-testid="analysis-quick-custom-model-input" class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('analysis.quickCustomModelId') }}</span>
+                <InputText v-model="form.quick_think_model" class="uno-w-full uno-min-w-0" />
               </label>
               <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
                 <span class="uno-text-[#6f8183]">{{ t('analysis.deepModel') }}</span>
                 <Select
-                  v-model="form.deep_think_model"
+                  v-model="deepModelSelectValue"
                   :options="deepModelOptions"
                   option-label="label"
                   option-value="value"
                   class="uno-w-full"
-                  :pt="modelSelectPt"
+                  :pt="formSelectPt"
                 />
               </label>
-              <label class="uno-grid uno-gap-[0.35rem]">
+              <label v-if="showDeepCustomModelInput" data-testid="analysis-deep-custom-model-input" class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
+                <span class="uno-text-[#6f8183]">{{ t('analysis.deepCustomModelId') }}</span>
+                <InputText v-model="form.deep_think_model" class="uno-w-full uno-min-w-0" />
+              </label>
+              <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
                 <span class="uno-text-[#6f8183]">{{ t('analysis.depth') }}</span>
-                <Select v-model="form.research_depth" :options="depthOptions" option-label="label" option-value="value" class="uno-w-full" />
+                <Select v-model="form.research_depth" :options="depthOptions" option-label="label" option-value="value" class="uno-w-full uno-min-w-0" :pt="formSelectPt" />
               </label>
             </div>
 
             <div
               data-testid="analysis-form-row-actions"
-              class="uno-flex uno-flex-wrap uno-items-end uno-gap-[0.8rem]"
+              class="uno-flex uno-justify-center"
             >
-              <label class="uno-grid uno-min-w-[220px] uno-flex-1 uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('common.language') }}</span>
-                <Select v-model="form.output_language" :options="languageOptions" option-label="label" option-value="value" class="uno-w-full" />
-              </label>
               <Button icon="pi pi-play" :label="t('analysis.startAnalysis')" :loading="submitting" :disabled="!canWrite" @click="startRun" />
             </div>
 
@@ -161,17 +172,17 @@
                   <span class="uno-text-[#6f8183]">{{ t('settings.backendUrl') }}</span>
                   <InputText v-model="form.backend_url" :placeholder="t('common.providerDefault')" class="uno-w-full" />
                 </label>
-                <label class="uno-grid uno-gap-[0.35rem]">
+                <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
                   <span class="uno-text-[#6f8183]">{{ t('settings.googleThinkingLevel') }}</span>
-                  <Select v-model="form.google_thinking_level" :options="googleThinkingOptions" option-label="label" option-value="value" class="uno-w-full" />
+                  <Select v-model="form.google_thinking_level" :options="googleThinkingOptions" option-label="label" option-value="value" class="uno-w-full uno-min-w-0" :pt="formSelectPt" />
                 </label>
-                <label class="uno-grid uno-gap-[0.35rem]">
+                <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
                   <span class="uno-text-[#6f8183]">{{ t('settings.openaiReasoningEffort') }}</span>
-                  <Select v-model="form.openai_reasoning_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" class="uno-w-full" />
+                  <Select v-model="form.openai_reasoning_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" class="uno-w-full uno-min-w-0" :pt="formSelectPt" />
                 </label>
-                <label class="uno-grid uno-gap-[0.35rem]">
+                <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
                   <span class="uno-text-[#6f8183]">{{ t('settings.anthropicEffort') }}</span>
-                  <Select v-model="form.anthropic_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" class="uno-w-full" />
+                  <Select v-model="form.anthropic_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" class="uno-w-full uno-min-w-0" :pt="formSelectPt" />
                 </label>
                 <label class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                   <input v-model="form.checkpoint_enabled" type="checkbox">
@@ -257,6 +268,11 @@ import {
   type StockCatalogOption,
   type StockMarketOption,
 } from './analyzeStockSelection';
+import {
+  displayedModelSelection,
+  nextModelValueFromSelection,
+  normalizeModelValueForProvider,
+} from './providerModelSelection';
 
 const router = useRouter();
 const session = useSession();
@@ -274,10 +290,11 @@ const liveState = ref<LiveRunViewState>(createLiveRunViewState());
 const lastStockQuery = ref('');
 const { t } = useI18n();
 
-const today = new Date().toISOString().slice(0, 10);
+const today = formatAnalysisDate(new Date());
 const form = reactive({
   stock_market: 'us',
   ticker: '',
+  company_name: '',
   date: today,
   llm_provider: 'openai',
   quick_think_model: '',
@@ -346,8 +363,9 @@ const stockMarketOptions = computed(() => (
   label: stockMarketLabel(option.value, option.label),
 })));
 const stockOptions = computed(() => stocks.value);
-const modelSelectPt = {
-  label: { class: 'uno-block uno-max-w-full uno-overflow-hidden uno-text-ellipsis uno-whitespace-nowrap' },
+const formSelectPt = {
+  root: { class: 'uno-min-w-0' },
+  label: { class: 'uno-block uno-min-w-0 uno-max-w-full uno-overflow-hidden uno-text-ellipsis uno-whitespace-nowrap' },
   optionLabel: { class: 'uno-block uno-max-w-full uno-overflow-hidden uno-text-ellipsis uno-whitespace-nowrap' },
 };
 
@@ -358,6 +376,28 @@ const providerOptions = computed(() => providers.value.map((provider) => ({
 const selectedProvider = computed(() => providers.value.find((provider) => provider.provider === form.llm_provider));
 const quickModelOptions = computed(() => selectedProvider.value?.quick_models || []);
 const deepModelOptions = computed(() => selectedProvider.value?.deep_models || []);
+const quickModelSelectValue = computed({
+  get: () => displayedModelSelection(quickModelOptions.value, form.quick_think_model),
+  set: (value: string) => {
+    form.quick_think_model = nextModelValueFromSelection(
+      quickModelOptions.value,
+      form.quick_think_model,
+      value,
+    );
+  },
+});
+const deepModelSelectValue = computed({
+  get: () => displayedModelSelection(deepModelOptions.value, form.deep_think_model),
+  set: (value: string) => {
+    form.deep_think_model = nextModelValueFromSelection(
+      deepModelOptions.value,
+      form.deep_think_model,
+      value,
+    );
+  },
+});
+const showQuickCustomModelInput = computed(() => quickModelSelectValue.value === 'custom');
+const showDeepCustomModelInput = computed(() => deepModelSelectValue.value === 'custom');
 const logText = computed(() => liveState.value.logLines.join('\n'));
 const liveReportText = computed(() => liveState.value.terminalReport || liveState.value.currentReport);
 const agentProgress = computed(() => Object.entries(liveState.value.agents).map(([name, status]) => ({ name, status })));
@@ -374,14 +414,10 @@ const analysisDate = computed<Date | null>({
   },
 });
 
-function syncProviderModels() {
+function syncProviderModels(force = false) {
   const provider = selectedProvider.value;
-  if (!form.quick_think_model) {
-    form.quick_think_model = provider?.quick_models?.[0]?.value || '';
-  }
-  if (!form.deep_think_model) {
-    form.deep_think_model = provider?.deep_models?.[0]?.value || '';
-  }
+  form.quick_think_model = normalizeModelValueForProvider(provider?.quick_models, form.quick_think_model, force);
+  form.deep_think_model = normalizeModelValueForProvider(provider?.deep_models, form.deep_think_model, force);
 }
 
 async function loadProviders() {
@@ -460,6 +496,7 @@ async function loadStocks(query = '') {
 
 async function handleStockMarketChange() {
   form.ticker = '';
+  form.company_name = '';
   form.market_profile = marketProfileForStockMarket(form.stock_market);
   stocks.value = [];
   selectedStock.value = null;
@@ -474,6 +511,7 @@ async function onStockComplete(event: { query?: string }) {
 function clearSelectedStock() {
   selectedStock.value = null;
   form.ticker = '';
+  form.company_name = '';
 }
 
 async function handleExternalStockCatalogRefresh() {
@@ -546,10 +584,12 @@ async function loadInitialData() {
 watch(selectedStock, (value) => {
   if (!value) {
     form.ticker = '';
+    form.company_name = '';
     return;
   }
   if (typeof value === 'object') {
     form.ticker = value.symbol;
+    form.company_name = value.name;
   }
 });
 
