@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { mergeResolvedTickers, upsertManualStock } from './oneTimeTaskSelection';
+import { mergeResolvedTickers, removeManualStock, upsertManualStock } from './oneTimeTaskSelection';
 
 describe('one-time task selection helpers', () => {
   it('keeps previously selected stocks when switching markets and dedupes merged sources', () => {
@@ -27,5 +27,16 @@ describe('one-time task selection helpers', () => {
     });
 
     expect(resolved).toEqual(['600519.SH', 'AAPL', 'NVDA', 'MSFT']);
+  });
+
+  it('removes a manual stock by normalized symbol', () => {
+    const selected = [
+      { market: 'cn_a', symbol: '600519.SH', name: '贵州茅台', exchange: 'SSE' },
+      { market: 'us', symbol: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ' },
+    ];
+
+    expect(removeManualStock(selected, ' aapl ')).toEqual([
+      { market: 'cn_a', symbol: '600519.SH', name: '贵州茅台', exchange: 'SSE' },
+    ]);
   });
 });

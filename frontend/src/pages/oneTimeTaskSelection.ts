@@ -37,6 +37,15 @@ export function upsertManualStock(selected: ManualStockPick[], stock: ManualStoc
   return nextSelected;
 }
 
+export function removeManualStock(selected: ManualStockPick[], symbol: string): ManualStockPick[] {
+  const normalizedSymbol = normalizeSymbol(symbol);
+  if (!normalizedSymbol) {
+    return selected;
+  }
+
+  return selected.filter((item) => normalizeSymbol(item.symbol) !== normalizedSymbol);
+}
+
 export function mergeResolvedTickers(options: {
   manualStocks: ManualStockPick[];
   selectedGroups: SelectedGroup[];
