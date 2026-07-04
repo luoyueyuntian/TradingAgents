@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
 
+vi.mock('../pages/TenantsPage.vue', () => ({ default: { name: 'TenantsPage' } }), { virtual: true });
+vi.mock('../pages/TenantDetailPage.vue', () => ({ default: { name: 'TenantDetailPage' } }), { virtual: true });
+
 const sessionState = {
   loading: false,
   currentUser: null as null | {
@@ -60,6 +63,16 @@ describe('router auth guards', () => {
     await router.push('/analysis');
 
     expect(router.currentRoute.value.fullPath).toBe('/login');
+  });
+
+  it('strips the deployed SPA base from the initial browser location', async () => {
+    window.history.replaceState({}, '', '/static/spa/');
+
+    const { createAppRouter } = await loadRouterModule();
+    const router = createAppRouter();
+
+    expect(router.options.history.location).toBe('/');
+    expect(router.options.history.createHref('/analysis')).toBe('/static/spa/analysis');
   });
 
   it('bootstraps authenticated cold starts on /login and redirects to /', async () => {
@@ -139,7 +152,7 @@ describe('router auth guards', () => {
     expect(router.currentRoute.value.fullPath).toBe('/');
   });
 
-  it.each(['/settings', '/users'])('blocks non-admin users from navigating to %s', async (path) => {
+  it.each(['/settings', '/tenants', '/users'])('blocks non-admin users from navigating to %s', async (path) => {
     sessionState.currentUser = makeUser({ role: 'analyst' });
     const { createAppRouter } = await loadRouterModule();
     const router = createAppRouter(createMemoryHistory());
@@ -149,7 +162,7 @@ describe('router auth guards', () => {
     expect(router.currentRoute.value.fullPath).toBe('/');
   });
 
-  it.each(['/settings', '/users'])('allows admin users to navigate to %s', async (path) => {
+  it.each(['/settings', '/tenants', '/users'])('allows admin users to navigate to %s', async (path) => {
     sessionState.currentUser = makeUser({ role: 'admin' });
     const { createAppRouter } = await loadRouterModule();
     const router = createAppRouter(createMemoryHistory());
