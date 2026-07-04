@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+from copy import deepcopy
 
 import pytest
 from pydantic import ValidationError
@@ -238,10 +239,67 @@ def test_create_one_time_task_freezes_manual_groups_and_watchlist(monkeypatch):
     assert task.selection_snapshot.resolved_tickers == ["AAPL", "NVDA", "MSFT", "0700.HK"]
 
 
-def test_create_one_time_task_rejects_empty_resolved_tickers(monkeypatch):
-    state = {"one_time_tasks": {"items": []}}
+def test_create_one_time_task_persists_snapshot_and_preserves_unrelated_settings(monkeypatch):
+    state = {
+        "one_time_tasks": {"items": []},
+        "watchlist": {"tickers": [{"ticker": "AAPL"}, {"ticker": "0700.HK"}]},
+        "unrelated": {"keep": True},
+    }
+    saved: list[dict[str, object]] = []
+
     monkeypatch.setattr(task_module, "load_settings", lambda path=None: state)
-    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: state.update(settings))
+    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: saved.append(deepcopy(settings)))
+    monkeypatch.setattr(
+        task_module,
+        "list_stock_groups",
+        lambda tenant_id=None: [
+            StockGroup(
+                id="group-1",
+                name="AI Leaders",
+                tickers=["NVDA", "MSFT"],
+                created_at="2026-07-04T10:00:00",
+                updated_at="2026-07-04T10:00:00",
+            )
+        ],
+    )
+
+    task = task_module.create_one_time_task(
+        OneTimeTaskCreate(
+            name="Night task",
+            scheduled_for="2026-07-10 21:30",
+            analysis_date="2026-07-11",
+            manual_stocks=[{"market": "us", "symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ"}],
+            group_ids=["group-1"],
+            include_watchlist=True,
+            analysis_config=AutomationAnalysisConfig(
+                analysts=["market"],
+                llm_provider="openai",
+                quick_think_model="gpt-5.4-mini",
+                deep_think_model="gpt-5.5",
+                research_depth=1,
+                output_language="English",
+            ),
+        ),
+        now=datetime.datetime(2026, 7, 4, 10, 0, 0),
+    )
+
+    assert saved and len(saved) == 1
+    assert saved[0]["unrelated"] == {"keep": True}
+    assert saved[0]["one_time_tasks"]["items"][0]["id"] == task.id
+    assert saved[0]["one_time_tasks"]["items"][0]["status"] == "scheduled"
+    assert saved[0]["one_time_tasks"]["items"][0]["selection_snapshot"]["resolved_tickers"] == [
+        "AAPL",
+        "NVDA",
+        "MSFT",
+        "0700.HK",
+    ]
+
+
+def test_create_one_time_task_rejects_empty_resolved_tickers(monkeypatch):
+    state = {"one_time_tasks": {"items": []}, "unrelated": {"keep": True}}
+    saved: list[dict[str, object]] = []
+    monkeypatch.setattr(task_module, "load_settings", lambda path=None: state)
+    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: saved.append(deepcopy(settings)))
     monkeypatch.setattr(task_module, "list_stock_groups", lambda tenant_id=None: [])
 
     payload = OneTimeTaskCreate(
@@ -263,9 +321,10 @@ def test_create_one_time_task_rejects_empty_resolved_tickers(monkeypatch):
 
     with pytest.raises(ValueError, match="resolved ticker set must not be empty"):
         task_module.create_one_time_task(payload, now=datetime.datetime(2026, 7, 4, 10, 0, 0))
+    assert saved == []
 
 
-def test_update_and_cancel_only_apply_to_scheduled_tasks(monkeypatch):
+def test_update_one_time_task_persists_rebuilt_snapshot_and_updated_fields(monkeypatch):
     state = {
         "one_time_tasks": {
             "items": [
@@ -299,36 +358,99 @@ def test_update_and_cancel_only_apply_to_scheduled_tasks(monkeypatch):
                     "run_ids": [],
                 }
             ]
-        }
+        },
+        "watchlist": {"tickers": [{"ticker": "MSFT"}]},
+        "unrelated": {"keep": True},
     }
+    saved: list[dict[str, object]] = []
     monkeypatch.setattr(task_module, "load_settings", lambda path=None: state)
-    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: state.update(settings))
+    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: saved.append(deepcopy(settings)))
     monkeypatch.setattr(task_module, "list_stock_groups", lambda tenant_id=None: [])
 
-    with pytest.raises(ValueError, match="Only scheduled tasks can be edited"):
-        task_module.update_one_time_task(
-            "task-1",
-            OneTimeTaskUpdate(
-                name="Editable",
-                scheduled_for="2026-07-10 22:30",
-                analysis_date="2026-07-12",
-                manual_stocks=[{"market": "us", "symbol": "NVDA"}],
-                group_ids=[],
-                include_watchlist=True,
-                analysis_config=AutomationAnalysisConfig(
-                    analysts=["market"],
-                    llm_provider="openai",
-                    quick_think_model="gpt-5.4-mini",
-                    deep_think_model="gpt-5.5",
-                    research_depth=1,
-                    output_language="English",
-                ),
-            ),
-            now=datetime.datetime(2026, 7, 4, 11, 0, 0),
-        )
+    state["one_time_tasks"]["items"][0]["status"] = "scheduled"
 
-    with pytest.raises(ValueError, match="Only scheduled tasks can be cancelled"):
-        task_module.cancel_one_time_task("task-1", now=datetime.datetime(2026, 7, 4, 11, 0, 0))
+    updated = task_module.update_one_time_task(
+        "task-1",
+        OneTimeTaskUpdate(
+            name="Editable",
+            scheduled_for="2026-07-10 22:30",
+            analysis_date="2026-07-12",
+            manual_stocks=[{"market": "us", "symbol": "NVDA"}],
+            group_ids=[],
+            include_watchlist=True,
+            analysis_config=AutomationAnalysisConfig(
+                analysts=["market"],
+                llm_provider="openai",
+                quick_think_model="gpt-5.4-mini",
+                deep_think_model="gpt-5.5",
+                research_depth=1,
+                output_language="English",
+            ),
+        ),
+        now=datetime.datetime(2026, 7, 4, 11, 0, 0),
+    )
+
+    assert updated is not None
+    assert saved and len(saved) == 1
+    saved_task = saved[0]["one_time_tasks"]["items"][0]
+    assert saved[0]["unrelated"] == {"keep": True}
+    assert saved_task["name"] == "Editable"
+    assert saved_task["scheduled_for"] == "2026-07-10 22:30"
+    assert saved_task["analysis_date"] == "2026-07-12"
+    assert saved_task["selection_snapshot"]["watchlist_snapshot"] == ["MSFT"]
+    assert saved_task["selection_snapshot"]["resolved_tickers"] == ["NVDA", "MSFT"]
+    assert saved_task["selection_snapshot"]["include_watchlist"] is True
+
+
+def test_cancel_one_time_task_persists_cancelled_status(monkeypatch):
+    state = {
+        "one_time_tasks": {
+            "items": [
+                {
+                    "id": "task-1",
+                    "name": "Scheduled A",
+                    "status": "scheduled",
+                    "scheduled_for": "2026-07-10 21:30",
+                    "analysis_date": "2026-07-10",
+                    "selection_snapshot": {
+                        "manual_stocks": [{"market": "us", "symbol": "AAPL"}],
+                        "group_snapshots": [],
+                        "include_watchlist": False,
+                        "watchlist_snapshot": [],
+                        "resolved_tickers": ["AAPL"],
+                    },
+                    "analysis_config": {
+                        "analysts": ["market"],
+                        "llm_provider": "openai",
+                        "quick_think_model": "gpt-5.4-mini",
+                        "deep_think_model": "gpt-5.5",
+                        "research_depth": 1,
+                        "output_language": "English",
+                    },
+                    "created_at": "2026-07-04T10:00:00",
+                    "updated_at": "2026-07-04T10:00:00",
+                    "triggered_at": None,
+                    "completed_at": None,
+                    "last_error": None,
+                    "last_queued_count": 0,
+                    "run_ids": [],
+                }
+            ]
+        },
+        "unrelated": {"keep": True},
+    }
+    saved: list[dict[str, object]] = []
+    monkeypatch.setattr(task_module, "load_settings", lambda path=None: state)
+    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: saved.append(deepcopy(settings)))
+
+    cancelled = task_module.cancel_one_time_task("task-1", now=datetime.datetime(2026, 7, 4, 11, 0, 0))
+
+    assert cancelled is not None
+    assert cancelled.status == "cancelled"
+    assert saved and len(saved) == 1
+    assert saved[0]["unrelated"] == {"keep": True}
+    assert saved[0]["one_time_tasks"]["items"][0]["status"] == "cancelled"
+    assert saved[0]["one_time_tasks"]["items"][0]["updated_at"] == "2026-07-04T11:00:00"
 
 
 def test_get_one_time_task_page_filters_and_paginates(monkeypatch):
