@@ -186,6 +186,101 @@ def test_create_tenant_rolls_back_when_initial_admin_insert_fails(monkeypatch, t
     assert store.get_user_by_identifier("rollback-admin") is None
 
 
+def test_create_tenant_rejects_duplicate_tenant_id(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store)
+    _create_tenant(store, tenant_id="tenant-c", display_name="Existing Tenant C")
+    _login(client)
+
+    response = client.post(
+        "/api/admin/tenants",
+        json={
+            "tenant_id": "tenant-c",
+            "display_name": "Tenant C",
+            "admin": {
+                "username": "new-admin",
+                "email": "new-admin@example.com",
+                "display_name": "New Admin",
+                "password": "AnotherStrong123!",
+            },
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "tenant_id already exists"
+
+
+@pytest.mark.parametrize(
+    ("admin_payload", "expected_detail"),
+    [
+        (
+            {
+                "username": "alice",
+                "email": "new-admin@example.com",
+                "display_name": "New Admin",
+                "password": "AnotherStrong123!",
+            },
+            "username already exists",
+        ),
+        (
+            {
+                "username": "new-admin",
+                "email": "alice@example.com",
+                "display_name": "New Admin",
+                "password": "AnotherStrong123!",
+            },
+            "email already exists",
+        ),
+    ],
+)
+def test_create_tenant_rejects_duplicate_bootstrap_admin_identity(
+    monkeypatch,
+    tmp_path,
+    admin_payload: dict[str, str],
+    expected_detail: str,
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store)
+    _login(client)
+
+    response = client.post(
+        "/api/admin/tenants",
+        json={
+            "tenant_id": "tenant-c",
+            "display_name": "Tenant C",
+            "admin": admin_payload,
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == expected_detail
+    assert store.get_tenant("tenant-c") is None
+
+
+def test_create_tenant_rejects_weak_bootstrap_admin_password(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store)
+    _login(client)
+
+    response = client.post(
+        "/api/admin/tenants",
+        json={
+            "tenant_id": "tenant-c",
+            "display_name": "Tenant C",
+            "admin": {
+                "username": "new-admin",
+                "email": "new-admin@example.com",
+                "display_name": "New Admin",
+                "password": "short",
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    assert "at least 10 characters" in response.json()["detail"]
+    assert store.get_tenant("tenant-c") is None
+
+
 def test_disable_and_archive_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store)
