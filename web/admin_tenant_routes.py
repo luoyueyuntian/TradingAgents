@@ -89,23 +89,14 @@ def create_tenant(payload: AdminTenantCreate, request: Request) -> dict[str, Adm
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    if store.get_user_by_identifier(payload.admin.username) is not None:
-        raise HTTPException(status_code=409, detail="username already exists")
-    if store.get_user_by_identifier(payload.admin.email) is not None:
-        raise HTTPException(status_code=409, detail="email already exists")
-
     try:
-        tenant = store.create_tenant(
-            payload.tenant_id,
-            display_name=payload.display_name,
-        )
         password_record = hash_password(payload.admin.password)
-        store.create_user(
+        tenant, _admin_user = store.create_tenant_with_initial_admin(
+            tenant_id=payload.tenant_id,
+            display_name=payload.display_name,
             username=payload.admin.username,
             email=payload.admin.email,
-            display_name=payload.admin.display_name,
-            role="admin",
-            tenant_id=tenant.tenant_id,
+            admin_display_name=payload.admin.display_name,
             password_hash=password_record.encoded_hash,
             password_salt=password_record.salt,
             password_updated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),

@@ -149,6 +149,42 @@ def test_create_tenant_creates_initial_admin(monkeypatch, tmp_path):
     assert created_admin.must_change_password is True
 
 
+def test_create_tenant_rolls_back_when_initial_admin_insert_fails(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store)
+    _login(client)
+
+    original_duplicate_check = UserStore._raise_for_duplicate_user_field
+    calls = {"count": 0}
+
+    def _fail_during_admin_insert(self, conn, field_name, value, excluding_user_id=None):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise ValueError("email already exists")
+        return original_duplicate_check(self, conn, field_name, value, excluding_user_id=excluding_user_id)
+
+    monkeypatch.setattr(UserStore, "_raise_for_duplicate_user_field", _fail_during_admin_insert)
+
+    response = client.post(
+        "/api/admin/tenants",
+        json={
+            "tenant_id": "tenant-rollback",
+            "display_name": "Tenant Rollback",
+            "admin": {
+                "username": "rollback-admin",
+                "email": "rollback-admin@example.com",
+                "display_name": "Rollback Admin",
+                "password": "AnotherStrong123!",
+            },
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "email already exists"
+    assert store.get_tenant("tenant-rollback") is None
+    assert store.get_user_by_identifier("rollback-admin") is None
+
+
 def test_disable_and_archive_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store)

@@ -391,6 +391,120 @@ class UserStore:
                 raise ValueError("tenant_id already exists") from exc
             return self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
 
+    def create_tenant_with_initial_admin(
+        self,
+        *,
+        tenant_id: str,
+        display_name: str,
+        username: str,
+        email: str,
+        admin_display_name: str,
+        password_hash: str,
+        password_salt: str,
+        password_updated_at: str | None = None,
+        must_change_password: bool = True,
+        expires_at: str | None = None,
+        disabled: bool = False,
+        last_login_at: str | None = None,
+        user_id: str | None = None,
+    ) -> tuple[TenantRecord, UserRecord]:
+        self.ensure_schema()
+        normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
+        normalized_tenant_display_name = _require_text(display_name, "display_name")
+        normalized_username = _require_text(username, "username")
+        normalized_email = _require_text(email, "email")
+        normalized_user_display_name = _require_text(admin_display_name, "display_name")
+        normalized_password_hash = _require_text(password_hash, "password_hash")
+        normalized_password_salt = _require_text(password_salt, "password_salt")
+        normalized_expires_at = _validate_optional_expires_at(expires_at)
+        now = _utc_now()
+        tenant_row_id = uuid.uuid4().hex
+        resolved_user_id = user_id or uuid.uuid4().hex
+
+        with self._connect() as conn:
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO tenants (
+                        id,
+                        tenant_id,
+                        display_name,
+                        disabled,
+                        archived,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, 0, 0, ?, ?)
+                    """,
+                    (
+                        tenant_row_id,
+                        normalized_tenant_id,
+                        normalized_tenant_display_name,
+                        now,
+                        now,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise ValueError("tenant_id already exists") from exc
+
+            self._raise_for_duplicate_user_field(
+                conn,
+                "username",
+                normalized_username,
+            )
+            self._raise_for_duplicate_user_field(
+                conn,
+                "email",
+                normalized_email,
+            )
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO users (
+                        id,
+                        username,
+                        email,
+                        display_name,
+                        role,
+                        tenant_id,
+                        password_hash,
+                        password_salt,
+                        password_updated_at,
+                        must_change_password,
+                        expires_at,
+                        disabled,
+                        created_at,
+                        updated_at,
+                        last_login_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        resolved_user_id,
+                        normalized_username,
+                        normalized_email,
+                        normalized_user_display_name,
+                        "admin",
+                        normalized_tenant_id,
+                        normalized_password_hash,
+                        normalized_password_salt,
+                        password_updated_at,
+                        int(must_change_password),
+                        normalized_expires_at,
+                        int(disabled),
+                        now,
+                        now,
+                        last_login_at,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise ValueError("username or email already exists") from exc
+
+            return (
+                self._get_tenant_by_tenant_id(conn, normalized_tenant_id),
+                self._get_user_by_id(conn, resolved_user_id),
+            )
+
     def update_tenant(self, tenant_id: str, **fields: Any) -> TenantRecord:
         self.ensure_schema()
         normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
