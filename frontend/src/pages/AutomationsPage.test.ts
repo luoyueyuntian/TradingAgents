@@ -77,27 +77,45 @@ const TextareaStub = {
   `,
 };
 
+function optionValueFor(
+  option: Record<string, unknown>,
+  optionValue?: string,
+) {
+  if (!option) {
+    return '';
+  }
+  if (optionValue && option[optionValue] !== undefined) {
+    return String(option[optionValue]);
+  }
+  return String(option.value ?? option);
+}
+
+function optionLabelFor(
+  option: Record<string, unknown>,
+  optionLabel?: string,
+) {
+  if (!option) {
+    return '';
+  }
+  if (optionLabel && option[optionLabel] !== undefined) {
+    return String(option[optionLabel]);
+  }
+  return String(option.label ?? option.value ?? option);
+}
+
+function selectedValues(event: Event) {
+  return Array.from((event.target as HTMLSelectElement).selectedOptions).map((option) => option.value);
+}
+
 const SelectStub = {
   props: ['modelValue', 'options', 'optionLabel', 'optionValue', 'disabled'],
   emits: ['update:modelValue', 'change'],
-  methods: {
-    optionValueFor(option: Record<string, unknown>) {
-      if (!option) {
-        return '';
-      }
-      if (this.optionValue && option[this.optionValue] !== undefined) {
-        return String(option[this.optionValue]);
-      }
-      return String(option.value ?? option);
+  computed: {
+    optionValueForFn() {
+      return optionValueFor;
     },
-    optionLabelFor(option: Record<string, unknown>) {
-      if (!option) {
-        return '';
-      }
-      if (this.optionLabel && option[this.optionLabel] !== undefined) {
-        return String(option[this.optionLabel]);
-      }
-      return String(option.label ?? option.value ?? option);
+    optionLabelForFn() {
+      return optionLabelFor;
     },
   },
   template: `
@@ -108,10 +126,10 @@ const SelectStub = {
     >
       <option
         v-for="option in options || []"
-        :key="optionValueFor(option)"
-        :value="optionValueFor(option)"
+        :key="optionValueForFn(option, optionValue)"
+        :value="optionValueForFn(option, optionValue)"
       >
-        {{ optionLabelFor(option) }}
+        {{ optionLabelForFn(option, optionLabel) }}
       </option>
     </select>
   `,
@@ -120,27 +138,15 @@ const SelectStub = {
 const MultiSelectStub = {
   props: ['modelValue', 'options', 'optionLabel', 'optionValue', 'disabled'],
   emits: ['update:modelValue', 'change'],
-  methods: {
-    optionValueFor(option: Record<string, unknown>) {
-      if (!option) {
-        return '';
-      }
-      if (this.optionValue && option[this.optionValue] !== undefined) {
-        return String(option[this.optionValue]);
-      }
-      return String(option.value ?? option);
+  computed: {
+    optionValueForFn() {
+      return optionValueFor;
     },
-    optionLabelFor(option: Record<string, unknown>) {
-      if (!option) {
-        return '';
-      }
-      if (this.optionLabel && option[this.optionLabel] !== undefined) {
-        return String(option[this.optionLabel]);
-      }
-      return String(option.label ?? option.value ?? option);
+    optionLabelForFn() {
+      return optionLabelFor;
     },
-    selectedValues(event: Event) {
-      return Array.from((event.target as HTMLSelectElement).selectedOptions).map((option) => option.value);
+    selectedValuesFn() {
+      return selectedValues;
     },
   },
   template: `
@@ -148,14 +154,14 @@ const MultiSelectStub = {
       multiple
       :value="modelValue"
       :disabled="disabled"
-      @change="$emit('update:modelValue', selectedValues($event)); $emit('change', { value: selectedValues($event) })"
+      @change="$emit('update:modelValue', selectedValuesFn($event)); $emit('change', { value: selectedValuesFn($event) })"
     >
       <option
         v-for="option in options || []"
-        :key="optionValueFor(option)"
-        :value="optionValueFor(option)"
+        :key="optionValueForFn(option, optionValue)"
+        :value="optionValueForFn(option, optionValue)"
       >
-        {{ optionLabelFor(option) }}
+        {{ optionLabelForFn(option, optionLabel) }}
       </option>
     </select>
   `,
