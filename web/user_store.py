@@ -107,6 +107,10 @@ def _validate_optional_expires_at(expires_at: str | None) -> str | None:
 
 
 def _require_text(value: str, field_name: str) -> str:
+    if value is None:
+        raise ValueError(f"{field_name} must not be null")
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
     normalized = value.strip()
     if not normalized:
         raise ValueError(f"{field_name} must not be blank")
@@ -114,6 +118,10 @@ def _require_text(value: str, field_name: str) -> str:
 
 
 def _validate_role(role: str) -> str:
+    if role is None:
+        raise ValueError("role must not be null")
+    if not isinstance(role, str):
+        raise ValueError("role must be a string")
     normalized = role.strip()
     if normalized not in VALID_ROLES:
         raise ValueError("role must be one of admin, analyst, or viewer")
@@ -772,7 +780,7 @@ class UserStore:
             elif field_name in {"password_hash", "password_salt"}:
                 value = _require_text(value, field_name)
             elif field_name in {"must_change_password", "disabled"}:
-                value = int(value)
+                value = _validate_bool_flag(value, field_name)
             updates[field_name] = value
 
         if "username" in updates:
@@ -888,24 +896,52 @@ class UserStore:
         self.ensure_schema()
         normalized_tenant_id = _normalize_optional_tenant_id(tenant_id)
         with self._connect() as conn:
-            if normalized_tenant_id is None:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM users
-                    WHERE role = 'admin'
-                      AND disabled = 0
-                    """
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM users
-                    WHERE role = 'admin'
-                      AND disabled = 0
-                      AND tenant_id = ?
-                    """,
-                    (normalized_tenant_id,),
-                ).fetchall()
+            return self._active_admin_count_in_connection(conn, normalized_tenant_id)
+
+    def would_disable_last_login_capable_admin_tenant(self, tenant_id: str) -> bool:
+        self.ensure_schema()
+        normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
+        with self._connect() as conn:
+            tenant = self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
+            if tenant.disabled or tenant.archived:
+                return False
+            if self._active_admin_count_in_connection(conn, normalized_tenant_id) == 0:
+                return False
+
+            tenant_rows = conn.execute(
+                "SELECT tenant_id, disabled, archived FROM tenants WHERE tenant_id != ? ORDER BY tenant_id",
+                (normalized_tenant_id,),
+            ).fetchall()
+            for row in tenant_rows:
+                if bool(row["disabled"]) or bool(row["archived"]):
+                    continue
+                if self._active_admin_count_in_connection(conn, row["tenant_id"]) > 0:
+                    return False
+        return True
+
+    def _active_admin_count_in_connection(
+        self,
+        conn: sqlite3.Connection,
+        tenant_id: str | None,
+    ) -> int:
+        if tenant_id is None:
+            rows = conn.execute(
+                """
+                SELECT * FROM users
+                WHERE role = 'admin'
+                  AND disabled = 0
+                """
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT * FROM users
+                WHERE role = 'admin'
+                  AND disabled = 0
+                  AND tenant_id = ?
+                """,
+                (tenant_id,),
+            ).fetchall()
         return sum(
             1
             for row in rows

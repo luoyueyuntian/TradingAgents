@@ -28,6 +28,10 @@ from .user_store import TenantRecord, UserRecord, UserStore
 
 router = APIRouter(prefix="/api/admin/tenants", tags=["admin-tenants"])
 
+_LAST_LOGIN_CAPABLE_ADMIN_TENANT_ERROR = (
+    "Cannot disable or archive the last tenant with a login-capable admin"
+)
+
 
 def _get_store() -> UserStore:
     return UserStore(get_web_auth_db_path())
@@ -136,10 +140,19 @@ def update_tenant(
 ) -> dict[str, AdminTenantResponse]:
     _require_admin_user(request)
     store = _get_store()
-    _get_existing_tenant(store, tenant_id)
+    tenant = _get_existing_tenant(store, tenant_id)
+    try:
+        payload.require_non_null_fields()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
+    if (
+        (updates.get("disabled") is True and not tenant.disabled)
+        or (updates.get("archived") is True and not tenant.archived)
+    ) and store.would_disable_last_login_capable_admin_tenant(tenant_id):
+        raise HTTPException(status_code=400, detail=_LAST_LOGIN_CAPABLE_ADMIN_TENANT_ERROR)
 
     try:
         tenant = store.update_tenant(tenant_id, **updates)

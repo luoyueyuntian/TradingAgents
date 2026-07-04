@@ -327,6 +327,69 @@ def test_disable_and_archive_tenant(monkeypatch, tmp_path):
     assert [tenant["tenant_id"] for tenant in listed.json()["tenants"]] == ["tenant-a"]
 
 
+@pytest.mark.parametrize(
+    ("update_payload", "expected_detail"),
+    [
+        ({"disabled": True}, "Cannot disable or archive the last tenant with a login-capable admin"),
+        ({"archived": True}, "Cannot disable or archive the last tenant with a login-capable admin"),
+    ],
+)
+def test_tenant_update_prevents_last_login_capable_admin_tenant_lockout(
+    monkeypatch,
+    tmp_path,
+    update_payload: dict[str, bool],
+    expected_detail: str,
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    _create_user(
+        store,
+        username="tenant-b-admin",
+        email="tenant-b-admin@example.com",
+        display_name="Tenant B Admin",
+        role="admin",
+        tenant_id="tenant-b",
+        must_change_password=False,
+    )
+    store.update_tenant("tenant-a", disabled=True)
+    _login(client, identifier="tenant-b-admin")
+
+    remaining_login_capable_tenants = [
+        tenant.tenant_id
+        for tenant in store.list_tenants(include_archived=True)
+        if not tenant.disabled and not tenant.archived and store.active_admin_count(tenant.tenant_id) > 0
+    ]
+    assert remaining_login_capable_tenants == ["tenant-b"]
+
+    response = client.patch("/api/admin/tenants/tenant-b", json=update_payload)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == expected_detail
+    refreshed = store.get_tenant("tenant-b")
+    assert refreshed is not None
+    assert refreshed.disabled is False
+    assert refreshed.archived is False
+
+
+@pytest.mark.parametrize("field_name", ["display_name", "disabled", "archived"])
+def test_tenant_update_rejects_explicit_null_fields(monkeypatch, tmp_path, field_name: str):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    _login(client)
+    original = store.get_tenant("tenant-a")
+    assert original is not None
+
+    response = client.patch("/api/admin/tenants/tenant-a", json={field_name: None})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == f"{field_name} must not be null"
+    refreshed = store.get_tenant("tenant-a")
+    assert refreshed is not None
+    assert refreshed.display_name == original.display_name
+    assert refreshed.disabled is False
+    assert refreshed.archived is False
+
+
 def test_tenant_scoped_user_list_returns_only_target_tenant_users(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", must_change_password=False)
