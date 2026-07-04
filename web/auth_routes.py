@@ -62,6 +62,16 @@ def _ensure_user_can_login(user: UserRecord) -> None:
         raise HTTPException(status_code=403, detail="User account has expired")
 
 
+def _ensure_tenant_allows_access(store: UserStore, tenant_id: str) -> None:
+    tenant = store.get_tenant(tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=403, detail="Tenant not found")
+    if tenant.disabled:
+        raise HTTPException(status_code=403, detail="Tenant is disabled")
+    if tenant.archived:
+        raise HTTPException(status_code=403, detail="Tenant is archived")
+
+
 def _password_reset_available() -> bool:
     return password_reset_mail_available()
 
@@ -157,6 +167,7 @@ def login(payload: AuthLoginRequest, request: Request, response: Response) -> Au
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     _ensure_user_can_login(user)
+    _ensure_tenant_allows_access(store, user.tenant_id)
     if not verify_password(payload.password, user.password_hash, user.password_salt):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     raw_session_id, session = store.create_session(user.id, ttl_seconds=SESSION_TTL_SECONDS)
@@ -187,8 +198,9 @@ def logout(request: Request, response: Response) -> dict[str, str]:
 
 @router.get("/me", response_model=AuthMeResponse)
 def me(request: Request) -> AuthMeResponse:
-    _store, _raw_session_id, session, user = _get_current_session(request)
+    store, _raw_session_id, session, user = _get_current_session(request)
     _ensure_user_can_login(user)
+    _ensure_tenant_allows_access(store, user.tenant_id)
     return _build_me_response(user, session.expires_at)
 
 
@@ -199,6 +211,7 @@ def change_password(
 ) -> AuthMeResponse:
     store, _raw_session_id, session, user = _get_current_session(request)
     _ensure_user_can_login(user)
+    _ensure_tenant_allows_access(store, user.tenant_id)
     if not verify_password(payload.old_password, user.password_hash, user.password_salt):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     try:
