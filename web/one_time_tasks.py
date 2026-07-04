@@ -298,6 +298,7 @@ def process_due_one_time_tasks(
             continue
 
         run_ids: list[str] = []
+        last_error: str | None = None
         for ticker in task.selection_snapshot.resolved_tickers:
             request = AnalysisRequest(
                 ticker=ticker,
@@ -320,7 +321,11 @@ def process_due_one_time_tasks(
                 openai_reasoning_effort=task.analysis_config.openai_reasoning_effort,
                 anthropic_effort=task.analysis_config.anthropic_effort,
             )
-            run = service.create_run(request, start_worker=start_worker, settings=settings)
+            try:
+                run = service.create_run(request, start_worker=start_worker, settings=settings)
+            except Exception as exc:
+                last_error = str(exc)
+                continue
             run_ids.append(run.run_id)
 
         tasks[index] = task.model_copy(
@@ -329,6 +334,7 @@ def process_due_one_time_tasks(
                 "triggered_at": timestamp,
                 "updated_at": timestamp,
                 "last_queued_count": len(run_ids),
+                "last_error": last_error,
                 "run_ids": run_ids,
             }
         )

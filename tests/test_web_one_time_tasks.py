@@ -712,3 +712,139 @@ def test_process_due_one_time_tasks_marks_missed_and_queues_current_minute(monke
     assert tasks[0]["triggered_at"] == "2026-07-10T21:30:05"
     assert tasks[0]["run_ids"] == ["run-1"]
     assert tasks[1]["status"] == "missed"
+
+
+def test_process_due_one_time_tasks_keeps_successes_when_a_later_ticker_fails(monkeypatch):
+    state = {
+        "one_time_tasks": {
+            "items": [
+                {
+                    "id": "partial-failure",
+                    "name": "Partial failure",
+                    "status": "scheduled",
+                    "scheduled_for": "2026-07-10 21:30",
+                    "analysis_date": "2026-07-11",
+                    "selection_snapshot": {
+                        "manual_stocks": [],
+                        "group_snapshots": [],
+                        "include_watchlist": True,
+                        "watchlist_snapshot": ["OLDWL"],
+                        "resolved_tickers": ["AAPL", "MSFT"],
+                    },
+                    "analysis_config": {
+                        "analysts": ["market"],
+                        "llm_provider": "openai",
+                        "quick_think_model": "gpt-5.4-mini",
+                        "deep_think_model": "gpt-5.5",
+                        "research_depth": 1,
+                        "output_language": "English",
+                    },
+                    "created_at": "2026-07-04T10:00:00",
+                    "updated_at": "2026-07-04T10:00:00",
+                    "triggered_at": None,
+                    "completed_at": None,
+                    "last_error": None,
+                    "last_queued_count": 0,
+                    "run_ids": [],
+                }
+            ]
+        },
+        "watchlist": {"tickers": [{"ticker": "NEWWATCH"}]},
+        "stock_groups": {"items": [{"id": "group-1", "name": "Changed", "tickers": ["NVDA"]}]},
+    }
+    saved: list[dict[str, object]] = []
+    attempted: list[str] = []
+
+    class FakeService:
+        def load_tenant_settings(self):
+            return {}
+
+        def create_run(self, req, *, start_worker=True, settings=None):
+            attempted.append(req.ticker)
+            if req.ticker == "MSFT":
+                raise RuntimeError("queue failed for MSFT")
+            return SimpleNamespace(run_id="run-1", status="queued", ticker=req.ticker, date=req.date)
+
+    monkeypatch.setattr(task_module, "load_settings", lambda path=None: state)
+    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: saved.append(deepcopy(settings)))
+    monkeypatch.setattr(task_module, "get_service", lambda tenant_id=None: FakeService())
+
+    queued = task_module.process_due_one_time_tasks(
+        now=datetime.datetime(2026, 7, 10, 21, 30, 5),
+        start_worker=False,
+    )
+
+    assert queued == 1
+    assert attempted == ["AAPL", "MSFT"]
+    task = saved[-1]["one_time_tasks"]["items"][0]
+    assert task["status"] == "queued"
+    assert task["run_ids"] == ["run-1"]
+    assert task["last_queued_count"] == 1
+    assert task["last_error"] == "queue failed for MSFT"
+    assert task["triggered_at"] == "2026-07-10T21:30:05"
+
+
+def test_process_due_one_time_tasks_uses_frozen_resolved_tickers_not_current_sources(monkeypatch):
+    state = {
+        "one_time_tasks": {
+            "items": [
+                {
+                    "id": "frozen-snapshot",
+                    "name": "Frozen snapshot",
+                    "status": "scheduled",
+                    "scheduled_for": "2026-07-10 21:30",
+                    "analysis_date": "2026-07-11",
+                    "selection_snapshot": {
+                        "manual_stocks": [{"market": "us", "symbol": "AAPL"}],
+                        "group_snapshots": [{"id": "group-1", "name": "Old group", "tickers": ["AAPL"]}],
+                        "include_watchlist": True,
+                        "watchlist_snapshot": ["AAPL"],
+                        "resolved_tickers": ["AAPL"],
+                    },
+                    "analysis_config": {
+                        "analysts": ["market"],
+                        "llm_provider": "openai",
+                        "quick_think_model": "gpt-5.4-mini",
+                        "deep_think_model": "gpt-5.5",
+                        "research_depth": 1,
+                        "output_language": "English",
+                    },
+                    "created_at": "2026-07-04T10:00:00",
+                    "updated_at": "2026-07-04T10:00:00",
+                    "triggered_at": None,
+                    "completed_at": None,
+                    "last_error": None,
+                    "last_queued_count": 0,
+                    "run_ids": [],
+                }
+            ]
+        },
+        "watchlist": {"tickers": [{"ticker": "MSFT"}, {"ticker": "NVDA"}]},
+        "stock_groups": {"items": [{"id": "group-1", "name": "Changed group", "tickers": ["TSLA", "META"]}]},
+    }
+    created: list[str] = []
+    saved: list[dict[str, object]] = []
+
+    class FakeService:
+        def load_tenant_settings(self):
+            return {}
+
+        def create_run(self, req, *, start_worker=True, settings=None):
+            created.append(req.ticker)
+            return SimpleNamespace(run_id=f"run-{len(created)}", status="queued", ticker=req.ticker, date=req.date)
+
+    monkeypatch.setattr(task_module, "load_settings", lambda path=None: state)
+    monkeypatch.setattr(task_module, "save_settings", lambda settings, path=None: saved.append(deepcopy(settings)))
+    monkeypatch.setattr(task_module, "get_service", lambda tenant_id=None: FakeService())
+
+    queued = task_module.process_due_one_time_tasks(
+        now=datetime.datetime(2026, 7, 10, 21, 30, 5),
+        start_worker=False,
+    )
+
+    assert queued == 1
+    assert created == ["AAPL"]
+    task = saved[-1]["one_time_tasks"]["items"][0]
+    assert task["run_ids"] == ["run-1"]
+    assert task["last_queued_count"] == 1
+    assert task["last_error"] is None
