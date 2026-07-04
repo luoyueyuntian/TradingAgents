@@ -87,3 +87,59 @@ def test_web_app_startup_restores_discovered_tenant_runs(monkeypatch, tmp_path):
         ("worker", "default"),
         ("resume", "default"),
     ]
+
+
+def test_web_app_startup_skips_archived_and_disabled_tenant_worker_resume(monkeypatch):
+    import web.app as web_app
+
+    class _Tenant:
+        def __init__(self, *, archived: bool = False, disabled: bool = False) -> None:
+            self.archived = archived
+            self.disabled = disabled
+
+    class _Store:
+        def __init__(self, _db_path) -> None:
+            pass
+
+        def get_tenant(self, tenant_id: str):
+            return {
+                "active": _Tenant(),
+                "archived": _Tenant(archived=True),
+                "disabled": _Tenant(disabled=True),
+            }.get(tenant_id)
+
+    calls: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(web_app, "bootstrap_admin_from_env", lambda store: None)
+    monkeypatch.setattr(web_app, "UserStore", _Store)
+    monkeypatch.setattr(web_app, "get_web_auth_db_path", lambda: Path("/tmp/auth.db"))
+    monkeypatch.setattr(
+        web_app,
+        "list_web_tenant_ids",
+        lambda: ["active", "archived", "disabled"],
+        raising=False,
+    )
+    monkeypatch.setattr(web_app, "get_execution_mode", lambda: "local_thread")
+    monkeypatch.setattr(web_app, "load_runs_index", lambda tenant_id=None: calls.append(("load", tenant_id)))
+    monkeypatch.setattr(
+        web_app,
+        "ensure_worker_started",
+        lambda tenant_id=None: calls.append(("worker", tenant_id)),
+    )
+    monkeypatch.setattr(
+        web_app,
+        "resume_incomplete_runs",
+        lambda tenant_id=None: calls.append(("resume", tenant_id)),
+    )
+
+    asyncio.run(web_app._load_persisted_runs())
+
+    assert calls == [
+        ("load", None),
+        ("worker", None),
+        ("resume", None),
+        ("load", "active"),
+        ("worker", "active"),
+        ("resume", "active"),
+        ("load", "archived"),
+        ("load", "disabled"),
+    ]
