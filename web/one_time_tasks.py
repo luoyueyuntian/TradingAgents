@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import threading
 import uuid
 from copy import deepcopy
 
@@ -29,6 +30,7 @@ except ImportError:  # pragma: no cover
 
 
 _CRYPTO_TICKER_HINTS = ("BTC", "ETH", "USDT", "BNB", "SOL", "XRP", "DOGE", "ADA", "-USD")
+_PROCESS_DUE_LOCK = threading.Lock()
 
 
 def _now(now: datetime.datetime | None = None) -> datetime.datetime:
@@ -320,77 +322,83 @@ def process_due_one_time_tasks(
     now: datetime.datetime | None = None,
     start_worker: bool = True,
 ) -> int:
+    if not _PROCESS_DUE_LOCK.acquire(blocking=False):
+        return 0
+
     tasks = _load_one_time_tasks_raw(tenant_id)
-    service = get_service(tenant_id)
-    resolved_now = _now(now)
-    timestamp = _now_iso(resolved_now)
-    current_slot = resolved_now.strftime("%Y-%m-%d %H:%M")
-    changed = False
-    queued_total = 0
-    tenant_settings = service.load_tenant_settings()
+    try:
+        service = get_service(tenant_id)
+        resolved_now = _now(now)
+        timestamp = _now_iso(resolved_now)
+        current_slot = resolved_now.strftime("%Y-%m-%d %H:%M")
+        changed = False
+        queued_total = 0
+        tenant_settings = service.load_tenant_settings()
 
-    for index, task in enumerate(tasks):
-        if task.status != "scheduled":
-            continue
-
-        if task.scheduled_for < current_slot:
-            if task.triggered_at is not None:
+        for index, task in enumerate(tasks):
+            if task.status != "scheduled":
                 continue
-            tasks[index] = task.model_copy(update={"status": "missed", "updated_at": timestamp})
-            changed = True
-            continue
 
-        if task.scheduled_for != current_slot:
-            continue
+            if task.scheduled_for < current_slot:
+                if task.triggered_at is not None:
+                    continue
+                tasks[index] = task.model_copy(update={"status": "missed", "updated_at": timestamp})
+                changed = True
+                continue
 
-        run_ids: list[str] = []
-        last_error: str | None = None
-        settings = _build_task_run_settings(task, tenant_settings)
-        for ticker in task.selection_snapshot.resolved_tickers:
-            request = AnalysisRequest(
-                ticker=ticker,
-                date=task.analysis_date,
-                asset_type=_infer_asset_type(ticker),
-                analysts=task.analysis_config.analysts,
-                llm_provider=task.analysis_config.llm_provider,
-                deep_think_model=task.analysis_config.deep_think_model,
-                quick_think_model=task.analysis_config.quick_think_model,
-                research_depth=task.analysis_config.research_depth,
-                output_language=task.analysis_config.output_language,
-                market_profile=task.analysis_config.market_profile,
-                max_risk_discuss_rounds=task.analysis_config.max_risk_discuss_rounds,
-                max_recur_limit=task.analysis_config.max_recur_limit,
-                checkpoint_enabled=task.analysis_config.checkpoint_enabled,
-                benchmark_ticker=task.analysis_config.benchmark_ticker,
-                backend_url=task.analysis_config.backend_url,
-                temperature=task.analysis_config.temperature,
-                google_thinking_level=task.analysis_config.google_thinking_level,
-                openai_reasoning_effort=task.analysis_config.openai_reasoning_effort,
-                anthropic_effort=task.analysis_config.anthropic_effort,
+            if task.scheduled_for != current_slot:
+                continue
+
+            run_ids: list[str] = []
+            last_error: str | None = None
+            settings = _build_task_run_settings(task, tenant_settings)
+            for ticker in task.selection_snapshot.resolved_tickers:
+                request = AnalysisRequest(
+                    ticker=ticker,
+                    date=task.analysis_date,
+                    asset_type=_infer_asset_type(ticker),
+                    analysts=task.analysis_config.analysts,
+                    llm_provider=task.analysis_config.llm_provider,
+                    deep_think_model=task.analysis_config.deep_think_model,
+                    quick_think_model=task.analysis_config.quick_think_model,
+                    research_depth=task.analysis_config.research_depth,
+                    output_language=task.analysis_config.output_language,
+                    market_profile=task.analysis_config.market_profile,
+                    max_risk_discuss_rounds=task.analysis_config.max_risk_discuss_rounds,
+                    max_recur_limit=task.analysis_config.max_recur_limit,
+                    checkpoint_enabled=task.analysis_config.checkpoint_enabled,
+                    benchmark_ticker=task.analysis_config.benchmark_ticker,
+                    backend_url=task.analysis_config.backend_url,
+                    temperature=task.analysis_config.temperature,
+                    google_thinking_level=task.analysis_config.google_thinking_level,
+                    openai_reasoning_effort=task.analysis_config.openai_reasoning_effort,
+                    anthropic_effort=task.analysis_config.anthropic_effort,
+                )
+                try:
+                    run = service.create_run(request, start_worker=start_worker, settings=settings)
+                except Exception as exc:
+                    last_error = str(exc)
+                    continue
+                run_ids.append(run.run_id)
+
+            status = "queued" if run_ids else "completed"
+            triggered_at = timestamp
+            tasks[index] = task.model_copy(
+                update={
+                    "status": status,
+                    "triggered_at": triggered_at,
+                    "updated_at": timestamp,
+                    "completed_at": timestamp if not run_ids else task.completed_at,
+                    "last_queued_count": len(run_ids),
+                    "last_error": last_error,
+                    "run_ids": run_ids,
+                }
             )
-            try:
-                run = service.create_run(request, start_worker=start_worker, settings=settings)
-            except Exception as exc:
-                last_error = str(exc)
-                continue
-            run_ids.append(run.run_id)
+            queued_total += len(run_ids)
+            changed = True
 
-        status = "queued" if run_ids else "completed"
-        triggered_at = timestamp
-        tasks[index] = task.model_copy(
-            update={
-                "status": status,
-                "triggered_at": triggered_at,
-                "updated_at": timestamp,
-                "completed_at": timestamp if not run_ids else task.completed_at,
-                "last_queued_count": len(run_ids),
-                "last_error": last_error,
-                "run_ids": run_ids,
-            }
-        )
-        queued_total += len(run_ids)
-        changed = True
-
-    if changed:
-        _save_one_time_tasks_raw(tenant_id, tasks)
-    return queued_total
+        if changed:
+            _save_one_time_tasks_raw(tenant_id, tasks)
+        return queued_total
+    finally:
+        _PROCESS_DUE_LOCK.release()
