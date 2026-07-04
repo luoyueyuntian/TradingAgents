@@ -38,6 +38,11 @@ def test_stock_group_saved_model_rejects_empty_ticker_list():
         StockGroup(id="group-1", name="AI Leaders", tickers=[], created_at="2026-07-01T12:00:00", updated_at="2026-07-01T12:00:00")
 
 
+def test_stock_group_saved_model_rejects_omitted_tickers():
+    with pytest.raises(ValidationError, match="Field required"):
+        StockGroup(id="group-1", name="AI Leaders", created_at="2026-07-01T12:00:00", updated_at="2026-07-01T12:00:00")
+
+
 def test_stock_group_create_rejects_blank_name():
     with pytest.raises(ValidationError, match="name.*must not be blank"):
         StockGroupCreate(name="   ", tickers=["NVDA"])

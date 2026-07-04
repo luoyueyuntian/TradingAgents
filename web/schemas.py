@@ -625,7 +625,7 @@ class StockGroup(BaseModel):
 
     id: str
     name: str
-    tickers: list[str] = Field(default_factory=list)
+    tickers: list[str]
     created_at: str
     updated_at: str
 
