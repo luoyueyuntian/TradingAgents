@@ -616,28 +616,8 @@ class StockGroupCreate(BaseModel):
         return tickers
 
 
-class StockGroupUpdate(BaseModel):
-    """Payload for partially updating one static stock group."""
-
-    name: str | None = None
-    tickers: list[str] | None = None
-
-    @field_validator("name", mode="before")
-    @classmethod
-    def _normalize_name(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return _normalize_required_text(value, "name")
-
-    @field_validator("tickers", mode="before")
-    @classmethod
-    def _normalize_tickers(cls, value) -> list[str] | None:
-        if value is None:
-            return None
-        tickers = _normalize_ticker_list(value)
-        if not tickers:
-            raise ValueError("tickers must not be empty")
-        return tickers
+class StockGroupUpdate(StockGroupCreate):
+    """Payload for updating one static stock group."""
 
 
 class StockGroup(BaseModel):
@@ -773,66 +753,8 @@ class OneTimeTaskCreate(BaseModel):
         return group_ids
 
 
-class OneTimeTaskUpdate(BaseModel):
-    """Payload for partially updating one one-time analysis task."""
-
-    name: str | None = None
-    scheduled_for: str | None = None
-    analysis_date: str | None = None
-    manual_stocks: list[ManualStockSelection] | None = None
-    group_ids: list[str] | None = None
-    include_watchlist: bool | None = None
-    analysis_config: AutomationAnalysisConfig | None = None
-
-    @field_validator("name", mode="before")
-    @classmethod
-    def _normalize_name(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return _normalize_required_text(value, "name")
-
-    @field_validator("scheduled_for", mode="before")
-    @classmethod
-    def _validate_scheduled_for(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        trimmed = _normalize_required_text(value, "scheduled_for")
-        try:
-            datetime.strptime(trimmed, "%Y-%m-%d %H:%M")
-        except ValueError as exc:
-            raise ValueError("scheduled_for must be in YYYY-MM-DD HH:MM format") from exc
-        return trimmed
-
-    @field_validator("analysis_date", mode="before")
-    @classmethod
-    def _validate_analysis_date(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        trimmed = _normalize_required_text(value, "analysis_date")
-        try:
-            datetime.strptime(trimmed, "%Y-%m-%d")
-        except ValueError as exc:
-            raise ValueError("analysis_date must be in YYYY-MM-DD format") from exc
-        return trimmed
-
-    @field_validator("group_ids", mode="before")
-    @classmethod
-    def _normalize_group_ids(cls, value) -> list[str] | None:
-        if value is None:
-            return None
-        if not isinstance(value, list):
-            raise ValueError("group_ids must be a list")
-        group_ids: list[str] = []
-        seen: set[str] = set()
-        for item in value:
-            if not isinstance(item, str):
-                continue
-            normalized = item.strip()
-            if not normalized or normalized in seen:
-                continue
-            seen.add(normalized)
-            group_ids.append(normalized)
-        return group_ids
+class OneTimeTaskUpdate(OneTimeTaskCreate):
+    """Payload for updating one one-time analysis task."""
 
 
 class OneTimeTask(BaseModel):
@@ -899,7 +821,7 @@ class OneTimeTaskPage(BaseModel):
     items: list[OneTimeTask] = Field(default_factory=list)
     page: int = 1
     page_size: int = 20
-    total: int = 0
+    total_count: int = 0
 
 
 class AutomationRule(BaseModel):
