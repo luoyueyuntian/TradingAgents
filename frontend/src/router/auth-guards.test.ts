@@ -2,30 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
 import { defineComponent } from 'vue';
 
-vi.mock('./pages', () => {
-  const page = defineComponent({ name: 'MockPage', template: '<div />' });
-  const adminMeta = { requiresAuth: true, minRole: 'admin' as const };
-  const requiresAuth = { requiresAuth: true } as const;
-
-  return {
-    routes: [
-      { path: '/', name: 'dashboard', component: page, meta: requiresAuth },
-      { path: '/analysis', name: 'analysis', component: page, meta: requiresAuth },
-      { path: '/runs', name: 'runs', component: page, meta: requiresAuth },
-      { path: '/runs/:runId', name: 'run-detail', component: page, meta: requiresAuth },
-      { path: '/portfolio', name: 'portfolio', component: page, meta: requiresAuth },
-      { path: '/workspace', name: 'workspace', component: page, meta: requiresAuth },
-      { path: '/automations', name: 'automations', component: page, meta: requiresAuth },
-      { path: '/settings', name: 'settings', component: page, meta: adminMeta },
-      { path: '/tenants', name: 'tenants', component: page, meta: adminMeta },
-      { path: '/tenants/:tenantId', name: 'tenant-detail', component: page, meta: adminMeta },
-      { path: '/users', name: 'users', component: page, meta: adminMeta },
-      { path: '/login', name: 'login', component: page },
-      { path: '/change-password', name: 'change-password', component: page, meta: requiresAuth },
-    ],
-  };
-});
-
 const sessionState = {
   loading: false,
   currentUser: null as null | {
@@ -67,8 +43,21 @@ function makeUser(overrides: Partial<NonNullable<typeof sessionState.currentUser
 
 async function loadRouterModule() {
   vi.resetModules();
+  const pagesModule = await import('./pages');
+  const tenantRoute = pagesModule.routes.find((route) => route.path === '/tenants');
+  const tenantDetailRoute = pagesModule.routes.find((route) => route.path === '/tenants/:tenantId');
+
+  if (tenantRoute) {
+    tenantRoute.component = stubRouteComponent;
+  }
+  if (tenantDetailRoute) {
+    tenantDetailRoute.component = stubRouteComponent;
+  }
+
   return import('./index');
 }
+
+const stubRouteComponent = () => Promise.resolve({ default: defineComponent({ name: 'TenantRouteStub', template: '<div />' }) });
 
 describe('router auth guards', () => {
   beforeEach(() => {
