@@ -38,8 +38,19 @@ function isTenantUnavailableError(error: ApiRequestError): boolean {
   return error.status === 403 && /tenant is (disabled|archived)/i.test(error.message);
 }
 
-function notifyAuthInvalidationHandlers(error: ApiRequestError): void {
+function isCrossTenantAdminRequest(path: string): boolean {
+  return path.startsWith('/api/admin/tenants/');
+}
+
+function shouldInvalidateAuth(error: ApiRequestError, path: string): boolean {
   if (!isTenantUnavailableError(error)) {
+    return false;
+  }
+  return !isCrossTenantAdminRequest(path);
+}
+
+function notifyAuthInvalidationHandlers(error: ApiRequestError, path: string): void {
+  if (!shouldInvalidateAuth(error, path)) {
     return;
   }
   authInvalidationHandlers.forEach((handler) => handler());
@@ -108,7 +119,7 @@ async function apiRequest<T>(
   const response = await fetchImpl(buildApiUrl(path, context), init);
   if (!response.ok) {
     const error = await createApiError(response);
-    notifyAuthInvalidationHandlers(error);
+    notifyAuthInvalidationHandlers(error, path);
     throw error;
   }
   if (response.status === 204) {

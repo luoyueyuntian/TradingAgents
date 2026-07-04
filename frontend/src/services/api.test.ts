@@ -61,7 +61,7 @@ describe('api service', () => {
   it.each([
     'Tenant is disabled',
     'Tenant is archived',
-  ])('runs auth invalidation handlers for tenant-state 403 responses on non-auth requests: %s', async (detail) => {
+  ])('runs auth invalidation handlers for own-session tenant-state 403 responses: %s', async (detail) => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ detail }), {
         status: 403,
@@ -73,11 +73,36 @@ describe('api service', () => {
     const unregister = registerApiAuthInvalidationHandler(invalidationHandler);
 
     try {
-      await expect(apiGet('/api/runs', { fetchImpl: fetchMock })).rejects.toMatchObject({
+      await expect(apiGet('/api/auth/me', { fetchImpl: fetchMock })).rejects.toMatchObject({
         message: detail,
         status: 403,
       });
       expect(invalidationHandler).toHaveBeenCalledTimes(1);
+    } finally {
+      unregister();
+    }
+  });
+
+  it.each([
+    'Tenant is disabled',
+    'Tenant is archived',
+  ])('does not run auth invalidation handlers for cross-tenant admin tenant-state 403 responses: %s', async (detail) => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail }), {
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const invalidationHandler = vi.fn();
+    const unregister = registerApiAuthInvalidationHandler(invalidationHandler);
+
+    try {
+      await expect(apiGet('/api/admin/tenants/tenant-b/members', { fetchImpl: fetchMock })).rejects.toMatchObject({
+        message: detail,
+        status: 403,
+      });
+      expect(invalidationHandler).not.toHaveBeenCalled();
     } finally {
       unregister();
     }
