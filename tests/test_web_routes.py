@@ -287,6 +287,35 @@ def test_stock_group_names_are_unique_per_tenant(monkeypatch, tmp_path):
     assert "already exists" in second.json()["detail"]
 
 
+def test_stock_group_list_skips_malformed_persisted_rows(monkeypatch, tmp_path):
+    client = TestClient(app)
+    monkeypatch.setattr(stock_groups_module, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant-a.json")
+    monkeypatch.setattr(
+        stock_groups_module,
+        "load_settings",
+        lambda path=None: {
+            "stock_groups": {
+                "items": [
+                    {
+                        "id": "group-1",
+                        "name": "AI Leaders",
+                        "tickers": ["NVDA", "MSFT"],
+                        "created_at": "2026-07-01T12:00:00",
+                        "updated_at": "2026-07-01T12:00:00",
+                    },
+                    {"id": "bad-row", "name": "Broken Group"},
+                    "not-a-dict",
+                ]
+            }
+        },
+    )
+
+    response = client.get("/api/stock-groups")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == ["group-1"]
+
+
 def test_run_history_export_csv_returns_filtered_rows(monkeypatch):
     client = TestClient(app)
 

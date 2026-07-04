@@ -6,6 +6,8 @@ import datetime
 import uuid
 from copy import deepcopy
 
+from pydantic import ValidationError
+
 from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import load_settings, save_settings
 
@@ -23,7 +25,10 @@ def _load_stock_groups_raw(tenant_id: str | None = None) -> list[StockGroup]:
     groups: list[StockGroup] = []
     for item in raw_items:
         if isinstance(item, dict):
-            groups.append(StockGroup.model_validate(item))
+            try:
+                groups.append(StockGroup.model_validate(item))
+            except ValidationError:
+                continue
     return groups
 
 
