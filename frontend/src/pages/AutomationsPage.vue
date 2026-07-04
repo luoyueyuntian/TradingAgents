@@ -6,7 +6,7 @@
       :description="t('automations.description')"
     >
       <template #actions>
-        <Button icon="pi pi-refresh" :label="t('common.refresh')" severity="secondary" @click="loadRules" />
+        <Button icon="pi pi-refresh" :label="t('common.refresh')" severity="secondary" @click="loadAll" />
       </template>
     </PageHeader>
 
@@ -84,6 +84,235 @@
           <p v-if="!rules.length" class="uno-text-[#6f8183]">{{ t('automations.noRules') }}</p>
         </template>
       </Card>
+
+      <Card>
+        <template #title>{{ t('automations.oneTimeTitle') }}</template>
+        <template #content>
+          <p class="uno-mb-3 uno-text-[#6f8183]">{{ t('automations.oneTimeDescription') }}</p>
+          <div data-testid="one-time-task-builder" class="uno-grid uno-gap-4">
+            <section
+              data-testid="one-time-section-basics"
+              class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3"
+            >
+              <div class="uno-mb-2 uno-font-700">Basics</div>
+              <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+                <label class="uno-grid uno-gap-1">
+                  <span>Name</span>
+                  <InputText
+                    v-model="oneTimeForm.name"
+                    data-testid="one-time-name"
+                    :placeholder="t('automations.oneTimeTitle')"
+                    :disabled="!canWrite"
+                  />
+                </label>
+                <label class="uno-grid uno-gap-1">
+                  <span>{{ t('automations.scheduledFor') }}</span>
+                  <InputText
+                    v-model="oneTimeForm.scheduledFor"
+                    data-testid="one-time-scheduled-for"
+                    placeholder="2026-07-10 21:30"
+                    :disabled="!canWrite"
+                  />
+                </label>
+                <label class="uno-grid uno-gap-1">
+                  <span>{{ t('automations.analysisDate') }}</span>
+                  <InputText
+                    v-model="oneTimeForm.analysisDate"
+                    data-testid="one-time-analysis-date"
+                    :placeholder="t('common.date')"
+                    :disabled="!canWrite"
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section
+              data-testid="one-time-section-manual-stocks"
+              class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3"
+            >
+              <div class="uno-mb-2 uno-font-700">{{ t('automations.manualStocks') }}</div>
+              <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+                <label class="uno-grid uno-gap-1">
+                  <span>Market</span>
+                  <Select
+                    v-model="manualStockMarket"
+                    data-testid="manual-stock-market"
+                    :options="manualStockMarketOptions"
+                    option-label="label"
+                    option-value="value"
+                    :disabled="!canWrite"
+                    @change="handleManualStockMarketChange"
+                  />
+                </label>
+                <label class="uno-grid uno-gap-1">
+                  <span>Stock</span>
+                  <Select
+                    v-model="selectedManualStockSymbol"
+                    data-testid="manual-stock-option"
+                    :options="manualStockOptions"
+                    option-label="label"
+                    option-value="symbol"
+                    :disabled="!canWrite"
+                  />
+                </label>
+                <div class="uno-flex uno-items-end">
+                  <Button
+                    icon="pi pi-plus"
+                    :label="t('common.add')"
+                    data-testid="manual-stock-add"
+                    :disabled="!canWrite"
+                    @click="addManualStock"
+                  />
+                </div>
+              </div>
+              <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
+                <div
+                  v-for="stock in oneTimeForm.manualStocks"
+                  :key="stock.symbol"
+                  class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#f7faf9] uno-p-3"
+                >
+                  <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-2">
+                    <span data-testid="manual-stock-symbol" class="uno-font-700">{{ stock.symbol }}</span>
+                    <small class="uno-text-[#6f8183]">{{ stock.name || stock.exchange || stock.market }}</small>
+                  </div>
+                  <Button
+                    icon="pi pi-times"
+                    label="Remove"
+                    severity="secondary"
+                    outlined
+                    :disabled="!canWrite"
+                    @click="removeManualStockItem(stock.symbol)"
+                  />
+                </div>
+                <p v-if="!oneTimeForm.manualStocks.length" class="uno-text-[#6f8183]">No manual stocks selected.</p>
+              </div>
+            </section>
+
+            <section
+              data-testid="one-time-section-groups-watchlist"
+              class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3"
+            >
+              <div class="uno-mb-2 uno-font-700">{{ t('automations.stockGroups') }}</div>
+              <div class="uno-grid uno-gap-[0.65rem]">
+                <label
+                  v-for="group in stockGroups"
+                  :key="group.id"
+                  class="uno-flex uno-items-center uno-gap-[0.55rem]"
+                >
+                  <input
+                    :data-testid="`one-time-group-${group.id}`"
+                    :checked="oneTimeForm.selectedGroupIds.includes(group.id)"
+                    type="checkbox"
+                    :disabled="!canWrite"
+                    @change="toggleSelectedGroup(group.id, ($event.target as HTMLInputElement).checked)"
+                  >
+                  <span>{{ group.name }}</span>
+                  <small class="uno-text-[#6f8183]">{{ group.tickers.join(', ') }}</small>
+                </label>
+                <p v-if="!stockGroups.length" class="uno-text-[#6f8183]">No stock groups available yet.</p>
+              </div>
+              <label class="uno-mt-3 uno-flex uno-items-center uno-gap-[0.55rem]">
+                <input
+                  v-model="oneTimeForm.includeWatchlist"
+                  data-testid="one-time-include-watchlist"
+                  type="checkbox"
+                  :disabled="!canWrite"
+                >
+                <span>{{ t('automations.includeWatchlist') }}</span>
+                <small class="uno-text-[#6f8183]">{{ watchlistTickers.join(', ') || t('common.na') }}</small>
+              </label>
+            </section>
+
+            <section
+              data-testid="one-time-section-resolved-universe"
+              class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3"
+            >
+              <div class="uno-mb-2 uno-font-700">{{ t('automations.resolvedUniverse') }}</div>
+              <div class="uno-flex uno-flex-wrap uno-gap-2">
+                <span
+                  v-for="ticker in resolvedTickers"
+                  :key="ticker"
+                  :data-testid="`resolved-ticker-${ticker}`"
+                  class="uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
+                >
+                  {{ ticker }}
+                </span>
+              </div>
+              <p v-if="!resolvedTickers.length" class="uno-mt-2 uno-text-[#6f8183]">No stocks resolved yet.</p>
+            </section>
+
+            <section
+              data-testid="one-time-section-save"
+              class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3"
+            >
+              <div class="uno-mb-2 uno-font-700">{{ t('common.save') }}</div>
+              <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3">
+                <summary class="uno-cursor-pointer uno-font-700 uno-text-[#243a3d]">{{ t('automations.analysisConfig') }}</summary>
+                <div class="uno-mt-3 uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+                  <Select v-model="oneTimeForm.llm_provider" :options="providerOptions" option-label="label" option-value="value" :disabled="!canWrite" @change="syncProviderModels" />
+                  <InputText v-model="oneTimeForm.quick_think_model" :placeholder="t('analysis.quickModel')" :disabled="!canWrite" />
+                  <InputText v-model="oneTimeForm.deep_think_model" :placeholder="t('analysis.deepModel')" :disabled="!canWrite" />
+                  <Select v-model="oneTimeForm.research_depth" :options="depthOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+                  <Select v-model="oneTimeForm.output_language" :options="languageOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+                  <Select v-model="oneTimeForm.market_profile" :options="marketProfileOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+                  <InputText v-model="oneTimeForm.max_risk_discuss_rounds" type="number" :placeholder="t('settings.riskRounds')" :disabled="!canWrite" />
+                  <InputText v-model="oneTimeForm.max_recur_limit" type="number" :placeholder="t('settings.maxRecurLimit')" :disabled="!canWrite" />
+                  <InputText v-model="oneTimeForm.benchmark_ticker" :placeholder="t('settings.benchmarkTicker')" :disabled="!canWrite" />
+                  <InputText v-model="oneTimeForm.backend_url" :placeholder="t('settings.backendUrl')" :disabled="!canWrite" />
+                  <InputText v-model="oneTimeForm.temperature" type="number" :placeholder="t('settings.temperature')" :disabled="!canWrite" />
+                  <Select v-model="oneTimeForm.google_thinking_level" :options="googleThinkingOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+                  <Select v-model="oneTimeForm.openai_reasoning_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+                  <Select v-model="oneTimeForm.anthropic_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+                  <label class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+                    <input v-model="oneTimeForm.checkpoint_enabled" type="checkbox" :disabled="!canWrite">
+                    <span>{{ t('settings.enableCheckpoint') }}</span>
+                  </label>
+                </div>
+              </details>
+              <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+                <Button
+                  icon="pi pi-save"
+                  :label="t('common.save')"
+                  data-testid="one-time-save"
+                  :disabled="!canWrite || !resolvedTickers.length"
+                  @click="saveOneTimeTask"
+                />
+              </div>
+            </section>
+          </div>
+        </template>
+      </Card>
+
+      <Card>
+        <template #title>{{ t('automations.oneTimeTitle') }}</template>
+        <template #content>
+          <div data-testid="one-time-task-list" class="uno-grid uno-gap-[0.65rem]">
+            <div
+              v-for="task in oneTimeTasks"
+              :key="String(task.id)"
+              class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3"
+            >
+              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
+                <span>{{ task.name }}</span>
+                <Tag :value="formatOneTimeTaskStatus(task.status)" severity="info" />
+              </div>
+              <small class="uno-text-[#6f8183]">
+                {{ task.scheduled_for || t('common.na') }} · {{ task.analysis_date || t('common.na') }}
+              </small>
+              <div class="uno-mt-2 uno-flex uno-flex-wrap uno-gap-2">
+                <span
+                  v-for="ticker in oneTimeTaskTickers(task)"
+                  :key="ticker"
+                  class="uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
+                >
+                  {{ ticker }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <p v-if="!oneTimeTasks.length" class="uno-text-[#6f8183]">No one-time tasks yet.</p>
+        </template>
+      </Card>
     </div>
   </section>
 </template>
@@ -103,12 +332,31 @@ import { useI18n } from '../i18n';
 import { apiDelete, apiGet, apiPatch, apiPost } from '../services/api';
 import { useSession } from '../stores/session';
 import type { JsonRecord } from '../utils/format';
+import {
+  buildStockSearchPath,
+  normalizeStockOptions,
+  type StockCatalogOption,
+} from './analyzeStockSelection';
 import { buildAutomationPayload } from './automationPayload';
+import { buildOneTimeTaskPayload } from './oneTimeTaskPayload';
+import {
+  mergeResolvedTickers,
+  removeManualStock,
+  upsertManualStock,
+  type ManualStockPick,
+  type SelectedGroup,
+} from './oneTimeTaskSelection';
 
 const session = useSession();
 const canWrite = computed(() => session.canWrite.value);
 const providers = ref<JsonRecord[]>([]);
 const rules = ref<JsonRecord[]>([]);
+const oneTimeTasks = ref<JsonRecord[]>([]);
+const stockGroups = ref<SelectedGroup[]>([]);
+const watchlist = ref<JsonRecord[]>([]);
+const manualStockOptions = ref<Required<StockCatalogOption>[]>([]);
+const manualStockMarket = ref('us');
+const selectedManualStockSymbol = ref('');
 const error = ref('');
 const { t } = useI18n();
 const form = reactive({
@@ -135,11 +383,40 @@ const form = reactive({
   openai_reasoning_effort: '',
   anthropic_effort: '',
 });
+const oneTimeForm = reactive({
+  name: '',
+  scheduledFor: '',
+  analysisDate: '',
+  manualStocks: [] as ManualStockPick[],
+  selectedGroupIds: [] as string[],
+  includeWatchlist: false,
+  analysts: ['market'],
+  llm_provider: 'openai',
+  quick_think_model: '',
+  deep_think_model: '',
+  research_depth: 1,
+  output_language: 'English',
+  market_profile: 'default',
+  max_risk_discuss_rounds: '1',
+  max_recur_limit: '100',
+  checkpoint_enabled: false,
+  benchmark_ticker: '',
+  backend_url: '',
+  temperature: '',
+  google_thinking_level: '',
+  openai_reasoning_effort: '',
+  anthropic_effort: '',
+});
 const providerOptions = computed(() => providers.value.map((provider) => ({
   label: provider.display_name || provider.provider,
   value: provider.provider,
 })));
 const selectedProvider = computed(() => providers.value.find((provider) => provider.provider === form.llm_provider));
+const manualStockMarketOptions = computed(() => [
+  { label: 'US', value: 'us' },
+  { label: 'HK', value: 'hk' },
+  { label: 'CN A', value: 'cn_a' },
+]);
 const depthOptions = computed(() => [
   { label: t('analysis.depthShallow'), value: 1 },
   { label: t('analysis.depthMedium'), value: 3 },
@@ -188,6 +465,14 @@ const weekdayOptions = computed(() => [
   { label: t('automations.saturday'), value: 'sat' },
   { label: t('automations.sunday'), value: 'sun' },
 ]);
+const selectedGroups = computed(() => stockGroups.value.filter((group) => oneTimeForm.selectedGroupIds.includes(group.id)));
+const watchlistTickers = computed(() => watchlist.value.map((item) => String(item.ticker || '')).filter(Boolean));
+const resolvedTickers = computed(() => mergeResolvedTickers({
+  manualStocks: oneTimeForm.manualStocks,
+  selectedGroups: selectedGroups.value,
+  includeWatchlist: oneTimeForm.includeWatchlist,
+  watchlistTickers: watchlistTickers.value,
+}));
 
 function syncProviderModels() {
   const provider = selectedProvider.value;
@@ -196,6 +481,12 @@ function syncProviderModels() {
   }
   if (!form.deep_think_model) {
     form.deep_think_model = provider?.deep_models?.[0]?.value || '';
+  }
+  if (!oneTimeForm.quick_think_model) {
+    oneTimeForm.quick_think_model = provider?.quick_models?.[0]?.value || '';
+  }
+  if (!oneTimeForm.deep_think_model) {
+    oneTimeForm.deep_think_model = provider?.deep_models?.[0]?.value || '';
   }
 }
 
@@ -218,6 +509,21 @@ async function loadSettingsDefaults() {
   form.google_thinking_level = String(llm.google_thinking_level || '');
   form.openai_reasoning_effort = String(llm.openai_reasoning_effort || '');
   form.anthropic_effort = String(llm.anthropic_effort || '');
+  oneTimeForm.llm_provider = String(llm.provider || oneTimeForm.llm_provider);
+  oneTimeForm.quick_think_model = String(llm.quick_think_model || oneTimeForm.quick_think_model);
+  oneTimeForm.deep_think_model = String(llm.deep_think_model || oneTimeForm.deep_think_model);
+  oneTimeForm.research_depth = Number(analysis.research_depth || oneTimeForm.research_depth);
+  oneTimeForm.output_language = String(analysis.output_language || oneTimeForm.output_language);
+  oneTimeForm.market_profile = String(analysis.market_profile || oneTimeForm.market_profile);
+  oneTimeForm.max_risk_discuss_rounds = String(analysis.max_risk_discuss_rounds ?? oneTimeForm.max_risk_discuss_rounds);
+  oneTimeForm.max_recur_limit = String(analysis.max_recur_limit ?? oneTimeForm.max_recur_limit);
+  oneTimeForm.checkpoint_enabled = Boolean(analysis.checkpoint_enabled);
+  oneTimeForm.benchmark_ticker = String(analysis.benchmark_ticker || '');
+  oneTimeForm.backend_url = String(llm.backend_url || '');
+  oneTimeForm.temperature = llm.temperature === null || llm.temperature === undefined ? '' : String(llm.temperature);
+  oneTimeForm.google_thinking_level = String(llm.google_thinking_level || '');
+  oneTimeForm.openai_reasoning_effort = String(llm.openai_reasoning_effort || '');
+  oneTimeForm.anthropic_effort = String(llm.anthropic_effort || '');
 }
 
 async function loadProviders() {
@@ -237,6 +543,59 @@ async function loadRules() {
   }
 }
 
+async function loadOneTimeTasks() {
+  const payload = await apiGet<JsonRecord>('/api/one-time-tasks', session.apiContext.value);
+  oneTimeTasks.value = Array.isArray(payload.items) ? payload.items : [];
+}
+
+async function loadStockGroups() {
+  stockGroups.value = await apiGet<SelectedGroup[]>('/api/stock-groups', session.apiContext.value);
+}
+
+async function loadWatchlist() {
+  watchlist.value = await apiGet<JsonRecord[]>('/api/watchlist', session.apiContext.value);
+}
+
+async function loadManualStockOptions() {
+  const rows = await apiGet<StockCatalogOption[]>(
+    buildStockSearchPath(manualStockMarket.value, '', 100),
+    session.apiContext.value,
+  );
+  manualStockOptions.value = normalizeStockOptions(rows);
+}
+
+async function handleManualStockMarketChange() {
+  selectedManualStockSymbol.value = '';
+  await loadManualStockOptions();
+}
+
+function addManualStock() {
+  const selectedStock = manualStockOptions.value.find((item) => item.symbol === selectedManualStockSymbol.value);
+  if (!selectedStock) {
+    return;
+  }
+  oneTimeForm.manualStocks = upsertManualStock(oneTimeForm.manualStocks, {
+    market: selectedStock.market,
+    symbol: selectedStock.symbol,
+    name: selectedStock.name,
+    exchange: selectedStock.exchange,
+  });
+}
+
+function removeManualStockItem(symbol: string) {
+  oneTimeForm.manualStocks = removeManualStock(oneTimeForm.manualStocks, symbol);
+}
+
+function toggleSelectedGroup(groupId: string, checked: boolean) {
+  const next = new Set(oneTimeForm.selectedGroupIds);
+  if (checked) {
+    next.add(groupId);
+  } else {
+    next.delete(groupId);
+  }
+  oneTimeForm.selectedGroupIds = [...next];
+}
+
 async function saveRule() {
   if (!form.name.trim()) return;
   await apiPost('/api/automations', buildAutomationPayload(form), session.apiContext.value);
@@ -252,6 +611,29 @@ async function saveRule() {
   await loadSettingsDefaults();
   syncProviderModels();
   await loadRules();
+}
+
+async function saveOneTimeTask() {
+  if (!oneTimeForm.name.trim() || !oneTimeForm.scheduledFor.trim() || !oneTimeForm.analysisDate || !resolvedTickers.value.length) {
+    return;
+  }
+  const payloadForm = {
+    ...oneTimeForm,
+    analysts: [...oneTimeForm.analysts],
+    manualStocks: oneTimeForm.manualStocks.map((stock) => ({ ...stock })),
+    selectedGroupIds: [...oneTimeForm.selectedGroupIds],
+  };
+  await apiPost('/api/one-time-tasks', buildOneTimeTaskPayload(payloadForm), session.apiContext.value);
+  Object.assign(oneTimeForm, {
+    name: '',
+    scheduledFor: '',
+    analysisDate: '',
+    manualStocks: [],
+    selectedGroupIds: [],
+    includeWatchlist: false,
+  });
+  selectedManualStockSymbol.value = '';
+  await loadOneTimeTasks();
 }
 
 async function toggleRule(rule: JsonRecord) {
@@ -271,8 +653,45 @@ async function deleteRule(ruleId: string) {
   await loadRules();
 }
 
+async function loadAll() {
+  error.value = '';
+  try {
+    await Promise.all([
+      loadProviders(),
+      loadSettingsDefaults(),
+      loadRules(),
+      loadOneTimeTasks(),
+      loadStockGroups(),
+      loadWatchlist(),
+      loadManualStockOptions(),
+    ]);
+  } catch (exc) {
+    error.value = exc instanceof Error ? exc.message : t('automations.loadError');
+  }
+}
+
+function formatOneTimeTaskStatus(status: unknown) {
+  switch (String(status || '').toLowerCase()) {
+    case 'completed':
+      return t('automations.taskStatusCompleted');
+    case 'missed':
+      return t('automations.taskStatusMissed');
+    case 'cancelled':
+      return t('automations.taskStatusCancelled');
+    default:
+      return t('automations.taskStatusScheduled');
+  }
+}
+
+function oneTimeTaskTickers(task: JsonRecord) {
+  const snapshot = task.selection_snapshot;
+  if (snapshot && typeof snapshot === 'object' && Array.isArray((snapshot as JsonRecord).resolved_tickers)) {
+    return ((snapshot as JsonRecord).resolved_tickers as unknown[]).map((item) => String(item));
+  }
+  return [];
+}
+
 onMounted(async () => {
-  await Promise.all([loadProviders(), loadSettingsDefaults()]);
-  await loadRules();
+  await loadAll();
 });
 </script>
