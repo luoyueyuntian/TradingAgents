@@ -6,7 +6,7 @@
       :description="t('tenants.detailDescription', { tenantId: routeTenantId || t('common.na') })"
     >
       <template #actions>
-        <Button icon="pi pi-refresh" :label="t('common.refresh')" severity="secondary" :loading="loading" @click="loadTenant" />
+        <Button icon="pi pi-refresh" :label="t('common.refresh')" severity="secondary" :loading="loading" @click="refreshPage" />
       </template>
     </PageHeader>
 
@@ -74,6 +74,7 @@
 
     <AdminUserDirectory
       v-if="tenant"
+      ref="directory"
       :list-path="tenantUsersPath"
       :create-path="tenantUsersPath"
       :update-path="tenantUserPath"
@@ -86,7 +87,7 @@
 import Button from 'primevue/button';
 import Card from 'primevue/card';
 import Message from 'primevue/message';
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import AdminUserDirectory from '../components/AdminUserDirectory.vue';
@@ -108,6 +109,7 @@ type AdminTenantResponse = {
 
 const route = useRoute();
 const { t } = useI18n();
+const directory = ref<{ loadUsers: () => Promise<void> } | null>(null);
 const loading = ref(false);
 const saving = ref(false);
 const archiving = ref(false);
@@ -152,6 +154,16 @@ async function loadTenant() {
   }
 }
 
+async function refreshDirectory() {
+  await nextTick();
+  await directory.value?.loadUsers();
+}
+
+async function refreshPage() {
+  await loadTenant();
+  await refreshDirectory();
+}
+
 async function toggleTenantDisabled() {
   if (!tenant.value) {
     return;
@@ -190,6 +202,14 @@ async function archiveTenant() {
     archiving.value = false;
   }
 }
+
+watch(routeTenantId, async (tenantId, previousTenantId) => {
+  if (!tenantId || tenantId === previousTenantId) {
+    return;
+  }
+  tenant.value = null;
+  await refreshPage();
+});
 
 onMounted(loadTenant);
 </script>

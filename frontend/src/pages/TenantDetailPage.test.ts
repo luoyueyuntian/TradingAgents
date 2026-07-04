@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { reactive } from 'vue';
 
 import TenantDetailPage from './TenantDetailPage.vue';
 
@@ -10,6 +11,15 @@ const { apiGet, apiPost, apiPatch, apiDelete } = vi.hoisted(() => ({
   apiDelete: vi.fn(),
 }));
 
+const route = reactive({
+  params: {
+    tenantId: 'tenant-a',
+  },
+});
+
+const adminUserDirectoryProps = vi.hoisted(() => vi.fn());
+const adminUserDirectoryLoadUsers = vi.hoisted(() => vi.fn());
+
 vi.mock('../services/api', () => ({
   apiGet,
   apiPost,
@@ -18,11 +28,21 @@ vi.mock('../services/api', () => ({
 }));
 
 vi.mock('vue-router', () => ({
-  useRoute: () => ({
-    params: {
-      tenantId: 'tenant-a',
+  useRoute: () => route,
+}));
+
+vi.mock('../components/AdminUserDirectory.vue', () => ({
+  default: {
+    props: ['listPath', 'createPath', 'updatePath', 'deletePath'],
+    template: '<div data-testid="admin-user-directory-stub" />',
+    setup(props: Record<string, unknown>, { expose }: { expose: (value: unknown) => void }) {
+      adminUserDirectoryProps(props);
+      expose({
+        loadUsers: adminUserDirectoryLoadUsers,
+      });
+      return {};
     },
-  }),
+  },
 }));
 
 const ButtonStub = {
@@ -40,60 +60,70 @@ const ButtonStub = {
   `,
 };
 
-const InputTextStub = {
-  props: ['modelValue', 'type', 'placeholder', 'disabled'],
-  emits: ['update:modelValue'],
-  template: `
-    <input
-      :type="type || 'text'"
-      :value="modelValue"
-      :placeholder="placeholder"
-      :disabled="disabled"
-      @input="$emit('update:modelValue', $event.target.value)"
-    >
-  `,
-};
-
-const SelectStub = {
-  props: ['modelValue', 'options', 'optionLabel', 'optionValue', 'disabled'],
-  emits: ['update:modelValue', 'change'],
-  template: `
-    <select
-      :value="modelValue"
-      :disabled="disabled"
-      @change="$emit('update:modelValue', $event.target.value); $emit('change', $event)"
-    >
-      <option v-for="option in options" :key="option[optionValue || 'value']" :value="option[optionValue || 'value']">
-        {{ option[optionLabel || 'label'] }}
-      </option>
-    </select>
-  `,
-};
-
 function mountPage() {
   return mount(TenantDetailPage, {
     global: {
       stubs: {
         Button: ButtonStub,
         Card: { template: '<div><slot name="title" /><slot name="content" /></div>' },
-        InputText: InputTextStub,
         Message: { template: '<div><slot /></div>' },
         PageHeader: { template: '<div><slot name="actions" /></div>' },
-        Select: SelectStub,
       },
     },
   });
 }
 
+let mountedWrapper: ReturnType<typeof mountPage> | null = null;
+
 describe('TenantDetailPage', () => {
   beforeEach(() => {
+    route.params.tenantId = 'tenant-a';
     apiGet.mockReset();
     apiPost.mockReset();
     apiPatch.mockReset();
     apiDelete.mockReset();
+    adminUserDirectoryProps.mockReset();
+    adminUserDirectoryLoadUsers.mockReset();
   });
 
-  it('loads tenant metadata and tenant-scoped users on mount', async () => {
+  afterEach(() => {
+    mountedWrapper?.unmount();
+    mountedWrapper = null;
+  });
+
+  it('loads tenant metadata and configures tenant-scoped users on mount', async () => {
+    apiGet.mockResolvedValue({
+      tenant: {
+        id: 'tenant-row-1',
+        tenant_id: 'tenant-a',
+        display_name: 'Tenant A',
+        disabled: false,
+        archived: false,
+        user_count: 2,
+        active_admin_count: 1,
+        created_at: '2026-07-04T08:00:00Z',
+        updated_at: '2026-07-04T09:00:00Z',
+      },
+    });
+
+    const wrapper = mountPage();
+    mountedWrapper = wrapper;
+    await flushPromises();
+
+    expect(apiGet).toHaveBeenCalledWith('/api/admin/tenants/tenant-a');
+    expect(wrapper.text()).toContain('Tenant A');
+    expect(wrapper.find('[data-testid="admin-user-directory-stub"]').exists()).toBe(true);
+    expect(adminUserDirectoryProps).toHaveBeenCalledWith(
+      expect.objectContaining({
+        listPath: '/api/admin/tenants/tenant-a/users',
+        createPath: '/api/admin/tenants/tenant-a/users',
+        updatePath: expect.any(Function),
+        deletePath: expect.any(Function),
+      }),
+    );
+  });
+
+  it('reloads tenant metadata and tenant-scoped users when the tenantId route param changes', async () => {
     apiGet
       .mockResolvedValueOnce({
         tenant: {
@@ -108,32 +138,39 @@ describe('TenantDetailPage', () => {
           updated_at: '2026-07-04T09:00:00Z',
         },
       })
-      .mockResolvedValueOnce({
-        users: [
-          {
-            id: 'user-1',
-            username: 'alice',
-            email: 'alice@example.com',
-            display_name: 'Alice',
-            role: 'admin',
-            tenant_id: 'tenant-a',
-            expires_at: null,
-            must_change_password: false,
-            disabled: false,
-          },
-        ],
+      .mockResolvedValue({
+        tenant: {
+          id: 'tenant-row-2',
+          tenant_id: 'tenant-b',
+          display_name: 'Tenant B',
+          disabled: false,
+          archived: false,
+          user_count: 3,
+          active_admin_count: 1,
+          created_at: '2026-07-04T10:00:00Z',
+          updated_at: '2026-07-04T11:00:00Z',
+        },
       });
 
     const wrapper = mountPage();
+    mountedWrapper = wrapper;
+    await flushPromises();
+
+    route.params.tenantId = 'tenant-b';
     await flushPromises();
 
     expect(apiGet).toHaveBeenNthCalledWith(1, '/api/admin/tenants/tenant-a');
-    expect(apiGet).toHaveBeenNthCalledWith(2, '/api/admin/tenants/tenant-a/users');
-    expect(wrapper.text()).toContain('Tenant A');
-    expect(wrapper.text()).toContain('alice@example.com');
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/api/admin/tenants/tenant-b');
+    expect(adminUserDirectoryLoadUsers).toHaveBeenCalledTimes(1);
+    expect(adminUserDirectoryProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        listPath: '/api/admin/tenants/tenant-b/users',
+      }),
+    );
+    expect(wrapper.text()).toContain('Tenant B');
   });
 
-  it('patches tenant state toggles against the tenant detail endpoint', async () => {
+  it('refreshes both tenant metadata and the tenant-scoped user list from the page action', async () => {
     apiGet
       .mockResolvedValueOnce({
         tenant: {
@@ -148,21 +185,47 @@ describe('TenantDetailPage', () => {
           updated_at: '2026-07-04T09:00:00Z',
         },
       })
-      .mockResolvedValueOnce({ users: [] })
       .mockResolvedValueOnce({
         tenant: {
           id: 'tenant-row-1',
           tenant_id: 'tenant-a',
-          display_name: 'Tenant A',
-          disabled: true,
+          display_name: 'Tenant A Reloaded',
+          disabled: false,
           archived: false,
           user_count: 2,
           active_admin_count: 1,
           created_at: '2026-07-04T08:00:00Z',
           updated_at: '2026-07-04T09:30:00Z',
         },
-      })
-      .mockResolvedValueOnce({ users: [] });
+      });
+
+    const wrapper = mountPage();
+    mountedWrapper = wrapper;
+    await flushPromises();
+
+    await wrapper.find('button').trigger('click');
+    await flushPromises();
+
+    expect(apiGet).toHaveBeenNthCalledWith(1, '/api/admin/tenants/tenant-a');
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/api/admin/tenants/tenant-a');
+    expect(adminUserDirectoryLoadUsers).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain('Tenant A Reloaded');
+  });
+
+  it('patches tenant state toggles against the tenant detail endpoint', async () => {
+    apiGet.mockResolvedValue({
+      tenant: {
+        id: 'tenant-row-1',
+        tenant_id: 'tenant-a',
+        display_name: 'Tenant A',
+        disabled: false,
+        archived: false,
+        user_count: 2,
+        active_admin_count: 1,
+        created_at: '2026-07-04T08:00:00Z',
+        updated_at: '2026-07-04T09:00:00Z',
+      },
+    });
     apiPatch.mockResolvedValue({
       tenant: {
         id: 'tenant-row-1',
@@ -178,6 +241,7 @@ describe('TenantDetailPage', () => {
     });
 
     const wrapper = mountPage();
+    mountedWrapper = wrapper;
     await flushPromises();
 
     await wrapper.get('[data-testid="toggle-tenant-disabled"]').trigger('click');
