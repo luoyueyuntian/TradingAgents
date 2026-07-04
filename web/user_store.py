@@ -120,6 +120,14 @@ def _validate_role(role: str) -> str:
     return normalized
 
 
+def _validate_bool_flag(value: Any, field_name: str) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int) and value in {0, 1}:
+        return value
+    raise ValueError(f"{field_name} must be a boolean")
+
+
 def _normalize_optional_tenant_id(tenant_id: str | None) -> str | None:
     if tenant_id is None:
         return None
@@ -217,7 +225,7 @@ class UserStore:
     def ensure_schema(self) -> None:
         with self._connect() as conn:
             self._ensure_auth_schema(conn)
-            self._backfill_tenants(conn)
+            self._backfill_tenants_if_needed(conn)
 
     def _ensure_auth_schema(self, conn: sqlite3.Connection) -> None:
         conn.execute(
@@ -303,8 +311,26 @@ class UserStore:
             ON users(lower(email))
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS store_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
 
-    def _backfill_tenants(self, conn: sqlite3.Connection) -> None:
+    def _backfill_tenants_if_needed(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            """
+            SELECT value
+            FROM store_metadata
+            WHERE key = 'tenants_backfilled_v1'
+            """
+        ).fetchone()
+        if row is not None:
+            return
+
         user_tenant_ids = conn.execute(
             """
             SELECT DISTINCT tenant_id
@@ -317,7 +343,14 @@ class UserStore:
         now = _utc_now()
         for row in user_tenant_ids:
             tenant_id = row["tenant_id"]
-            self._ensure_tenant_record(conn, tenant_id, now=now)
+            self._insert_tenant_record_if_missing(conn, tenant_id, now=now)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO store_metadata (key, value)
+            VALUES ('tenants_backfilled_v1', ?)
+            """,
+            (now,),
+        )
 
     def count_users(self) -> int:
         self.ensure_schema()
@@ -373,7 +406,7 @@ class UserStore:
             if field_name == "display_name":
                 updates[field_name] = _require_text(value, field_name)
             elif field_name in {"disabled", "archived"}:
-                updates[field_name] = int(value)
+                updates[field_name] = _validate_bool_flag(value, field_name)
 
         with self._connect() as conn:
             self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
@@ -459,7 +492,7 @@ class UserStore:
         resolved_user_id = user_id or uuid.uuid4().hex
 
         with self._connect() as conn:
-            self._ensure_tenant_record(conn, normalized_tenant_id)
+            self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
             self._raise_for_duplicate_user_field(
                 conn,
                 "username",
@@ -642,6 +675,8 @@ class UserStore:
                 updates["email"],
                 excluding_user_id=user_id,
             )
+        if "tenant_id" in updates:
+            self._get_tenant_by_tenant_id(conn, updates["tenant_id"])
         return updates
 
     def _update_user_in_transaction(
@@ -655,8 +690,6 @@ class UserStore:
         updates = self._prepare_user_updates(conn, user_id, fields)
         if not updates:
             return
-        if "tenant_id" in updates:
-            self._ensure_tenant_record(conn, updates["tenant_id"])
         updates["updated_at"] = _utc_now()
         assignments = ", ".join(f"{field_name} = ?" for field_name in updates)
         conn.execute(
@@ -666,7 +699,7 @@ class UserStore:
         if delete_sessions or updates.get("disabled") == 1:
             conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
 
-    def _ensure_tenant_record(
+    def _insert_tenant_record_if_missing(
         self,
         conn: sqlite3.Connection,
         tenant_id: str,
@@ -1077,6 +1110,8 @@ def bootstrap_admin_from_env(store: UserStore) -> BootstrapResult:
         display_name = username
 
     validate_password_policy(password, username=username, email=email)
+    if store.get_tenant(tenant_id) is None:
+        store.create_tenant(tenant_id, display_name=tenant_id.strip())
     password_record = hash_password(password)
     user = store.create_user(
         username=username,
