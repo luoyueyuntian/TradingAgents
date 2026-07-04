@@ -15,7 +15,7 @@
           :key="item.path"
           :to="item.path"
           class="uno-flex uno-min-h-[42px] uno-items-center uno-gap-[0.65rem] uno-rounded-lg uno-px-[0.7rem] uno-py-[0.55rem] uno-text-[#dce8e8] uno-no-underline"
-          active-class="uno-bg-[#e8f0ff] uno-text-[#18233f]"
+          active-class="uno-text-[#0099ff]"
           :title="t(item.descriptionKey)"
         >
           <i :class="item.icon" />
@@ -29,18 +29,17 @@
         <div data-testid="header-start" class="uno-min-w-0" />
         <div data-testid="header-actions" class="uno-flex uno-flex-wrap uno-items-center uno-justify-end uno-gap-[0.55rem] max-[900px]:uno-w-full">
           <Button icon="pi pi-search" text rounded :aria-label="t('topbar.workspaceSearch')" @click="router.push('/workspace')" />
-          <div data-testid="language-menu" class="uno-relative">
+          <div ref="languageMenuRef" data-testid="language-menu" class="uno-relative">
             <button
               data-testid="language-trigger"
               type="button"
-              class="uno-flex uno-min-h-10 uno-cursor-pointer uno-items-center uno-gap-2 uno-rounded-lg uno-border uno-border-[#d5e2e2] uno-bg-white uno-px-3 uno-py-2 uno-text-[#243a3d] hover:uno-border-[#90a9aa]"
+              class="uno-inline-flex uno-min-h-10 uno-cursor-pointer uno-items-center uno-gap-1.5 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#243a3d] hover:uno-text-[#132a2d]"
               :aria-expanded="languageMenuOpen"
               :aria-label="t('topbar.language')"
               @click="languageMenuOpen = !languageMenuOpen"
             >
-              <i class="pi pi-globe" />
               <span>{{ currentLocaleLabel }}</span>
-              <i class="pi pi-angle-down uno-text-xs" />
+              <i :class="languageMenuOpen ? 'pi pi-angle-up uno-text-xs' : 'pi pi-angle-down uno-text-xs'" />
             </button>
             <div
               v-if="languageMenuOpen"
@@ -59,19 +58,39 @@
               </button>
             </div>
           </div>
-          <label class="uno-grid uno-min-w-[170px] uno-gap-[0.35rem] max-[900px]:uno-w-full">
-            <span class="uno-text-xs uno-font-700 uno-uppercase uno-text-[#6f8183]">{{ t('topbar.currentMember') }}</span>
-            <Select
-              v-model="currentMemberDraft"
-              data-testid="current-member-select"
-              :options="memberOptions"
-              option-label="label"
-              option-value="value"
-              :placeholder="t('topbar.memberPlaceholder')"
-              class="uno-w-full"
-              @change="session.setCurrentMemberId(currentMemberDraft)"
-            />
-          </label>
+          <div
+            data-testid="current-member-menu"
+            class="uno-relative"
+            @focusout="handleCurrentMemberMenuFocusOut"
+          >
+            <button
+              data-testid="current-member-trigger"
+              type="button"
+              class="uno-inline-flex uno-min-h-10 uno-max-w-[220px] uno-cursor-pointer uno-items-center uno-gap-1.5 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#243a3d] hover:uno-text-[#132a2d] max-[900px]:uno-max-w-full"
+              :aria-expanded="currentMemberMenuOpen"
+              :aria-label="t('topbar.currentMember')"
+              @click="toggleCurrentMemberMenu"
+            >
+              <span class="uno-max-w-[190px] uno-truncate">{{ currentMemberLabel }}</span>
+              <i :class="currentMemberMenuOpen ? 'pi pi-angle-up uno-text-xs' : 'pi pi-angle-down uno-text-xs'" />
+            </button>
+            <div
+              v-if="currentMemberMenuOpen"
+              class="uno-absolute uno-right-0 uno-top-[calc(100%+0.35rem)] uno-z-20 uno-grid uno-min-w-[190px] uno-gap-1 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-2 uno-shadow-lg"
+            >
+              <button
+                v-for="option in memberOptions"
+                :key="option.value"
+                :data-testid="`current-member-option-${option.value}`"
+                type="button"
+                class="uno-flex uno-min-h-9 uno-cursor-pointer uno-items-center uno-justify-between uno-gap-3 uno-rounded-md uno-border-0 uno-bg-transparent uno-px-2 uno-py-1.5 uno-text-left uno-text-[#243a3d] hover:uno-bg-[#f1f6f6]"
+                @click="selectCurrentMember(option.value)"
+              >
+                <span class="uno-truncate">{{ option.label }}</span>
+                <i v-if="option.value === currentMemberDraft" class="pi pi-check uno-text-[#1c7f5f]" />
+              </button>
+            </div>
+          </div>
           <div
             data-testid="user-menu"
             class="uno-relative"
@@ -81,13 +100,13 @@
             @focusout="handleUserMenuFocusOut"
           >
             <button
+              data-testid="user-menu-trigger"
               type="button"
-              class="uno-flex uno-min-h-10 uno-cursor-pointer uno-items-center uno-gap-2 uno-rounded-lg uno-border uno-border-[#d5e2e2] uno-bg-[#162326] uno-px-3 uno-py-2 uno-text-white hover:uno-bg-[#223639]"
+              class="uno-inline-flex uno-min-h-10 uno-cursor-pointer uno-items-center uno-gap-1.5 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#243a3d] hover:uno-text-[#132a2d]"
               :aria-expanded="userMenuOpen"
             >
               <strong class="uno-max-w-[180px] uno-truncate">{{ currentUserName }}</strong>
-              <span class="uno-rounded-md uno-bg-white/12 uno-px-2 uno-py-0.5 uno-text-xs">{{ t(roleLabelKey) }}</span>
-              <i class="pi pi-angle-down uno-text-xs" />
+              <i :class="userMenuOpen ? 'pi pi-angle-up uno-text-xs' : 'pi pi-angle-down uno-text-xs'" />
             </button>
             <div
               v-if="userMenuOpen"
@@ -95,6 +114,9 @@
             >
               <div class="uno-min-w-0">
                 <strong class="uno-block uno-truncate uno-text-[#132a2d]">{{ currentUserName }}</strong>
+                <small class="uno-block uno-truncate uno-text-[#6f8183]">
+                  {{ t(roleLabelKey) }}
+                </small>
                 <small class="uno-block uno-truncate uno-text-[#6f8183]">
                   {{ t('topbar.tenantValue', { tenant: session.state.currentUser?.tenant_id || t('common.notSet') }) }}
                 </small>
@@ -114,11 +136,10 @@
 
 <script setup lang="ts">
 import Button from 'primevue/button';
-import Select from 'primevue/select';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRouter } from 'vue-router';
 
-import { useI18n, type Locale } from '../i18n';
+import { setDefaultLocale, useI18n, type Locale } from '../i18n';
 import { navigationGroups } from '../router/pages';
 import { apiGet } from '../services/api';
 import { useSession } from '../stores/session';
@@ -128,6 +149,8 @@ const router = useRouter();
 const session = useSession();
 const { locale, locales, t } = useI18n();
 const languageMenuOpen = ref(false);
+const languageMenuRef = ref<HTMLElement | null>(null);
+const currentMemberMenuOpen = ref(false);
 const userMenuOpen = ref(false);
 const currentMemberDraft = ref(session.state.currentMemberId);
 const members = ref<JsonRecord[]>([]);
@@ -139,6 +162,9 @@ const memberOptions = computed(() => members.value.map((member) => ({
   label: String(member.name || member.id || ''),
   value: String(member.id || ''),
 })));
+const currentMemberLabel = computed(() => (
+  memberOptions.value.find((member) => member.value === currentMemberDraft.value)?.label || t('topbar.memberPlaceholder')
+));
 
 const roleLabelKey = computed(() => {
   const role = session.state.currentUser?.role;
@@ -163,12 +189,42 @@ function changeLocale(value: Locale) {
   languageMenuOpen.value = false;
 }
 
+function handleDocumentClick(event: MouseEvent) {
+  const target = event.target;
+  if (
+    languageMenuOpen.value
+    && languageMenuRef.value
+    && target instanceof Node
+    && !languageMenuRef.value.contains(target)
+  ) {
+    languageMenuOpen.value = false;
+  }
+}
+
 function handleUserMenuFocusOut(event: FocusEvent) {
   const nextTarget = event.relatedTarget;
   if (nextTarget instanceof Node && event.currentTarget instanceof HTMLElement && event.currentTarget.contains(nextTarget)) {
     return;
   }
   userMenuOpen.value = false;
+}
+
+function handleCurrentMemberMenuFocusOut(event: FocusEvent) {
+  const nextTarget = event.relatedTarget;
+  if (nextTarget instanceof Node && event.currentTarget instanceof HTMLElement && event.currentTarget.contains(nextTarget)) {
+    return;
+  }
+  currentMemberMenuOpen.value = false;
+}
+
+function toggleCurrentMemberMenu() {
+  currentMemberMenuOpen.value = !currentMemberMenuOpen.value;
+}
+
+function selectCurrentMember(value: string) {
+  currentMemberDraft.value = value;
+  session.setCurrentMemberId(value);
+  currentMemberMenuOpen.value = false;
 }
 
 async function loadMembers() {
@@ -183,6 +239,18 @@ async function loadMembers() {
   }
 }
 
+async function loadDefaultUiLanguage() {
+  try {
+    const settings = await apiGet<JsonRecord>('/api/settings', session.apiContext.value);
+    const configured = settings.workspace?.default_ui_language;
+    if (configured === 'en' || configured === 'zh-CN') {
+      setDefaultLocale(configured);
+    }
+  } catch {
+    // Ignore settings fetch failures here so header controls still render.
+  }
+}
+
 async function handleLogout() {
   await session.logout();
   await router.push('/login');
@@ -191,7 +259,7 @@ async function handleLogout() {
 watch(() => session.state.tenantId, async (value) => {
   currentMemberDraft.value = session.state.currentMemberId;
   if (value) {
-    await loadMembers();
+    await Promise.all([loadMembers(), loadDefaultUiLanguage()]);
     return;
   }
   members.value = [];
@@ -201,5 +269,12 @@ watch(() => session.state.currentMemberId, (value) => {
   currentMemberDraft.value = value;
 });
 
-onMounted(loadMembers);
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick);
+  void Promise.all([loadMembers(), loadDefaultUiLanguage()]);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick);
+});
 </script>
