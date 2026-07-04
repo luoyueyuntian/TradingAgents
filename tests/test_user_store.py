@@ -696,6 +696,27 @@ def test_touch_session_returns_none_for_missing_or_expired_sessions(
         assert store.touch_session(raw_session_id) is None
 
 
+def test_get_and_touch_session_ignore_malformed_expiry_values(monkeypatch, tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    user = _create_user(store)
+    monkeypatch.setattr(
+        user_store_module,
+        "secrets",
+        SimpleNamespace(token_urlsafe=lambda length: "malformed-session"),
+        raising=False,
+    )
+    raw_session_id, session = store.create_session(user.id, ttl_seconds=60)
+
+    with store._connect() as conn:  # noqa: SLF001
+        conn.execute(
+            "UPDATE sessions SET expires_at = ? WHERE id_hash = ?",
+            (0, session.id_hash),
+        )
+
+    assert store.get_session(raw_session_id) is None
+    assert store.touch_session(raw_session_id) is None
+
+
 def test_password_reset_tokens_track_attempts_used_at_and_expiry(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     user = _create_user(store)

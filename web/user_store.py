@@ -95,8 +95,13 @@ def _format_timestamp(value: datetime) -> str:
     return value.isoformat()
 
 
-def _is_expired(expires_at: str) -> bool:
-    return datetime.fromisoformat(expires_at) <= _utc_now_dt()
+def _is_expired(expires_at: object) -> bool:
+    if not isinstance(expires_at, str):
+        return True
+    try:
+        return datetime.fromisoformat(expires_at) <= _utc_now_dt()
+    except ValueError:
+        return True
 
 
 def _validate_optional_expires_at(expires_at: str | None) -> str | None:
@@ -1140,7 +1145,7 @@ class UserStore:
                 "SELECT * FROM sessions WHERE id_hash = ?",
                 (id_hash,),
             ).fetchone()
-            if row is None or datetime.fromisoformat(row["expires_at"]) <= now:
+            if row is None or _is_expired(row["expires_at"]):
                 return None
             user = conn.execute(
                 "SELECT * FROM users WHERE id = ?",
