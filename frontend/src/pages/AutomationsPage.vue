@@ -422,6 +422,23 @@ const manualStockMarket = ref('us');
 const selectedManualStockSymbols = ref<string[]>([]);
 const editingOneTimeTaskId = ref('');
 const error = ref('');
+const oneTimeAnalysisDefaults = reactive({
+  llm_provider: 'openai',
+  quick_think_model: '',
+  deep_think_model: '',
+  research_depth: 1,
+  output_language: 'English',
+  market_profile: 'default',
+  max_risk_discuss_rounds: '1',
+  max_recur_limit: '100',
+  checkpoint_enabled: false,
+  benchmark_ticker: '',
+  backend_url: '',
+  temperature: '',
+  google_thinking_level: '',
+  openai_reasoning_effort: '',
+  anthropic_effort: '',
+});
 const { t } = useI18n();
 const form = reactive({
   name: '',
@@ -590,6 +607,23 @@ async function loadSettingsDefaults() {
   oneTimeForm.google_thinking_level = String(llm.google_thinking_level || '');
   oneTimeForm.openai_reasoning_effort = String(llm.openai_reasoning_effort || '');
   oneTimeForm.anthropic_effort = String(llm.anthropic_effort || '');
+  Object.assign(oneTimeAnalysisDefaults, {
+    llm_provider: oneTimeForm.llm_provider,
+    quick_think_model: oneTimeForm.quick_think_model,
+    deep_think_model: oneTimeForm.deep_think_model,
+    research_depth: oneTimeForm.research_depth,
+    output_language: oneTimeForm.output_language,
+    market_profile: oneTimeForm.market_profile,
+    max_risk_discuss_rounds: oneTimeForm.max_risk_discuss_rounds,
+    max_recur_limit: oneTimeForm.max_recur_limit,
+    checkpoint_enabled: oneTimeForm.checkpoint_enabled,
+    benchmark_ticker: oneTimeForm.benchmark_ticker,
+    backend_url: oneTimeForm.backend_url,
+    temperature: oneTimeForm.temperature,
+    google_thinking_level: oneTimeForm.google_thinking_level,
+    openai_reasoning_effort: oneTimeForm.openai_reasoning_effort,
+    anthropic_effort: oneTimeForm.anthropic_effort,
+  });
 }
 
 async function loadProviders() {
@@ -760,6 +794,21 @@ function resetOneTimeBuilderState() {
     manualStocks: [],
     selectedGroupIds: [],
     includeWatchlist: false,
+    llm_provider: oneTimeAnalysisDefaults.llm_provider,
+    quick_think_model: oneTimeAnalysisDefaults.quick_think_model,
+    deep_think_model: oneTimeAnalysisDefaults.deep_think_model,
+    research_depth: oneTimeAnalysisDefaults.research_depth,
+    output_language: oneTimeAnalysisDefaults.output_language,
+    market_profile: oneTimeAnalysisDefaults.market_profile,
+    max_risk_discuss_rounds: oneTimeAnalysisDefaults.max_risk_discuss_rounds,
+    max_recur_limit: oneTimeAnalysisDefaults.max_recur_limit,
+    checkpoint_enabled: oneTimeAnalysisDefaults.checkpoint_enabled,
+    benchmark_ticker: oneTimeAnalysisDefaults.benchmark_ticker,
+    backend_url: oneTimeAnalysisDefaults.backend_url,
+    temperature: oneTimeAnalysisDefaults.temperature,
+    google_thinking_level: oneTimeAnalysisDefaults.google_thinking_level,
+    openai_reasoning_effort: oneTimeAnalysisDefaults.openai_reasoning_effort,
+    anthropic_effort: oneTimeAnalysisDefaults.anthropic_effort,
   });
   editingOneTimeTaskId.value = '';
   selectedManualStockSymbols.value = [];
@@ -917,6 +966,9 @@ function editOneTimeTask(task: JsonRecord) {
 
 async function cancelOneTimeTask(task: JsonRecord) {
   await apiPost(`/api/one-time-tasks/${encodeURIComponent(String(task.id || ''))}/cancel`, {}, session.apiContext.value);
+  if (editingOneTimeTaskId.value && editingOneTimeTaskId.value === String(task.id || '')) {
+    resetOneTimeBuilderState();
+  }
   await loadOneTimeTasks();
 }
 
