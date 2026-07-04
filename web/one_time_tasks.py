@@ -331,6 +331,8 @@ def process_due_one_time_tasks(
             continue
 
         if task.scheduled_for < current_slot:
+            if task.triggered_at is not None:
+                continue
             tasks[index] = task.model_copy(update={"status": "missed", "updated_at": timestamp})
             changed = True
             continue
@@ -371,7 +373,7 @@ def process_due_one_time_tasks(
             run_ids.append(run.run_id)
 
         status = "queued" if run_ids else "scheduled"
-        triggered_at = timestamp if run_ids else task.triggered_at
+        triggered_at = timestamp
         tasks[index] = task.model_copy(
             update={
                 "status": status,
