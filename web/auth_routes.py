@@ -257,6 +257,11 @@ def password_reset_request(
     if user is None or user.disabled or _is_user_expired(user):
         hash_verification_code(code)
         return PasswordResetAvailability(available=True, reset_id=fallback_reset_id)
+    try:
+        _ensure_tenant_allows_access(store, user.tenant_id)
+    except HTTPException:
+        hash_verification_code(code)
+        return PasswordResetAvailability(available=True, reset_id=fallback_reset_id)
 
     token = store.create_password_reset_token(user.id, hash_verification_code(code))
     background_tasks.add_task(
@@ -297,6 +302,11 @@ def password_reset_confirm(payload: PasswordResetConfirm) -> dict[str, str]:
     if user is None or user.disabled or _is_user_expired(user):
         _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
+    try:
+        _ensure_tenant_allows_access(store, user.tenant_id)
+    except HTTPException as exc:
+        _burn_reset_code_verification(payload.code)
+        raise _invalid_reset_code_error() from exc
     try:
         validate_password_policy(
             payload.new_password,

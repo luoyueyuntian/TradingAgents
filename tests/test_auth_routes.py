@@ -513,6 +513,41 @@ def test_password_reset_request_ignores_username_shadowing_email_value(
     assert len(sent_messages[0].code) == 6
 
 
+@pytest.mark.parametrize(
+    ("tenant_id", "tenant_update"),
+    [
+        ("tenant-disabled", {"disabled": True}),
+        ("tenant-archived", {"archived": True}),
+    ],
+)
+def test_password_reset_request_skips_unavailable_tenants_without_state_changes(
+    monkeypatch,
+    tmp_path,
+    tenant_id,
+    tenant_update,
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant(tenant_id, display_name=tenant_id)
+    _create_user(store, tenant_id=tenant_id)
+    sent_messages = []
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_PORT", "2525")
+    monkeypatch.setenv("TRADINGAGENTS_SMTP_FROM", "noreply@example.com")
+    monkeypatch.setattr(auth_routes, "send_password_reset_email", sent_messages.append)
+    store.update_tenant(tenant_id, **tenant_update)
+
+    response = client.post(
+        "/api/auth/password-reset/request",
+        json={"email": "alice@example.com"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["available"] is True
+    assert response.json()["reset_id"]
+    assert sent_messages == []
+    assert store.get_password_reset_token(response.json()["reset_id"]) is None
+
+
 def test_password_reset_confirm_rejects_invalid_expired_used_and_attempt_limited_codes(
     monkeypatch, tmp_path
 ):
@@ -588,6 +623,41 @@ def test_password_reset_confirm_does_not_distinguish_fake_and_limited_reset_ids(
     assert real_limited.status_code == 400
     assert fake.status_code == 400
     assert real_limited.json()["detail"] == fake.json()["detail"] == "Invalid or expired reset code"
+
+
+@pytest.mark.parametrize(
+    ("tenant_id", "tenant_update"),
+    [
+        ("tenant-disabled", {"disabled": True}),
+        ("tenant-archived", {"archived": True}),
+    ],
+)
+def test_password_reset_confirm_rejects_unavailable_tenant_without_updating_password(
+    monkeypatch,
+    tmp_path,
+    tenant_id,
+    tenant_update,
+):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant(tenant_id, display_name=tenant_id)
+    user = _create_user(store, tenant_id=tenant_id, must_change_password=True)
+    token = store.create_password_reset_token(user.id, hash_verification_code("444444"))
+    previous_hash = user.password_hash
+    previous_salt = user.password_salt
+    store.update_tenant(tenant_id, **tenant_update)
+
+    response = client.post(
+        "/api/auth/password-reset/confirm",
+        json={"reset_id": token.id, "code": "444444", "new_password": "EvenStronger456!"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid or expired reset code"
+    refreshed = store.get_user(user.id)
+    assert refreshed is not None
+    assert refreshed.password_hash == previous_hash
+    assert refreshed.password_salt == previous_salt
+    assert refreshed.must_change_password is True
 
 
 def test_password_reset_confirm_updates_password_and_allows_login(monkeypatch, tmp_path):

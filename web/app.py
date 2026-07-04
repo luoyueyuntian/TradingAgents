@@ -49,6 +49,10 @@ def _get_cors_origins() -> list[str]:
     ]
 
 
+def _is_write_method(method: str) -> bool:
+    return method.upper() not in {"GET", "HEAD", "OPTIONS"}
+
+
 app = FastAPI(
     title="TradingAgents Web",
     description="Multi-Agents LLM Financial Trading Framework - Web Interface",
@@ -141,6 +145,14 @@ async def _resolve_request_auth(request, call_next):
     if path.startswith("/api/"):
         request.state.auth_mode = "legacy"
         request.state.effective_tenant_id = get_request_tenant_id(request)
+        if request.state.effective_tenant_id is not None and _is_write_method(method):
+            try:
+                _ensure_tenant_allows_access(
+                    UserStore(get_web_auth_db_path()),
+                    request.state.effective_tenant_id,
+                )
+            except HTTPException as exc:
+                return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
     return await call_next(request)
 
 

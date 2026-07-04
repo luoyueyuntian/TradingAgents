@@ -289,6 +289,50 @@ def test_token_authenticated_write_request_rejects_archived_tenant(monkeypatch, 
     assert response.json()["detail"] == "Tenant is archived"
 
 
+def test_legacy_write_request_rejects_disabled_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
+    store.update_tenant("tenant-disabled", disabled=True)
+
+    class _Run:
+        run_id = "run-1"
+        status = "queued"
+        ticker = "NVDA"
+        date = "2026-07-02"
+
+    monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
+
+    response = client.post(
+        "/api/runs?tenant_id=tenant-disabled",
+        json=_analysis_payload(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is disabled"
+
+
+def test_legacy_write_request_rejects_archived_tenant(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-archived", display_name="Tenant Archived")
+    store.update_tenant("tenant-archived", archived=True)
+
+    class _Run:
+        run_id = "run-1"
+        status = "queued"
+        ticker = "NVDA"
+        date = "2026-07-02"
+
+    monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
+
+    response = client.post(
+        "/api/runs?tenant_id=tenant-archived",
+        json=_analysis_payload(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant is archived"
+
+
 def test_authenticated_me_request_populates_auth_state(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     user = _create_user(store, role="viewer", tenant_id="alpha")
