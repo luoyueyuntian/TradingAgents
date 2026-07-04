@@ -6,7 +6,7 @@
       :description="t('runs.description')"
     >
       <template #actions>
-        <Button icon="pi pi-refresh" :label="t('common.refresh')" severity="secondary" @click="loadRuns" />
+        <Button icon="pi pi-refresh" :label="t('common.refresh')" severity="secondary" @click="loadGroups" />
       </template>
     </PageHeader>
 
@@ -17,25 +17,40 @@
         <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
           <label class="uno-grid uno-gap-[0.35rem]">
             <span class="uno-text-[#6f8183]">{{ t('common.search') }}</span>
-            <InputText v-model="filters.q" :placeholder="t('runs.searchPlaceholder')" @input="loadRuns" />
+            <InputText v-model="filters.q" :placeholder="t('runs.searchPlaceholder')" @input="resetToFirstPageAndReload" />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
             <span class="uno-text-[#6f8183]">{{ t('common.status') }}</span>
-            <Select v-model="filters.status" :options="statusOptions" option-label="label" option-value="value" @change="loadRuns" />
+            <Select v-model="filters.status" :options="statusOptions" option-label="label" option-value="value" @change="resetToFirstPageAndReload" />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
             <span class="uno-text-[#6f8183]">{{ t('runs.library') }}</span>
-            <Select v-model="filters.archived" :options="archiveOptions" option-label="label" option-value="value" @change="loadRuns" />
+            <Select v-model="filters.archived" :options="archiveOptions" option-label="label" option-value="value" @change="resetToFirstPageAndReload" />
           </label>
         </div>
       </template>
     </Card>
 
-    <div class="uno-mt-4 uno-grid uno-items-start uno-gap-4">
-      <Card>
-        <template #title>{{ t('runs.recentRuns') }}</template>
+    <div class="uno-mt-4 uno-grid uno-gap-4">
+      <Card
+        v-for="group in groups.items"
+        :key="String(group.group_key)"
+        data-testid="runs-company-group-card"
+      >
+        <template #title>
+          <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
+            <div class="uno-grid uno-gap-1">
+              <strong class="uno-text-[#132a2d]">{{ group.company_name }}</strong>
+              <small class="uno-text-[#6f8183]">{{ group.tickers.join(' · ') || t('common.na') }}</small>
+            </div>
+            <div class="uno-grid uno-justify-items-end uno-gap-1">
+              <Tag :value="t('runs.companyRunCount', { count: group.run_count })" severity="info" />
+              <small class="uno-text-[#6f8183]">{{ formatDateTime(group.latest_created_at) }}</small>
+            </div>
+          </div>
+        </template>
         <template #content>
-          <DataTable :value="runs" size="small" data-key="run_id" selection-mode="single" @row-click="openRunDetail($event.data)">
+          <DataTable :value="group.recent_runs" size="small" data-key="run_id" selection-mode="single" @row-click="openRunDetail($event.data)">
             <Column field="ticker" :header="t('common.ticker')" />
             <Column field="date" :header="t('common.date')" />
             <Column field="status" :header="t('common.status')">
@@ -51,6 +66,16 @@
           </DataTable>
         </template>
       </Card>
+
+      <Message v-if="!groups.items.length && !error" severity="info" :closable="false">{{ t('runs.noCompanyGroups') }}</Message>
+    </div>
+
+    <div class="uno-mt-4 uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
+      <span>{{ t('runs.companyGroupPagination', { page: groups.page, total: totalPages }) }}</span>
+      <div class="uno-flex uno-gap-2">
+        <Button :label="t('runs.previousPage')" severity="secondary" :disabled="groups.page <= 1" @click="goToPage(groups.page - 1)" />
+        <Button :label="t('runs.nextPage')" severity="secondary" :disabled="groups.page >= totalPages" @click="goToPage(groups.page + 1)" />
+      </div>
     </div>
   </section>
 </template>
@@ -71,13 +96,24 @@ import PageHeader from '../components/PageHeader.vue';
 import { useI18n } from '../i18n';
 import { apiGet } from '../services/api';
 import { useSession } from '../stores/session';
-import { signalSeverity, type JsonRecord } from '../utils/format';
+import { formatDateTime, signalSeverity, type JsonRecord } from '../utils/format';
+import {
+  buildRunCompanyGroupsPath,
+  type RunCompanyGroupPage,
+} from './runCompanyGroups';
 
 const session = useSession();
 const router = useRouter();
-const runs = ref<JsonRecord[]>([]);
 const error = ref('');
 const { t } = useI18n();
+const page = ref(1);
+const pageSize = ref(20);
+const groups = ref<RunCompanyGroupPage>({
+  items: [],
+  page: 1,
+  page_size: 20,
+  total_count: 0,
+});
 const filters = reactive({
   q: '',
   status: '',
@@ -97,23 +133,34 @@ const archiveOptions = computed(() => [
   { label: t('common.archived'), value: 'archived' },
   { label: t('common.all'), value: 'all' },
 ]);
+const totalPages = computed(() => Math.max(1, Math.ceil((groups.value.total_count || 0) / (groups.value.page_size || pageSize.value))));
 
-function buildQuery() {
-  const params = new URLSearchParams();
-  if (filters.q.trim()) params.set('q', filters.q.trim());
-  if (filters.status) params.set('status', filters.status);
-  if (filters.archived) params.set('archived', filters.archived);
-  const query = params.toString();
-  return query ? `/api/runs?${query}` : '/api/runs';
-}
-
-async function loadRuns() {
+async function loadGroups() {
   error.value = '';
   try {
-    runs.value = await apiGet<JsonRecord[]>(buildQuery(), session.apiContext.value);
+    groups.value = await apiGet<RunCompanyGroupPage>(
+      buildRunCompanyGroupsPath({
+        q: filters.q,
+        status: filters.status,
+        archived: filters.archived,
+        page: page.value,
+        pageSize: pageSize.value,
+      }),
+      session.apiContext.value,
+    );
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('runs.loadError');
   }
+}
+
+function resetToFirstPageAndReload() {
+  page.value = 1;
+  void loadGroups();
+}
+
+function goToPage(nextPage: number) {
+  page.value = nextPage;
+  void loadGroups();
 }
 
 function openRunDetail(run: JsonRecord) {
@@ -121,5 +168,5 @@ function openRunDetail(run: JsonRecord) {
   void router.push({ name: 'run-detail', params: { runId: String(run.run_id) } });
 }
 
-onMounted(loadRuns);
+onMounted(loadGroups);
 </script>
