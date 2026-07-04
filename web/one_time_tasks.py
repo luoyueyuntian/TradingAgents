@@ -41,6 +41,47 @@ def _infer_asset_type(ticker: str) -> str:
     return "crypto" if "-USD" in normalized else "stock"
 
 
+def _build_task_run_settings(task: OneTimeTask, tenant_settings: dict | None) -> dict:
+    settings = deepcopy(tenant_settings) if isinstance(tenant_settings, dict) else {}
+
+    llm_settings: dict[str, object] = {}
+    if task.analysis_config.llm_provider:
+        llm_settings["provider"] = task.analysis_config.llm_provider
+    if task.analysis_config.quick_think_model is not None:
+        llm_settings["quick_think_model"] = task.analysis_config.quick_think_model
+    if task.analysis_config.deep_think_model is not None:
+        llm_settings["deep_think_model"] = task.analysis_config.deep_think_model
+    if task.analysis_config.backend_url is not None:
+        llm_settings["backend_url"] = task.analysis_config.backend_url
+    if task.analysis_config.temperature is not None:
+        llm_settings["temperature"] = task.analysis_config.temperature
+    if task.analysis_config.google_thinking_level is not None:
+        llm_settings["google_thinking_level"] = task.analysis_config.google_thinking_level
+    if task.analysis_config.openai_reasoning_effort is not None:
+        llm_settings["openai_reasoning_effort"] = task.analysis_config.openai_reasoning_effort
+    if task.analysis_config.anthropic_effort is not None:
+        llm_settings["anthropic_effort"] = task.analysis_config.anthropic_effort
+
+    analysis_settings: dict[str, object] = {
+        "output_language": task.analysis_config.output_language,
+        "research_depth": task.analysis_config.research_depth,
+    }
+    if task.analysis_config.market_profile is not None:
+        analysis_settings["market_profile"] = task.analysis_config.market_profile
+    if task.analysis_config.max_risk_discuss_rounds is not None:
+        analysis_settings["max_risk_discuss_rounds"] = task.analysis_config.max_risk_discuss_rounds
+    if task.analysis_config.max_recur_limit is not None:
+        analysis_settings["max_recur_limit"] = task.analysis_config.max_recur_limit
+    if task.analysis_config.checkpoint_enabled is not None:
+        analysis_settings["checkpoint_enabled"] = task.analysis_config.checkpoint_enabled
+    if task.analysis_config.benchmark_ticker is not None:
+        analysis_settings["benchmark_ticker"] = task.analysis_config.benchmark_ticker
+
+    settings["llm"] = llm_settings
+    settings["analysis"] = analysis_settings
+    return settings
+
+
 def _load_settings_for_update(settings_path) -> dict:
     settings = load_settings(path=settings_path)
     return deepcopy(settings) if isinstance(settings, dict) else {}
@@ -283,7 +324,7 @@ def process_due_one_time_tasks(
     current_slot = resolved_now.strftime("%Y-%m-%d %H:%M")
     changed = False
     queued_total = 0
-    settings = service.load_tenant_settings()
+    tenant_settings = service.load_tenant_settings()
 
     for index, task in enumerate(tasks):
         if task.status != "scheduled":
@@ -299,6 +340,7 @@ def process_due_one_time_tasks(
 
         run_ids: list[str] = []
         last_error: str | None = None
+        settings = _build_task_run_settings(task, tenant_settings)
         for ticker in task.selection_snapshot.resolved_tickers:
             request = AnalysisRequest(
                 ticker=ticker,
@@ -328,10 +370,12 @@ def process_due_one_time_tasks(
                 continue
             run_ids.append(run.run_id)
 
+        status = "queued" if run_ids else "scheduled"
+        triggered_at = timestamp if run_ids else task.triggered_at
         tasks[index] = task.model_copy(
             update={
-                "status": "queued",
-                "triggered_at": timestamp,
+                "status": status,
+                "triggered_at": triggered_at,
                 "updated_at": timestamp,
                 "last_queued_count": len(run_ids),
                 "last_error": last_error,
