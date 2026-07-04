@@ -76,6 +76,23 @@ def test_manual_stock_selection_rejects_unknown_market():
         ManualStockSelection(market="crypto", symbol="BTC-USD")
 
 
+def test_one_time_task_selection_snapshot_rejects_missing_or_empty_resolved_tickers():
+    with pytest.raises(ValidationError, match="resolved_tickers\n  Field required"):
+        OneTimeTaskSelectionSnapshot(
+            manual_stocks=[],
+            group_snapshots=[],
+            include_watchlist=False,
+        )
+
+    with pytest.raises(ValidationError, match="resolved_tickers.*must not be empty"):
+        OneTimeTaskSelectionSnapshot(
+            manual_stocks=[],
+            group_snapshots=[],
+            include_watchlist=False,
+            resolved_tickers=[],
+        )
+
+
 def test_one_time_task_shared_models_round_trip():
     snapshot = OneTimeTaskSelectionSnapshot(
         manual_stocks=[ManualStockSelection(market="cn_a", symbol="600519.sh", name="贵州茅台", exchange="SSE")],
@@ -146,7 +163,10 @@ def test_one_time_task_update_normalizes_selection_and_validates_dates():
     ("kwargs", "message"),
     [
         ({"scheduled_for": "2026-07-10"}, "scheduled_for must be in YYYY-MM-DD HH:MM format"),
+        ({"scheduled_for": "2026-7-10 21:30"}, "scheduled_for must be in YYYY-MM-DD HH:MM format"),
+        ({"scheduled_for": "2026-07-10 2:30"}, "scheduled_for must be in YYYY-MM-DD HH:MM format"),
         ({"analysis_date": "2026/07/10"}, "analysis_date must be in YYYY-MM-DD format"),
+        ({"analysis_date": "2026-7-10"}, "analysis_date must be in YYYY-MM-DD format"),
     ],
 )
 def test_one_time_task_create_rejects_invalid_date_formats(kwargs, message):
