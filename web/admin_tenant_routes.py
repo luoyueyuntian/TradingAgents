@@ -24,15 +24,14 @@ from .schemas import (
     AdminTenantResponse,
     AdminTenantUpdate,
 )
-from .user_store import TenantRecord, UserRecord, UserStore
+from .user_store import (
+    ARCHIVED_TENANT_READ_ONLY_ERROR,
+    TenantRecord,
+    UserRecord,
+    UserStore,
+)
 
 router = APIRouter(prefix="/api/admin/tenants", tags=["admin-tenants"])
-
-_LAST_LOGIN_CAPABLE_ADMIN_TENANT_ERROR = (
-    "Cannot disable or archive the last tenant with a login-capable admin"
-)
-_ARCHIVED_TENANT_READ_ONLY_ERROR = "Archived tenants are read-only"
-
 
 def _get_store() -> UserStore:
     return UserStore(get_web_auth_db_path())
@@ -73,7 +72,7 @@ def _get_existing_tenant(store: UserStore, tenant_id: str) -> TenantRecord:
 def _get_writable_tenant(store: UserStore, tenant_id: str) -> TenantRecord:
     tenant = _get_existing_tenant(store, tenant_id)
     if tenant.archived:
-        raise HTTPException(status_code=400, detail=_ARCHIVED_TENANT_READ_ONLY_ERROR)
+        raise HTTPException(status_code=400, detail=ARCHIVED_TENANT_READ_ONLY_ERROR)
     return tenant
 
 
@@ -156,11 +155,6 @@ def update_tenant(
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
-    if (
-        (updates.get("disabled") is True and not tenant.disabled)
-        or (updates.get("archived") is True and not tenant.archived)
-    ) and store.would_disable_last_login_capable_admin_tenant(tenant_id):
-        raise HTTPException(status_code=400, detail=_LAST_LOGIN_CAPABLE_ADMIN_TENANT_ERROR)
 
     try:
         tenant = store.update_tenant(tenant_id, **updates)

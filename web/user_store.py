@@ -19,6 +19,10 @@ from web.passwords import hash_password, hash_secret, validate_password_policy
 
 VALID_ROLES = {"admin", "analyst", "viewer"}
 PASSWORD_RESET_MAX_ATTEMPTS = 5
+LAST_LOGIN_CAPABLE_ADMIN_TENANT_ERROR = (
+    "Cannot disable or archive the last tenant with a login-capable admin"
+)
+ARCHIVED_TENANT_READ_ONLY_ERROR = "Archived tenants are read-only"
 
 
 @dataclass(frozen=True)
@@ -516,12 +520,31 @@ class UserStore:
     def update_tenant(self, tenant_id: str, **fields: Any) -> TenantRecord:
         self.ensure_schema()
         normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
+        if not fields:
+            raise ValueError("no fields to update")
+
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            current = self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
+            updates = self._prepare_tenant_updates(conn, current, fields)
+            updates["updated_at"] = _utc_now()
+            assignments = ", ".join(f"{field_name} = ?" for field_name in updates)
+            conn.execute(
+                f"UPDATE tenants SET {assignments} WHERE tenant_id = ?",
+                (*updates.values(), normalized_tenant_id),
+            )
+            return self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
+
+    def _prepare_tenant_updates(
+        self,
+        conn: sqlite3.Connection,
+        current: TenantRecord,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
         allowed_fields = {"display_name", "disabled", "archived"}
         unknown_fields = sorted(set(fields) - allowed_fields)
         if unknown_fields:
             raise ValueError(f"unsupported tenant field: {unknown_fields[0]}")
-        if not fields:
-            raise ValueError("no fields to update")
 
         updates: dict[str, Any] = {}
         for field_name, value in fields.items():
@@ -530,15 +553,22 @@ class UserStore:
             elif field_name in {"disabled", "archived"}:
                 updates[field_name] = _validate_bool_flag(value, field_name)
 
-        with self._connect() as conn:
-            self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
-            updates["updated_at"] = _utc_now()
-            assignments = ", ".join(f"{field_name} = ?" for field_name in updates)
-            conn.execute(
-                f"UPDATE tenants SET {assignments} WHERE tenant_id = ?",
-                (*updates.values(), normalized_tenant_id),
-            )
-            return self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
+        if current.archived:
+            if updates != {"archived": 0}:
+                raise ValueError(ARCHIVED_TENANT_READ_ONLY_ERROR)
+            return updates
+
+        will_disable_login_capable_tenant = (
+            (updates.get("disabled") == 1 and not current.disabled)
+            or (updates.get("archived") == 1 and not current.archived)
+        )
+        if (
+            will_disable_login_capable_tenant
+            and self._would_disable_last_login_capable_admin_tenant_in_connection(conn, current)
+        ):
+            raise ValueError(LAST_LOGIN_CAPABLE_ADMIN_TENANT_ERROR)
+
+        return updates
 
     def get_tenant(self, tenant_id: str) -> TenantRecord | None:
         self.ensure_schema()
@@ -903,20 +933,27 @@ class UserStore:
         normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
         with self._connect() as conn:
             tenant = self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
-            if tenant.disabled or tenant.archived:
-                return False
-            if self._active_admin_count_in_connection(conn, normalized_tenant_id) == 0:
-                return False
+            return self._would_disable_last_login_capable_admin_tenant_in_connection(conn, tenant)
 
-            tenant_rows = conn.execute(
-                "SELECT tenant_id, disabled, archived FROM tenants WHERE tenant_id != ? ORDER BY tenant_id",
-                (normalized_tenant_id,),
-            ).fetchall()
-            for row in tenant_rows:
-                if bool(row["disabled"]) or bool(row["archived"]):
-                    continue
-                if self._active_admin_count_in_connection(conn, row["tenant_id"]) > 0:
-                    return False
+    def _would_disable_last_login_capable_admin_tenant_in_connection(
+        self,
+        conn: sqlite3.Connection,
+        tenant: TenantRecord,
+    ) -> bool:
+        if tenant.disabled or tenant.archived:
+            return False
+        if self._active_admin_count_in_connection(conn, tenant.tenant_id) == 0:
+            return False
+
+        tenant_rows = conn.execute(
+            "SELECT tenant_id, disabled, archived FROM tenants WHERE tenant_id != ? ORDER BY tenant_id",
+            (tenant.tenant_id,),
+        ).fetchall()
+        for row in tenant_rows:
+            if bool(row["disabled"]) or bool(row["archived"]):
+                continue
+            if self._active_admin_count_in_connection(conn, row["tenant_id"]) > 0:
+                return False
         return True
 
     def _active_admin_count_in_connection(

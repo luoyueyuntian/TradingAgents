@@ -100,6 +100,7 @@
                       @click="openTenant(tenant)"
                     />
                     <Button
+                      v-if="!tenant.archived"
                       :data-testid="`toggle-tenant-${tenant.tenant_id}`"
                       icon="pi pi-ban"
                       :label="tenant.disabled ? t('tenants.enableTenant') : t('tenants.disableTenant')"

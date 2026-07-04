@@ -416,6 +416,43 @@ def test_tenant_update_rejects_explicit_null_fields(monkeypatch, tmp_path, field
     assert refreshed.archived is False
 
 
+@pytest.mark.parametrize("update_payload", [{"disabled": True}, {"display_name": "Tenant Bee"}])
+def test_archived_tenant_update_rejects_non_unarchive_writes(monkeypatch, tmp_path, update_payload: dict[str, object]):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
+    store.update_tenant("tenant-b", archived=True)
+    _login(client)
+
+    response = client.patch("/api/admin/tenants/tenant-b", json=update_payload)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Archived tenants are read-only"
+    refreshed = store.get_tenant("tenant-b")
+    assert refreshed is not None
+    assert refreshed.display_name == "Tenant B"
+    assert refreshed.disabled is False
+    assert refreshed.archived is True
+
+
+def test_archived_tenant_update_allows_explicit_unarchive(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False)
+    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
+    store.update_tenant("tenant-b", archived=True)
+    _login(client)
+
+    response = client.patch("/api/admin/tenants/tenant-b", json={"archived": False})
+
+    assert response.status_code == 200
+    payload = response.json()["tenant"]
+    assert payload["tenant_id"] == "tenant-b"
+    assert payload["archived"] is False
+    refreshed = store.get_tenant("tenant-b")
+    assert refreshed is not None
+    assert refreshed.archived is False
+
+
 def test_tenant_scoped_user_list_returns_only_target_tenant_users(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", must_change_password=False)

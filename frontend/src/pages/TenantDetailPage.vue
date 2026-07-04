@@ -50,6 +50,7 @@
 
           <div class="uno-grid uno-content-start uno-gap-2">
             <Button
+              v-if="!tenant.archived"
               data-testid="toggle-tenant-disabled"
               icon="pi pi-ban"
               :label="tenant.disabled ? t('tenants.enableTenant') : t('tenants.disableTenant')"

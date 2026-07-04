@@ -287,4 +287,27 @@ describe('TenantDetailPage', () => {
 
     expect(apiPatch).toHaveBeenCalledWith('/api/admin/tenants/tenant-a', { archived: false });
   });
+
+  it('does not offer the disable action while viewing an archived tenant', async () => {
+    apiGet.mockResolvedValue({
+      tenant: {
+        id: 'tenant-row-1',
+        tenant_id: 'tenant-a',
+        display_name: 'Tenant A',
+        disabled: false,
+        archived: true,
+        user_count: 2,
+        active_admin_count: 1,
+        created_at: '2026-07-04T08:00:00Z',
+        updated_at: '2026-07-04T09:00:00Z',
+      },
+    });
+
+    const wrapper = mountPage();
+    mountedWrapper = wrapper;
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="toggle-tenant-disabled"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="archive-tenant"]').exists()).toBe(true);
+  });
 });
