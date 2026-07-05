@@ -532,6 +532,63 @@ def test_load_runs_index_preserves_incomplete_status(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
+def test_list_runs_orders_mixed_legacy_and_ms_timestamps(monkeypatch, tmp_path):
+    index_path = tmp_path / "runs.json"
+    payload = [
+        {
+            "run_id": "legacy",
+            "ticker": "AAPL",
+            "date": "2026-01-15",
+            "asset_type": "stock",
+            "config": DEFAULT_CONFIG.copy(),
+            "selected_analysts": ["market"],
+            "status": "completed",
+            "agents": {},
+            "report_sections": {},
+            "current_report": None,
+            "final_report": None,
+            "signal": "Hold",
+            "error": None,
+            "report_path": None,
+            "state_log_path": None,
+            "created_at": "2026-01-15T00:00:00",
+            "started_at": "2026-01-15T00:01:00",
+            "completed_at": "2026-01-15T00:10:00",
+        },
+        {
+            "run_id": "current",
+            "ticker": "MSFT",
+            "date": "2026-01-16",
+            "asset_type": "stock",
+            "config": DEFAULT_CONFIG.copy(),
+            "selected_analysts": ["market"],
+            "status": "completed",
+            "agents": {},
+            "report_sections": {},
+            "current_report": None,
+            "final_report": None,
+            "signal": "Buy",
+            "error": None,
+            "report_path": None,
+            "state_log_path": None,
+            "created_at": 1_768_521_600_000,
+            "started_at": 1_768_521_660_000,
+            "completed_at": 1_768_522_200_000,
+        },
+    ]
+    index_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    monkeypatch.setattr(web_runner._service, "_runs_index_path", index_path)
+    monkeypatch.setattr(web_runner._service, "_runs", {})
+
+    web_runner.load_runs_index()
+
+    runs = web_runner.list_runs()
+
+    assert [run.run_id for run in runs] == ["current", "legacy"]
+
+
+@pytest.mark.unit
 def test_resume_incomplete_runs_requeues_pending_work(monkeypatch):
     queued_run = _make_run_state(run_id="queued", status="queued")
     running_run = _make_run_state(run_id="running", status="running")

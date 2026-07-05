@@ -2039,10 +2039,12 @@ def _bucketize_counts(values: dict[str, int]) -> list[AnalyticsBucket]:
     ]
 
 
-def _safe_duration_seconds(started_at: int | None, completed_at: int | None) -> float | None:
-    if started_at is None or completed_at is None:
+def _safe_duration_seconds(started_at: object | None, completed_at: object | None) -> float | None:
+    normalized_started_at = coerce_timestamp_ms(started_at)
+    normalized_completed_at = coerce_timestamp_ms(completed_at)
+    if normalized_started_at is None or normalized_completed_at is None:
         return None
-    duration = (completed_at - started_at) / 1000
+    duration = (normalized_completed_at - normalized_started_at) / 1000
     return duration if duration >= 0 else None
 
 

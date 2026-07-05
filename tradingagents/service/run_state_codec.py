@@ -7,6 +7,7 @@ from pathlib import Path
 from tradingagents.default_config import build_default_config
 from tradingagents.service.models import RunState
 from tradingagents.service.runtime_context import build_runtime_context
+from tradingagents.service.timestamps import coerce_timestamp_ms
 
 
 def serialize_run_state(run: RunState) -> dict:
@@ -65,9 +66,9 @@ def deserialize_run_state(payload: dict, *, runs_root_dir: Path) -> RunState:
         terminal_log_path=payload.get("terminal_log_path"),
         event_log_path=payload.get("event_log_path"),
         queue_sequence=payload.get("queue_sequence"),
-        created_at=payload.get("created_at", 0),
-        started_at=payload.get("started_at"),
-        completed_at=payload.get("completed_at"),
+        created_at=coerce_timestamp_ms(payload.get("created_at")) or 0,
+        started_at=coerce_timestamp_ms(payload.get("started_at")),
+        completed_at=coerce_timestamp_ms(payload.get("completed_at")),
     )
     run.agents.update(payload.get("agents") or {})
     run.report_sections.update(payload.get("report_sections") or {})
