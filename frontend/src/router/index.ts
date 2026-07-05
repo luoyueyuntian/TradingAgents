@@ -20,7 +20,7 @@ export async function ensureSessionLoaded() {
   await sessionBootstrapPromise;
 }
 
-export function createAppRouter(history: RouterHistory = createWebHistory()) {
+export function createAppRouter(history: RouterHistory = createWebHistory(import.meta.env.BASE_URL)) {
   const router = createRouter({
     history,
     routes,
