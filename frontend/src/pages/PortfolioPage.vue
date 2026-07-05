@@ -90,10 +90,10 @@ const metrics = computed(() => [
 ]);
 
 const sections = computed(() => [
-  { to: '/portfolio/watchlist', label: t('common.watchlist'), count: watchlist.value.length },
-  { to: '/portfolio/positions', label: t('portfolio.positions'), count: asArray(portfolio.value?.positions).length },
-  { to: '/portfolio/stock-groups', label: t('portfolio.stockGroups'), count: stockGroups.value.length },
-  { to: '/portfolio/alerts', label: t('portfolio.alerts'), count: asArray(alerts.value?.rules).length },
+  { to: '/portfolio/watchlist', label: t('portfolio.watchlistTitle'), count: watchlist.value.length },
+  { to: '/portfolio/positions', label: t('portfolio.positionsTitle'), count: asArray(portfolio.value?.positions).length },
+  { to: '/portfolio/stock-groups', label: t('portfolio.stockGroupsTitle'), count: stockGroups.value.length },
+  { to: '/portfolio/alerts', label: t('portfolio.alertsTitle'), count: asArray(alerts.value?.rules).length },
 ]);
 
 async function loadWatchlist() {

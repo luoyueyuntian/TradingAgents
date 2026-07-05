@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import analyzePageSource from './AnalyzePage.vue?raw';
 import automationsPageSource from './AutomationsPage.vue?raw';
 import dashboardPageSource from './DashboardPage.vue?raw';
+import portfolioAlertsPageSource from './PortfolioAlertsPage.vue?raw';
 import portfolioPageSource from './PortfolioPage.vue?raw';
+import portfolioPositionsPageSource from './PortfolioPositionsPage.vue?raw';
+import portfolioStockGroupsPageSource from './PortfolioStockGroupsPage.vue?raw';
+import portfolioWatchlistPageSource from './PortfolioWatchlistPage.vue?raw';
 import runDetailPageSource from './RunDetailPage.vue?raw';
 import runsPageSource from './RunsPage.vue?raw';
 import settingsPageSource from './SettingsPage.vue?raw';
@@ -15,6 +19,10 @@ describe('viewer role gating', () => {
       dashboardPageSource,
       runDetailPageSource,
       portfolioPageSource,
+      portfolioWatchlistPageSource,
+      portfolioPositionsPageSource,
+      portfolioStockGroupsPageSource,
+      portfolioAlertsPageSource,
       workspacePageSource,
       automationsPageSource,
     ];

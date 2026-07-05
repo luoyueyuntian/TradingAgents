@@ -1,7 +1,7 @@
 <template>
   <PortfolioDialog
     :visible="visible"
-    :title="mode === 'edit' ? t('common.save') : t('common.add')"
+    :title="mode === 'edit' ? t('portfolio.editStockGroup') : t('portfolio.addStockGroup')"
     :save-label="mode === 'edit' ? t('common.save') : t('common.add')"
     :cancel-label="t('common.cancel')"
     :loading="saving"
@@ -16,7 +16,7 @@
     </label>
 
     <PortfolioStockPicker v-model:selectedStock="selectedStock" v-model:stockMarket="stockMarket" :disabled="saving" />
-    <Button :label="t('common.add')" severity="secondary" :disabled="!selectedStock" @click="addSelectedTicker" />
+    <Button :label="t('portfolio.addTickerToGroup')" severity="secondary" :disabled="!selectedStock" @click="addSelectedTicker" />
 
     <div class="uno-flex uno-flex-wrap uno-gap-2">
       <span

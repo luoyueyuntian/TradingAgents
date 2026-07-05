@@ -2,8 +2,8 @@
   <section>
     <PageHeader
       :eyebrow="t('portfolio.eyebrow')"
-      :title="t('common.watchlist')"
-      :description="t('nav.portfolioDesc')"
+      :title="t('portfolio.watchlistTitle')"
+      :description="t('portfolio.watchlistDescription')"
     >
       <template #actions>
         <Button icon="pi pi-plus" :label="t('common.add')" :disabled="!canWrite" @click="dialogOpen = true" />

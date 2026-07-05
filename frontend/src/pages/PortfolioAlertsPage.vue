@@ -2,8 +2,8 @@
   <section>
     <PageHeader
       :eyebrow="t('portfolio.eyebrow')"
-      :title="t('portfolio.alerts')"
-      :description="t('nav.portfolioDesc')"
+      :title="t('portfolio.alertsTitle')"
+      :description="t('portfolio.alertsDescription')"
     >
       <template #actions>
         <Button icon="pi pi-plus" :label="t('common.addRule')" :disabled="!canWrite" @click="openCreate" />

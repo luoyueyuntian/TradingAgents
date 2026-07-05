@@ -1,5 +1,5 @@
 <template>
-  <nav class="uno-mb-4 uno-flex uno-flex-wrap uno-gap-2" aria-label="Portfolio navigation">
+  <nav class="uno-mb-4 uno-flex uno-flex-wrap uno-gap-2" :aria-label="t('portfolio.subnavLabel')">
     <RouterLink
       v-for="item in items"
       :key="item.to"
@@ -22,7 +22,7 @@ const route = useRoute();
 const { t } = useI18n();
 
 const items = computed(() => [
-  { to: '/portfolio', label: t('nav.portfolio') },
+  { to: '/portfolio', label: t('portfolio.home') },
   { to: '/portfolio/watchlist', label: t('common.watchlist') },
   { to: '/portfolio/positions', label: t('portfolio.positions') },
   { to: '/portfolio/stock-groups', label: t('portfolio.stockGroups') },
