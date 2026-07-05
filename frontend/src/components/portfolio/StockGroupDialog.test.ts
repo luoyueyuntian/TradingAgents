@@ -42,6 +42,12 @@ const PortfolioStockPickerStub = {
   template: '<div data-testid="stock-picker-stub" />',
 };
 
+const ButtonStub = {
+  props: ['label', 'disabled'],
+  emits: ['click'],
+  template: '<button :disabled="disabled" @click="$emit(\'click\')">{{ label }}<slot /></button>',
+};
+
 describe('StockGroupDialog', () => {
   beforeEach(() => {
     apiPost.mockReset();
@@ -62,7 +68,7 @@ describe('StockGroupDialog', () => {
           InputText: InputTextStub,
           PortfolioDialog: PortfolioDialogStub,
           PortfolioStockPicker: PortfolioStockPickerStub,
-          Button: { template: '<button><slot /></button>' },
+          Button: ButtonStub,
         },
       },
     });
@@ -92,11 +98,39 @@ describe('StockGroupDialog', () => {
           InputText: InputTextStub,
           PortfolioDialog: PortfolioDialogStub,
           PortfolioStockPicker: PortfolioStockPickerStub,
-          Button: { template: '<button><slot /></button>' },
+          Button: ButtonStub,
         },
       },
     });
 
     expect(wrapper.find('[data-testid="stock-picker-stub"]').exists()).toBe(true);
+  });
+
+  it('shows selected company names instead of tickers when adding stocks in edit mode', async () => {
+    const wrapper = mount(StockGroupDialog, {
+      props: {
+        visible: true,
+        mode: 'edit',
+        group: { id: 'group-1', name: 'AI Leaders', tickers: [], company_names: {} },
+      },
+      global: {
+        stubs: {
+          InputText: InputTextStub,
+          PortfolioDialog: PortfolioDialogStub,
+          PortfolioStockPicker: {
+            props: ['selectedStock', 'stockMarket', 'disabled'],
+            emits: ['update:selectedStock', 'update:stockMarket'],
+            template: '<button data-testid="pick-stock" @click="$emit(\'update:selectedStock\', { market: \'us\', symbol: \'NVDA\', name: \'NVIDIA Corporation\', exchange: \'NASDAQ\', label: \'NVDA · NVIDIA Corporation\' })">pick</button>',
+          },
+          Button: ButtonStub,
+        },
+      },
+    });
+
+    await wrapper.get('[data-testid="pick-stock"]').trigger('click');
+    await wrapper.get('[data-testid="stock-group-add-ticker"]').trigger('click');
+
+    expect(wrapper.text()).toContain('NVIDIA Corporation');
+    expect(wrapper.text()).not.toContain('NVDA x');
   });
 });
