@@ -125,6 +125,30 @@ export const routes: RouteRecordRaw[] = [
     meta: requiresAuth,
   },
   {
+    path: '/portfolio/watchlist',
+    name: 'portfolio-watchlist',
+    component: () => import('../pages/PortfolioWatchlistPage.vue'),
+    meta: requiresAuth,
+  },
+  {
+    path: '/portfolio/positions',
+    name: 'portfolio-positions',
+    component: () => import('../pages/PortfolioPositionsPage.vue'),
+    meta: requiresAuth,
+  },
+  {
+    path: '/portfolio/stock-groups',
+    name: 'portfolio-stock-groups',
+    component: () => import('../pages/PortfolioStockGroupsPage.vue'),
+    meta: requiresAuth,
+  },
+  {
+    path: '/portfolio/alerts',
+    name: 'portfolio-alerts',
+    component: () => import('../pages/PortfolioAlertsPage.vue'),
+    meta: requiresAuth,
+  },
+  {
     path: '/workspace',
     name: 'workspace',
     component: () => import('../pages/WorkspacePage.vue'),

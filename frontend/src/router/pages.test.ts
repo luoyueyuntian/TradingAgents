@@ -49,6 +49,10 @@ describe('page registry', () => {
       'runs',
       'run-detail',
       'portfolio',
+      'portfolio-watchlist',
+      'portfolio-positions',
+      'portfolio-stock-groups',
+      'portfolio-alerts',
       'workspace',
       'automations',
       'settings',
@@ -59,11 +63,15 @@ describe('page registry', () => {
       'change-password',
     ]);
     expect(routes.find((route) => route.path === '/runs/:runId')?.name).toBe('run-detail');
+    expect(routes.find((route) => route.path === '/portfolio/watchlist')?.name).toBe('portfolio-watchlist');
+    expect(routes.find((route) => route.path === '/portfolio/positions')?.name).toBe('portfolio-positions');
+    expect(routes.find((route) => route.path === '/portfolio/stock-groups')?.name).toBe('portfolio-stock-groups');
+    expect(routes.find((route) => route.path === '/portfolio/alerts')?.name).toBe('portfolio-alerts');
     expect(routes.find((route) => route.path === '/settings')?.meta?.minRole).toBe('admin');
     expect(routes.find((route) => route.path === '/tenants')?.meta?.minRole).toBe('admin');
     expect(routes.find((route) => route.path === '/tenants/:tenantId')?.meta?.minRole).toBe('admin');
     expect(routes.find((route) => route.path === '/users')?.meta?.minRole).toBe('admin');
-    expect(routes.filter((route) => route.meta?.requiresAuth).length).toBe(12);
+    expect(routes.filter((route) => route.meta?.requiresAuth).length).toBe(16);
   });
 
   it('keeps tenant route modules lazy-loadable until used', async () => {

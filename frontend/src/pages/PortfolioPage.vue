@@ -6,158 +6,41 @@
       :description="t('portfolio.description')"
     >
       <template #actions>
-        <Button icon="pi pi-refresh" :label="t('common.refresh')" severity="secondary" @click="loadAll" />
+        <Button icon="pi pi-refresh" :label="t('common.refresh')" severity="secondary" :disabled="!canWrite" @click="loadAll" />
       </template>
     </PageHeader>
 
+    <PortfolioSubnav />
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <MetricGrid :items="metrics" />
 
-    <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(320px,1fr))] uno-gap-4">
-      <Card>
-        <template #title>{{ t('common.watchlist') }}</template>
-        <template #content>
-          <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-            <InputText v-model="watchTicker" :placeholder="t('common.ticker')" :disabled="!canWrite" />
-            <Button icon="pi pi-plus" :label="t('common.add')" :disabled="!canWrite" @click="addWatchlist" />
-          </div>
-          <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
-            <div v-for="item in watchlist" :key="item.ticker" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
-              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
-                <span>{{ item.ticker }}</span>
-                <Tag :value="item.latest_signal || item.latest_status || t('common.saved')" :severity="signalSeverity(item.latest_signal || item.latest_status)" />
-              </div>
-              <small class="uno-text-[#6f8183]">{{ item.company_name || item.latest_date || t('portfolio.noSavedRun') }}</small>
-            </div>
-          </div>
-        </template>
-      </Card>
-
-      <Card>
-        <template #title>{{ t('nav.portfolio') }}</template>
-        <template #content>
-          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
-            <InputText v-model="position.ticker" :placeholder="t('common.ticker')" :disabled="!canWrite" />
-            <InputText v-model="position.quantity" type="number" :placeholder="t('portfolio.quantity')" :disabled="!canWrite" />
-            <InputText v-model="position.average_cost" type="number" :placeholder="t('portfolio.averageCost')" :disabled="!canWrite" />
-          </div>
-          <Button icon="pi pi-plus" :label="t('common.addPosition')" class="uno-mt-3" :disabled="!canWrite" @click="addPosition" />
-          <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
-            <div v-for="item in asArray(portfolio?.positions)" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
-              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
-                <span>{{ item.ticker }} · {{ item.quantity }} @ {{ item.average_cost }}</span>
-                <Tag :value="item.latest_signal || t('common.na')" :severity="signalSeverity(item.latest_signal)" />
-              </div>
-            </div>
-          </div>
-        </template>
-      </Card>
-
-      <Card>
-        <template #title>{{ t('portfolio.stockGroups') }}</template>
-        <template #content>
-          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
-            <InputText
-              v-model="stockGroupForm.name"
-              data-testid="stock-group-name"
-              :placeholder="t('portfolio.stockGroupName')"
-              :disabled="!canWrite"
-            />
-            <InputText
-              v-model="stockGroupForm.tickers"
-              data-testid="stock-group-tickers"
-              :placeholder="t('portfolio.stockGroupTickers')"
-              :disabled="!canWrite"
-            />
-          </div>
-          <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-            <Button
-              :icon="stockGroupSubmitIcon"
-              :label="stockGroupSubmitLabel"
-              data-testid="stock-group-save"
-              :disabled="!canWrite"
-              @click="addStockGroup"
-            />
-            <Button
-              v-if="canWrite && stockGroupForm.id"
-              :label="t('common.cancel')"
-              severity="secondary"
-              text
-              data-testid="stock-group-cancel"
-              @click="resetStockGroupForm"
-            />
-          </div>
-          <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
-            <div
-              v-for="group in stockGroups"
-              :key="group.id"
-              class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3"
-            >
-              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
-                <span>{{ group.name }}</span>
-                <div class="uno-flex uno-items-center uno-gap-2">
-                  <Button
-                    v-if="canWrite"
-                    icon="pi pi-pencil"
-                    text
-                    severity="secondary"
-                    :data-testid="`stock-group-edit-${group.id}`"
-                    :aria-label="`Edit ${group.name}`"
-                    @click="loadStockGroupIntoForm(group)"
-                  />
-                  <Button
-                    v-if="canWrite"
-                    icon="pi pi-trash"
-                    text
-                    severity="danger"
-                    :data-testid="`stock-group-delete-${group.id}`"
-                    :aria-label="`Delete ${group.name}`"
-                    @click="deleteStockGroup(String(group.id))"
-                  />
-                </div>
-              </div>
-              <small class="uno-text-[#6f8183]">{{ asArray(group.tickers).join(', ') || t('common.na') }}</small>
-            </div>
-          </div>
-        </template>
-      </Card>
-
-      <Card>
-        <template #title>{{ t('portfolio.alerts') }}</template>
-        <template #content>
-          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
-            <InputText v-model="alertRule.ticker" :placeholder="t('common.ticker')" :disabled="!canWrite" />
-            <Select v-model="alertRule.field" :options="alertFields" option-label="label" option-value="value" :disabled="!canWrite" />
-            <InputText v-model="alertRule.value" :placeholder="t('portfolio.valuePlaceholder')" :disabled="!canWrite" />
-          </div>
-          <Button icon="pi pi-bell" :label="t('common.addRule')" class="uno-mt-3" :disabled="!canWrite" @click="addAlert" />
-          <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
-            <div v-for="rule in asArray(alerts?.rules)" :key="rule.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
-              <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
-                <span>{{ rule.ticker }} · {{ rule.field }} = {{ rule.value }}</span>
-                <Button v-if="canWrite" icon="pi pi-trash" text severity="danger" :aria-label="t('portfolio.deleteAlert')" @click="deleteAlert(rule.id)" />
-              </div>
-            </div>
-          </div>
-        </template>
-      </Card>
-
-      <Card>
-        <template #title>{{ t('portfolio.screener') }}</template>
-        <template #content>
-          <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-            <Select v-model="screenerScope" :options="screenerScopes" option-label="label" option-value="value" @change="loadScreener" />
-            <InputText v-model="screenerQuery" :placeholder="t('portfolio.searchCandidates')" @input="loadScreener" />
-          </div>
-          <DataTable :value="asArray(screener?.rows)" size="small" class="uno-mt-3">
-            <Column field="ticker" :header="t('common.ticker')" />
-            <Column field="latest_status" :header="t('common.status')" />
-            <Column field="latest_signal" :header="t('common.signal')" />
-            <Column field="run_count" :header="t('nav.runs')" />
-          </DataTable>
-        </template>
-      </Card>
+    <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-4">
+      <RouterLink
+        v-for="section in sections"
+        :key="section.to"
+        :to="section.to"
+        class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white uno-p-4 uno-no-underline"
+      >
+        <div class="uno-text-sm uno-font-700 uno-uppercase uno-tracking-[0.12em] uno-text-[#5f7376]">{{ section.label }}</div>
+        <div class="uno-mt-2 uno-text-2xl uno-font-800 uno-text-[#14363a]">{{ section.count }}</div>
+      </RouterLink>
     </div>
+
+    <Card class="uno-mt-4">
+      <template #title>{{ t('portfolio.screener') }}</template>
+      <template #content>
+        <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+          <Select v-model="screenerScope" :options="screenerScopes" option-label="label" option-value="value" @change="loadScreener" />
+          <InputText v-model="screenerQuery" :placeholder="t('portfolio.searchCandidates')" @input="loadScreener" />
+        </div>
+        <DataTable :value="asArray(screener?.rows)" size="small" class="uno-mt-3">
+          <Column field="ticker" :header="t('common.ticker')" />
+          <Column field="latest_status" :header="t('common.status')" />
+          <Column field="latest_signal" :header="t('common.signal')" />
+          <Column field="run_count" :header="t('nav.runs')" />
+        </DataTable>
+      </template>
+    </Card>
   </section>
 </template>
 
@@ -169,50 +52,49 @@ import DataTable from 'primevue/datatable';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import Select from 'primevue/select';
-import Tag from 'primevue/tag';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 
 import MetricGrid from '../components/MetricGrid.vue';
 import PageHeader from '../components/PageHeader.vue';
+import PortfolioSubnav from '../components/portfolio/PortfolioSubnav.vue';
 import { useI18n } from '../i18n';
-import { apiDelete, apiGet, apiPatch, apiPost } from '../services/api';
+import { apiGet } from '../services/api';
 import { useSession } from '../stores/session';
-import { asArray, signalSeverity, type JsonRecord } from '../utils/format';
+import { asArray, type JsonRecord } from '../utils/format';
 
 const session = useSession();
 const canWrite = computed(() => session.canWrite.value);
+const { t } = useI18n();
 const watchlist = ref<JsonRecord[]>([]);
 const portfolio = ref<JsonRecord | null>(null);
 const alerts = ref<JsonRecord | null>(null);
 const screener = ref<JsonRecord | null>(null);
 const stockGroups = ref<JsonRecord[]>([]);
 const error = ref('');
-const watchTicker = ref('');
 const screenerScope = ref('all');
 const screenerQuery = ref('');
-const position = reactive({ ticker: '', quantity: '', average_cost: '' });
-const stockGroupForm = reactive({ id: '', name: '', tickers: '' });
-const alertRule = reactive({ ticker: '', field: 'signal', value: '' });
-const { t } = useI18n();
 
-const alertFields = computed(() => [
-  { label: t('common.signal'), value: 'signal' },
-  { label: t('common.status'), value: 'status' },
-]);
 const screenerScopes = computed(() => [
   { label: t('portfolio.scopeAllSaved'), value: 'all' },
   { label: t('common.watchlist'), value: 'watchlist' },
   { label: t('nav.portfolio'), value: 'portfolio' },
   { label: t('portfolio.scopePinned'), value: 'pinned' },
 ]);
+
 const metrics = computed(() => [
   { label: t('common.watchlist'), value: watchlist.value.length },
   { label: t('portfolio.positions'), value: asArray(portfolio.value?.positions).length },
+  { label: t('portfolio.stockGroups'), value: stockGroups.value.length },
   { label: t('portfolio.alertRules'), value: asArray(alerts.value?.rules).length },
-  { label: t('portfolio.screenerRows'), value: asArray(screener.value?.rows).length },
 ]);
-const stockGroupSubmitLabel = computed(() => (stockGroupForm.id ? t('common.save') : t('common.add')));
-const stockGroupSubmitIcon = computed(() => (stockGroupForm.id ? 'pi pi-check' : 'pi pi-plus'));
+
+const sections = computed(() => [
+  { to: '/portfolio/watchlist', label: t('common.watchlist'), count: watchlist.value.length },
+  { to: '/portfolio/positions', label: t('portfolio.positions'), count: asArray(portfolio.value?.positions).length },
+  { to: '/portfolio/stock-groups', label: t('portfolio.stockGroups'), count: stockGroups.value.length },
+  { to: '/portfolio/alerts', label: t('portfolio.alerts'), count: asArray(alerts.value?.rules).length },
+]);
 
 async function loadWatchlist() {
   watchlist.value = await apiGet<JsonRecord[]>('/api/watchlist', session.apiContext.value);
@@ -233,7 +115,9 @@ async function loadStockGroups() {
 async function loadScreener() {
   const params = new URLSearchParams();
   params.set('scope', screenerScope.value);
-  if (screenerQuery.value.trim()) params.set('q', screenerQuery.value.trim());
+  if (screenerQuery.value.trim()) {
+    params.set('q', screenerQuery.value.trim());
+  }
   screener.value = await apiGet<JsonRecord>(`/api/screener?${params.toString()}`, session.apiContext.value);
 }
 
@@ -244,84 +128,6 @@ async function loadAll() {
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('portfolio.loadError');
   }
-}
-
-async function addWatchlist() {
-  if (!watchTicker.value.trim()) return;
-  await apiPost('/api/watchlist', { ticker: watchTicker.value.trim().toUpperCase() }, session.apiContext.value);
-  watchTicker.value = '';
-  await loadWatchlist();
-}
-
-async function addPosition() {
-  if (!position.ticker.trim()) return;
-  await apiPost('/api/portfolio/positions', {
-    ticker: position.ticker.trim().toUpperCase(),
-    quantity: Number(position.quantity || 0),
-    average_cost: Number(position.average_cost || 0),
-  }, session.apiContext.value);
-  Object.assign(position, { ticker: '', quantity: '', average_cost: '' });
-  await loadPortfolio();
-}
-
-function normalizeStockGroupTickers(value: string): string[] {
-  return value
-    .split(/[\s,]+/)
-    .map((ticker) => ticker.trim().toUpperCase())
-    .filter(Boolean);
-}
-
-function resetStockGroupForm() {
-  Object.assign(stockGroupForm, { id: '', name: '', tickers: '' });
-}
-
-function loadStockGroupIntoForm(group: JsonRecord) {
-  Object.assign(stockGroupForm, {
-    id: String(group.id || ''),
-    name: String(group.name || ''),
-    tickers: asArray(group.tickers).join(', '),
-  });
-}
-
-async function addStockGroup() {
-  const name = stockGroupForm.name.trim();
-  const tickers = normalizeStockGroupTickers(stockGroupForm.tickers);
-  if (!name || !tickers.length) return;
-  if (stockGroupForm.id) {
-    await apiPatch(
-      `/api/stock-groups/${encodeURIComponent(stockGroupForm.id)}`,
-      { name, tickers },
-      session.apiContext.value,
-    );
-  } else {
-    await apiPost('/api/stock-groups', { name, tickers }, session.apiContext.value);
-  }
-  resetStockGroupForm();
-  await loadStockGroups();
-}
-
-async function addAlert() {
-  if (!alertRule.ticker.trim() || !alertRule.value.trim()) return;
-  await apiPost('/api/alerts/rules', {
-    ticker: alertRule.ticker.trim().toUpperCase(),
-    field: alertRule.field,
-    value: alertRule.value.trim(),
-  }, session.apiContext.value);
-  Object.assign(alertRule, { ticker: '', field: 'signal', value: '' });
-  await loadAlerts();
-}
-
-async function deleteAlert(ruleId: string) {
-  await apiDelete(`/api/alerts/rules/${encodeURIComponent(ruleId)}`, session.apiContext.value);
-  await loadAlerts();
-}
-
-async function deleteStockGroup(groupId: string) {
-  await apiDelete(`/api/stock-groups/${encodeURIComponent(groupId)}`, session.apiContext.value);
-  if (stockGroupForm.id === groupId) {
-    resetStockGroupForm();
-  }
-  await loadStockGroups();
 }
 
 onMounted(loadAll);
