@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { setLocale } from '../i18n';
 import AutomationsPage from './AutomationsPage.vue';
 
 const { apiGet, apiPost, apiPatch, apiDelete } = vi.hoisted(() => ({
@@ -187,6 +188,7 @@ function mountPage() {
 
 describe('AutomationsPage', () => {
   beforeEach(() => {
+    setLocale('en');
     apiGet.mockReset();
     apiPost.mockReset();
     apiPatch.mockReset();

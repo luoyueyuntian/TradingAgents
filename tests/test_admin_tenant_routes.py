@@ -44,10 +44,15 @@ def _create_user(store: UserStore, **overrides):
     return store.create_user(**values)
 
 
-def _login(client: TestClient, identifier: str = "alice", password: str = "StrongPass123!"):
+def _login(
+    client: TestClient,
+    identifier: str = "alice",
+    password: str = "StrongPass123!",
+    tenant_id: str = "tenant-a",
+):
     response = client.post(
         "/api/auth/login",
-        json={"identifier": identifier, "password": password},
+        json={"tenant_id": tenant_id, "identifier": identifier, "password": password},
     )
     assert response.status_code == 200
     return response
@@ -311,7 +316,7 @@ def test_tenant_update_prevents_last_login_capable_admin_tenant_lockout(monkeypa
         must_change_password=False,
     )
     store.update_tenant("tenant-a", disabled=True)
-    _login(client, identifier="tenant-b-admin")
+    _login(client, identifier="tenant-b-admin", tenant_id="tenant-b")
 
     response = client.patch("/api/admin/tenants/tenant-b", json={"disabled": True})
 
