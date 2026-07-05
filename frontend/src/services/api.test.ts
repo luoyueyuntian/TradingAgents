@@ -43,6 +43,31 @@ describe('api service', () => {
     expect(error.message).toBe('Ticker is required; Date is invalid');
   });
 
+  it('preserves structured detail objects for downstream conflict handling', async () => {
+    const response = new Response(JSON.stringify({
+      detail: {
+        code: 'ticker_active_run_exists',
+        message: 'AAPL already has an active analysis run.',
+        active_run_id: 'run-active',
+        active_run_status: 'running',
+      },
+    }), {
+      status: 409,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const error = await createApiError(response);
+
+    expect(error.message).toBe('AAPL already has an active analysis run.');
+    expect(error.status).toBe(409);
+    expect((error as Error & { detail?: Record<string, unknown> }).detail).toEqual({
+      code: 'ticker_active_run_exists',
+      message: 'AAPL already has an active analysis run.',
+      active_run_id: 'run-active',
+      active_run_status: 'running',
+    });
+  });
+
   it('attaches the HTTP status to api request errors', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ detail: 'Unauthorized' }), {

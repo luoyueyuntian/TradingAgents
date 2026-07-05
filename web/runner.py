@@ -8,6 +8,7 @@ import threading
 from tradingagents.service.models import TERMINAL_RUN_STATUSES as TERMINAL_RUN_STATUSES, RunState
 from tradingagents.service.run_service import RunService
 from tradingagents.service.state_backend import get_state_backend_adapter
+from tradingagents.service.timestamps import coerce_timestamp_ms
 from tradingagents.service.web_state import (
     get_web_claims_dir,
     get_web_events_dir,
@@ -115,6 +116,29 @@ def get_run(run_id: str, tenant_id: str | None = None) -> RunState | None:
 def list_runs(tenant_id: str | None = None) -> list[RunState]:
     refresh_from_storage_if_needed(tenant_id)
     return get_service(tenant_id).list_runs()
+
+
+def find_latest_active_run_for_ticker(
+    ticker: str,
+    tenant_id: str | None = None,
+    asset_type: str | None = None,
+) -> RunState | None:
+    refresh_from_storage_if_needed(tenant_id)
+    normalized_ticker = str(ticker or "").strip().upper()
+    normalized_asset_type = str(asset_type or "").strip().lower()
+    if not normalized_ticker:
+        return None
+    candidates = [
+        run for run in get_service(tenant_id).list_runs()
+        if str(getattr(run, "ticker", "") or "").strip().upper() == normalized_ticker
+        and str(getattr(run, "status", "") or "").strip().lower() in {"queued", "running"}
+        and (
+            not normalized_asset_type
+            or str(getattr(run, "asset_type", "") or "").strip().lower() == normalized_asset_type
+        )
+    ]
+    candidates.sort(key=lambda run: coerce_timestamp_ms(getattr(run, "created_at", None)) or 0, reverse=True)
+    return candidates[0] if candidates else None
 
 
 def get_queue_position(run_id: str, tenant_id: str | None = None) -> int | None:

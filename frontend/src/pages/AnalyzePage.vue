@@ -291,6 +291,12 @@ import {
   type TickerRunHistoryPage,
 } from './tickerHistory';
 
+type ConflictDetail = {
+  code?: string;
+  active_run_id?: string;
+  active_run_status?: string;
+};
+
 const router = useRouter();
 const session = useSession();
 const canWrite = computed(() => session.canWrite.value);
@@ -583,7 +589,7 @@ async function loadTickerHistoryPage(page = 1) {
   historyDialogLoading.value = true;
   try {
     historyDialogPage.value = await apiGet<TickerRunHistoryPage>(
-      buildTickerHistoryPath({ ticker: form.ticker, page, pageSize: 10 }),
+      buildTickerHistoryPath({ ticker: form.ticker, assetType: 'stock', page, pageSize: 10 }),
       session.apiContext.value,
     );
   } finally {
@@ -594,6 +600,28 @@ async function loadTickerHistoryPage(page = 1) {
 function openHistoryDialog(mode: 'active' | 'recent-history') {
   historyDialogMode.value = mode;
   historyDialogVisible.value = true;
+}
+
+function isActiveRunConflictError(error: unknown): error is Error & { status: number; detail?: ConflictDetail } {
+  const detail = (error as { detail?: ConflictDetail } | undefined)?.detail;
+  return Boolean(
+    error
+    && typeof error === 'object'
+    && (error as { status?: number }).status === 409
+    && detail
+    && detail.code === 'ticker_active_run_exists',
+  );
+}
+
+async function handleCreateConflict(error: Error & { detail?: ConflictDetail }) {
+  await loadTickerHistoryPage(1);
+  historyDialogPage.value = {
+    ...historyDialogPage.value,
+    has_active_run: true,
+    active_run_id: error.detail?.active_run_id || historyDialogPage.value.active_run_id || null,
+    active_run_status: error.detail?.active_run_status || historyDialogPage.value.active_run_status || null,
+  };
+  openHistoryDialog('active');
 }
 
 async function startRun() {
@@ -619,6 +647,10 @@ async function startRun() {
     }
     await createRunFromForm();
   } catch (exc) {
+    if (isActiveRunConflictError(exc)) {
+      await handleCreateConflict(exc);
+      return;
+    }
     error.value = exc instanceof Error ? exc.message : t('analysis.startError');
   } finally {
     submitting.value = false;
@@ -646,6 +678,10 @@ async function handleHistoryDialogConfirm() {
   try {
     await createRunFromForm();
   } catch (exc) {
+    if (isActiveRunConflictError(exc)) {
+      await handleCreateConflict(exc);
+      return;
+    }
     error.value = exc instanceof Error ? exc.message : t('analysis.startError');
   } finally {
     submitting.value = false;

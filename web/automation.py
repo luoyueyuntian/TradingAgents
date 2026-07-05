@@ -11,7 +11,7 @@ from tradingagents.service.timestamps import current_timestamp_ms, timestamp_ms_
 from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import load_settings, save_settings
 
-from .runner import get_execution_mode, get_service
+from .runner import find_latest_active_run_for_ticker, get_execution_mode, get_service
 from .schemas import (
     AnalysisRequest,
     AnalysisResponse,
@@ -272,6 +272,9 @@ def _queue_rule_runs(
     runs: list[AnalysisResponse] = []
     for ticker in tickers:
         req = _build_analysis_request_for_rule(rule, ticker, date_str)
+        active_run = find_latest_active_run_for_ticker(req.ticker, tenant_id, req.asset_type)
+        if active_run is not None:
+            continue
         run = service.create_run(req, start_worker=should_start_worker, settings=settings)
         runs.append(_analysis_response_from_run(run))
 

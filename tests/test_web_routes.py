@@ -224,6 +224,7 @@ def test_get_ticker_history_returns_paginated_runs_with_active_metadata(monkeypa
     older.created_at = "2026-07-03T09:30:00"
 
     monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [older, archived, running])
+    monkeypatch.setattr(web_routes, "find_latest_active_run_for_ticker", lambda ticker, tenant_id=None, asset_type=None: running)
     monkeypatch.setattr(web_routes, "get_queue_position", lambda run_id, tenant_id=None: None)
     monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant.json")
     monkeypatch.setattr(web_routes, "load_settings", lambda path=None: {"archived_runs": {"ids": ["run-archived"]}})
@@ -249,7 +250,7 @@ def test_create_analysis_run_rejects_same_ticker_when_active_run_exists(monkeypa
     active.status = "running"
     active.created_at = "2026-07-05T09:30:00"
 
-    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [active])
+    monkeypatch.setattr(web_routes, "find_latest_active_run_for_ticker", lambda ticker, tenant_id=None, asset_type=None: active)
     monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _make_run("new-run"))
 
     response = client.post(
@@ -269,6 +270,27 @@ def test_create_analysis_run_rejects_same_ticker_when_active_run_exists(monkeypa
     assert response.json()["detail"]["code"] == "ticker_active_run_exists"
     assert response.json()["detail"]["active_run_id"] == "run-active"
     assert response.json()["detail"]["active_run_status"] == "running"
+
+
+def test_create_analysis_run_allows_same_ticker_when_other_asset_type_is_active(monkeypatch):
+    client = TestClient(app)
+    monkeypatch.setattr(web_routes, "find_latest_active_run_for_ticker", lambda ticker, tenant_id=None, asset_type=None: None)
+    monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _make_run("new-run"))
+
+    response = client.post(
+        "/api/runs",
+        json={
+            "ticker": "AAPL",
+            "date": "2026-07-05",
+            "asset_type": "stock",
+            "analysts": ["market"],
+            "llm_provider": "openai",
+            "research_depth": 3,
+            "output_language": "English",
+        },
+    )
+
+    assert response.status_code == 201
 
 
 def test_get_run_terminal_output_returns_saved_log(monkeypatch, tmp_path):
@@ -824,6 +846,40 @@ def test_batch_run_endpoint_queues_manual_tickers(monkeypatch):
     assert payload["tickers"] == ["NVDA", "BTC-USD"]
     assert [item["ticker"] for item in payload["runs"]] == ["NVDA", "BTC-USD"]
     assert [item.asset_type for item in created] == ["stock", "crypto"]
+
+
+def test_batch_run_endpoint_rejects_same_ticker_when_active_run_exists(monkeypatch):
+    client = TestClient(app)
+    active = _make_run("run-active")
+    active.ticker = "NVDA"
+    active.status = "running"
+    active.asset_type = "stock"
+    active.created_at = "2026-07-05T09:30:00"
+
+    monkeypatch.setattr(
+        web_routes,
+        "find_latest_active_run_for_ticker",
+        lambda ticker, tenant_id=None, asset_type=None: active if ticker == "NVDA" and asset_type == "stock" else None,
+    )
+    monkeypatch.setattr(web_routes, "create_run", lambda req, _loop=None, tenant_id=None: _make_run("unexpected"))
+
+    response = client.post(
+        "/api/runs/batch",
+        json={
+            "tickers": ["NVDA", "MSFT"],
+            "date": "2026-01-15",
+            "analysts": ["market", "news"],
+            "llm_provider": "openai",
+            "quick_think_model": "gpt-5.4-mini",
+            "deep_think_model": "gpt-5.5",
+            "research_depth": 3,
+            "output_language": "English",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "ticker_active_run_exists"
+    assert response.json()["detail"]["active_run_id"] == "run-active"
 
 
 def test_batch_run_endpoint_can_queue_watchlist(monkeypatch, tmp_path):

@@ -10,7 +10,7 @@ from copy import deepcopy
 from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import load_settings, save_settings
 
-from .runner import TERMINAL_RUN_STATUSES, get_service
+from .runner import TERMINAL_RUN_STATUSES, find_latest_active_run_for_ticker, get_service
 from .schemas import (
     AnalysisRequest,
     ManualStockSelection,
@@ -375,6 +375,10 @@ def process_due_one_time_tasks(
                     anthropic_effort=task.analysis_config.anthropic_effort,
                 )
                 try:
+                    active_run = find_latest_active_run_for_ticker(request.ticker, tenant_id, request.asset_type)
+                    if active_run is not None:
+                        last_error = f"{request.ticker} already has an active analysis run."
+                        continue
                     run = service.create_run(request, start_worker=start_worker, settings=settings)
                 except Exception as exc:
                     last_error = str(exc)

@@ -13,12 +13,14 @@ export type TickerRunHistoryPage = {
   items: JsonRecord[];
 };
 
-export function buildTickerHistoryPath(input: { ticker: string; page: number; pageSize: number }): string {
-  const params = new URLSearchParams({
-    ticker: input.ticker.trim().toUpperCase(),
-    page: String(input.page),
-    page_size: String(input.pageSize),
-  });
+export function buildTickerHistoryPath(input: { ticker: string; assetType?: string; page: number; pageSize: number }): string {
+  const params = new URLSearchParams();
+  params.set('ticker', input.ticker.trim().toUpperCase());
+  if (input.assetType?.trim()) {
+    params.set('asset_type', input.assetType.trim().toLowerCase());
+  }
+  params.set('page', String(input.page));
+  params.set('page_size', String(input.pageSize));
   return `/api/runs/ticker-history?${params.toString()}`;
 }
 

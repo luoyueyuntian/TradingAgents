@@ -237,4 +237,39 @@ describe('AnalyzePage', () => {
 
     expect(push).toHaveBeenCalledWith({ name: 'run-detail', params: { runId: 'run-recent' } });
   });
+
+  it('reopens the active-run dialog when create hits a structured 409 conflict after preflight', async () => {
+    let historyCalls = 0;
+    apiGet.mockImplementation((path: string) => {
+      if (path.startsWith('/api/runs/ticker-history')) {
+        historyCalls += 1;
+        return Promise.resolve(
+          historyCalls === 1
+            ? sampleRecentHistoryPage()
+            : sampleRecentHistoryPage({ has_active_run: true, active_run_id: 'run-active', active_run_status: 'running' }),
+        );
+      }
+      return resolveAnalyzeBootPayload(path);
+    });
+    apiPost.mockRejectedValueOnce(Object.assign(
+      new Error('AAPL already has an active analysis run.'),
+      {
+        status: 409,
+        detail: {
+          code: 'ticker_active_run_exists',
+          active_run_id: 'run-active',
+          active_run_status: 'running',
+        },
+      },
+    ));
+
+    const wrapper = await mountPage();
+    await findButtonByText(wrapper, '开始分析').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="history-dialog-confirm"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('立即查看');
+    expect(apiGet.mock.calls.filter(([path]) => String(path).startsWith('/api/runs/ticker-history'))).toHaveLength(2);
+  });
 });
