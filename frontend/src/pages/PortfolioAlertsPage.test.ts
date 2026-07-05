@@ -25,8 +25,8 @@ describe('PortfolioAlertsPage', () => {
     apiGet.mockReset();
     apiDelete.mockReset();
     apiGet.mockResolvedValue({
-      rules: [{ id: 'alert-1', ticker: 'NVDA', field: 'signal', value: 'Buy' }],
-      hits: [],
+      rules: [{ id: 'alert-1', ticker: 'NVDA', company_name: 'NVIDIA Corporation', field: 'signal', value: 'Buy' }],
+      hits: [{ rule_id: 'alert-1', ticker: 'NVDA', company_name: 'NVIDIA Corporation', field: 'signal', expected_value: 'Buy', actual_value: 'Buy', run_id: 'run-1', run_date: '2026-01-15' }],
     });
   });
 
@@ -47,6 +47,7 @@ describe('PortfolioAlertsPage', () => {
     await flushPromises();
     expect(apiGet).toHaveBeenCalledWith('/api/alerts', { tenantId: 'tenant-a', apiToken: 'token-a' });
     expect(wrapper.text()).toContain('NVDA');
+    expect(wrapper.text()).toContain('NVIDIA Corporation');
     await wrapper.get('[data-testid="alert-delete-alert-1"]').trigger('click');
     expect(apiDelete).toHaveBeenCalledWith('/api/alerts/rules/alert-1', { tenantId: 'tenant-a', apiToken: 'token-a' });
   });

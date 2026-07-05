@@ -7,6 +7,7 @@ import json
 from fastapi.testclient import TestClient
 
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.service.stock_catalog import StockCatalogItem
 from tradingagents.service.runtime_context import build_runtime_context
 from web import automation as web_automation, one_time_tasks as web_one_time_tasks, routes as web_routes
 from web import stock_groups as stock_groups_module
@@ -266,20 +267,35 @@ def test_stock_group_crud_round_trip(monkeypatch, tmp_path):
         "get_web_settings_path",
         lambda tenant_id=None: tmp_path / f"{tenant_id or 'default'}.json",
     )
+    monkeypatch.setattr(
+        web_routes,
+        "search_stock_catalog",
+        lambda market, query="", limit=100, cache_path=None, fetchers=None, today=None, refresh_if_stale=True: [
+            StockCatalogItem(market="us", symbol="NVDA", name="NVIDIA Corporation", exchange="NASDAQ"),
+            StockCatalogItem(market="us", symbol="MSFT", name="Microsoft Corporation", exchange="NASDAQ"),
+            StockCatalogItem(market="us", symbol="AAPL", name="Apple Inc.", exchange="NASDAQ"),
+        ],
+    )
 
-    created = client.post("/api/stock-groups", json={"name": "AI Leaders", "tickers": ["nvda", "msft"]})
+    created = client.post("/api/stock-groups", json={"name": "AI Leaders", "tickers": []})
     assert created.status_code == 201
     group_id = created.json()["id"]
-    assert created.json()["tickers"] == ["NVDA", "MSFT"]
+    assert created.json()["tickers"] == []
+    assert created.json()["company_names"] == {}
 
     listed = client.get("/api/stock-groups")
     assert listed.status_code == 200
     assert [item["name"] for item in listed.json()] == ["AI Leaders"]
+    assert listed.json()[0]["company_names"] == {}
 
     updated = client.patch(f"/api/stock-groups/{group_id}", json={"name": "AI Basket", "tickers": ["nvda", "aapl"]})
     assert updated.status_code == 200
     assert updated.json()["name"] == "AI Basket"
     assert updated.json()["tickers"] == ["NVDA", "AAPL"]
+    assert updated.json()["company_names"] == {
+        "NVDA": "NVIDIA Corporation",
+        "AAPL": "Apple Inc.",
+    }
 
     deleted = client.delete(f"/api/stock-groups/{group_id}")
     assert deleted.status_code == 200
@@ -955,6 +971,7 @@ def test_watchlist_endpoint_returns_tenant_scoped_entries(monkeypatch, tmp_path)
 
     newest = _make_run("new")
     newest.ticker = "NVDA"
+    newest.company_name = "NVIDIA Corporation"
     newest.status = "completed"
     newest.signal = "Buy"
     newest.created_at = "2026-01-15T01:00:00"
@@ -973,6 +990,7 @@ def test_watchlist_endpoint_returns_tenant_scoped_entries(monkeypatch, tmp_path)
     assert response.status_code == 200
     payload = response.json()
     assert [item["ticker"] for item in payload] == ["NVDA", "MSFT"]
+    assert payload[0]["company_name"] == "NVIDIA Corporation"
     assert payload[0]["run_count"] == 2
     assert payload[0]["latest_signal"] == "Buy"
     assert payload[1]["run_count"] == 0
@@ -1186,6 +1204,7 @@ def test_alert_center_returns_rules_and_active_hits(monkeypatch, tmp_path):
 
     nvda = _make_run("nvda")
     nvda.ticker = "NVDA"
+    nvda.company_name = "NVIDIA Corporation"
     nvda.signal = "Buy"
     nvda.status = "completed"
     nvda.date = "2026-01-15"
@@ -1205,8 +1224,10 @@ def test_alert_center_returns_rules_and_active_hits(monkeypatch, tmp_path):
     assert response.status_code == 200
     payload = response.json()
     assert [rule["id"] for rule in payload["rules"]] == ["rule-buy", "rule-fail"]
+    assert payload["rules"][0]["company_name"] == "NVIDIA Corporation"
     assert len(payload["hits"]) == 1
     assert payload["hits"][0]["rule_id"] == "rule-buy"
+    assert payload["hits"][0]["company_name"] == "NVIDIA Corporation"
     assert payload["hits"][0]["actual_value"] == "Buy"
 
 
@@ -1329,6 +1350,7 @@ def test_portfolio_endpoint_returns_positions_with_summary(monkeypatch, tmp_path
 
     nvda = _make_run("nvda")
     nvda.ticker = "NVDA"
+    nvda.company_name = "NVIDIA Corporation"
     nvda.signal = "Buy"
     nvda.status = "completed"
     nvda.date = "2026-01-15"
@@ -1344,6 +1366,7 @@ def test_portfolio_endpoint_returns_positions_with_summary(monkeypatch, tmp_path
     assert payload["summary"]["position_count"] == 2
     assert payload["summary"]["unique_ticker_count"] == 2
     assert payload["summary"]["total_cost_basis"] == 2000.0
+    assert payload["positions"][0]["company_name"] == "NVIDIA Corporation"
     assert payload["positions"][0]["cost_basis"] == 1000.0
     assert payload["positions"][0]["latest_signal"] == "Buy"
     assert payload["positions"][1]["latest_signal"] is None

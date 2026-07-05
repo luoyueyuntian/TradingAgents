@@ -16,6 +16,11 @@
 
     <DataTable :value="positions" size="small" class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white">
       <Column field="ticker" :header="t('common.ticker')" />
+      <Column field="company_name" :header="t('common.companyName')">
+        <template #body="{ data }">
+          {{ data.company_name || t('common.na') }}
+        </template>
+      </Column>
       <Column field="quantity" :header="t('portfolio.quantity')" />
       <Column field="average_cost" :header="t('portfolio.averageCost')" />
       <Column field="cost_basis" :header="t('portfolio.costBasis')" />

@@ -642,7 +642,7 @@ class StockGroupCreate(BaseModel):
     """Payload for creating or updating one static stock group."""
 
     name: str = Field(..., min_length=1)
-    tickers: list[str] = Field(default_factory=list, min_length=1)
+    tickers: list[str] = Field(default_factory=list)
 
     @field_validator("name")
     @classmethod
@@ -652,10 +652,7 @@ class StockGroupCreate(BaseModel):
     @field_validator("tickers", mode="before")
     @classmethod
     def _normalize_tickers(cls, value) -> list[str]:
-        tickers = _normalize_ticker_list(value)
-        if not tickers:
-            raise ValueError("tickers must not be empty")
-        return tickers
+        return _normalize_ticker_list(value)
 
 
 class StockGroupUpdate(StockGroupCreate):
@@ -668,6 +665,7 @@ class StockGroup(BaseModel):
     id: str
     name: str
     tickers: list[str]
+    company_names: dict[str, str] = Field(default_factory=dict)
     created_at: str
     updated_at: str
 
@@ -679,10 +677,7 @@ class StockGroup(BaseModel):
     @field_validator("tickers", mode="before")
     @classmethod
     def _normalize_tickers(cls, value) -> list[str]:
-        tickers = _normalize_ticker_list(value)
-        if not tickers:
-            raise ValueError("tickers must not be empty")
-        return tickers
+        return _normalize_ticker_list(value)
 
 
 class ManualStockSelection(BaseModel):
@@ -1223,6 +1218,7 @@ class TickerOverview(BaseModel):
     """Ticker-centric summary built from saved run history."""
 
     ticker: str
+    company_name: str | None = None
     run_count: int = 0
     latest_run_id: str | None = None
     latest_signal: str | None = None
@@ -1236,6 +1232,7 @@ class WatchlistEntry(BaseModel):
     """Saved ticker entry plus its latest known research summary."""
 
     ticker: str
+    company_name: str | None = None
     run_count: int = 0
     created_at: OptionalTimestampMs = None
     latest_run_id: str | None = None
@@ -1287,6 +1284,7 @@ class AlertRule(BaseModel):
 
     id: str
     ticker: str
+    company_name: str | None = None
     field: str
     value: str
     created_at: OptionalTimestampMs = None
@@ -1352,6 +1350,7 @@ class AlertHit(BaseModel):
 
     rule_id: str
     ticker: str
+    company_name: str | None = None
     field: str
     expected_value: str
     actual_value: str
@@ -1372,6 +1371,7 @@ class PortfolioPosition(BaseModel):
 
     id: str
     ticker: str
+    company_name: str | None = None
     quantity: float
     average_cost: float
     cost_basis: float

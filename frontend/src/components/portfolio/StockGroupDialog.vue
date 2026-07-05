@@ -5,7 +5,7 @@
     :save-label="mode === 'edit' ? t('common.save') : t('common.add')"
     :cancel-label="t('common.cancel')"
     :loading="saving"
-    :disabled="!name.trim() || !tickers.length"
+    :disabled="!name.trim()"
     :error="error"
     @update:visible="emit('update:visible', $event)"
     @submit="save"
@@ -15,19 +15,21 @@
       <InputText v-model="name" />
     </label>
 
-    <PortfolioStockPicker v-model:selectedStock="selectedStock" v-model:stockMarket="stockMarket" :disabled="saving" />
-    <Button :label="t('portfolio.addTickerToGroup')" severity="secondary" :disabled="!selectedStock" @click="addSelectedTicker" />
+    <template v-if="mode === 'edit'">
+      <PortfolioStockPicker v-model:selectedStock="selectedStock" v-model:stockMarket="stockMarket" :disabled="saving" />
+      <Button :label="t('portfolio.addTickerToGroup')" severity="secondary" :disabled="!selectedStock" @click="addSelectedTicker" />
 
-    <div class="uno-flex uno-flex-wrap uno-gap-2">
-      <span
-        v-for="ticker in tickers"
-        :key="ticker"
-        class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
-      >
-        {{ ticker }}
-        <button type="button" class="uno-bg-transparent uno-p-0" @click="removeTicker(ticker)">x</button>
-      </span>
-    </div>
+      <div class="uno-flex uno-flex-wrap uno-gap-2">
+        <span
+          v-for="ticker in tickers"
+          :key="ticker"
+          class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
+        >
+          {{ ticker }}
+          <button type="button" class="uno-bg-transparent uno-p-0" @click="removeTicker(ticker)">x</button>
+        </span>
+      </div>
+    </template>
   </PortfolioDialog>
 </template>
 

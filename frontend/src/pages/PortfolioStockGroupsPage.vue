@@ -18,7 +18,14 @@
       <Column field="name" :header="t('portfolio.stockGroupName')" />
       <Column :header="t('portfolio.stockGroupTickers')">
         <template #body="{ data }">
-          {{ asArray(data.tickers).join(', ') }}
+          {{
+            asArray<string>(data.tickers)
+              .map((ticker) => {
+                const companyName = data.company_names?.[ticker];
+                return companyName ? `${ticker} · ${companyName}` : ticker;
+              })
+              .join(', ')
+          }}
         </template>
       </Column>
       <Column field="created_at" :header="t('common.created')">
