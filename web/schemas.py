@@ -2849,8 +2849,17 @@ class ArtifactContent(BaseModel):
 
 
 class AuthLoginRequest(BaseModel):
+    tenant_id: str | None = None
     identifier: str = Field(..., min_length=1)
     password: str = Field(..., min_length=1)
+
+    @field_validator("tenant_id", mode="before")
+    @classmethod
+    def _strip_optional_tenant_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        return trimmed or None
 
     @field_validator("identifier", "password")
     @classmethod

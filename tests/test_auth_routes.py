@@ -40,10 +40,15 @@ def _auth_client(monkeypatch, tmp_path):
     return TestClient(app), UserStore(db_path)
 
 
-def _login(client: TestClient, identifier: str = "alice", password: str = "StrongPass123!"):
+def _login(
+    client: TestClient,
+    identifier: str = "alice",
+    password: str = "StrongPass123!",
+    tenant_id: str = "tenant-a",
+):
     response = client.post(
         "/api/auth/login",
-        json={"identifier": identifier, "password": password},
+        json={"tenant_id": tenant_id, "identifier": identifier, "password": password},
     )
     assert response.status_code == 200
     return response
@@ -55,11 +60,57 @@ def test_login_rejects_invalid_credentials(monkeypatch, tmp_path):
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "wrong-password"},
+        json={"tenant_id": "tenant-a", "identifier": "alice", "password": "wrong-password"},
     )
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Invalid credentials"
+
+
+def test_login_requires_tenant_id(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice", "password": "StrongPass123!"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "tenant_id must not be blank"
+
+
+def test_login_uses_tenant_id_to_disambiguate_shared_identifier(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(
+        store,
+        username="shared",
+        email="shared@example.com",
+        display_name="Shared Tenant A",
+        tenant_id="tenant-a",
+    )
+    tenant_b_user = _create_user(
+        store,
+        username="shared",
+        email="shared@example.com",
+        display_name="Shared Tenant B",
+        tenant_id="tenant-b",
+    )
+
+    wrong_tenant = client.post(
+        "/api/auth/login",
+        json={"tenant_id": "tenant-z", "identifier": "shared", "password": "StrongPass123!"},
+    )
+    right_tenant = client.post(
+        "/api/auth/login",
+        json={"tenant_id": "tenant-b", "identifier": "shared", "password": "StrongPass123!"},
+    )
+
+    assert wrong_tenant.status_code == 401
+    assert wrong_tenant.json()["detail"] == "Invalid credentials"
+    assert right_tenant.status_code == 200
+    assert right_tenant.json()["user"]["tenant_id"] == tenant_b_user.tenant_id
+    assert right_tenant.json()["user"]["id"] == tenant_b_user.id
 
 
 def test_login_sets_session_cookie(monkeypatch, tmp_path):
@@ -68,7 +119,7 @@ def test_login_sets_session_cookie(monkeypatch, tmp_path):
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice@example.com", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice@example.com", "password": "StrongPass123!"},
     )
 
     assert response.status_code == 200
@@ -90,7 +141,7 @@ def test_login_ignores_malformed_existing_session_cookie(monkeypatch, tmp_path):
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice@example.com", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice@example.com", "password": "StrongPass123!"},
     )
 
     assert response.status_code == 200
@@ -103,7 +154,7 @@ def test_login_marks_session_cookie_secure_for_forwarded_https(monkeypatch, tmp_
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice@example.com", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice@example.com", "password": "StrongPass123!"},
         headers={"X-Forwarded-Proto": "https"},
     )
 
@@ -117,7 +168,7 @@ def test_me_returns_authenticated_user_summary(monkeypatch, tmp_path):
 
     login = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice", "password": "StrongPass123!"},
     )
     assert login.status_code == 200
 
@@ -134,7 +185,7 @@ def test_logout_clears_session_cookie(monkeypatch, tmp_path):
 
     login = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice", "password": "StrongPass123!"},
     )
     assert login.status_code == 200
 
@@ -164,7 +215,7 @@ def test_logout_still_clears_session_when_tenant_becomes_unavailable(
     client, store = _auth_client(monkeypatch, tmp_path)
     store.create_tenant(tenant_id, display_name=tenant_id)
     _create_user(store, tenant_id=tenant_id)
-    _login(client)
+    _login(client, tenant_id=tenant_id)
     store.update_tenant(tenant_id, **tenant_update)
 
     response = client.post("/api/auth/logout")
@@ -180,7 +231,7 @@ def test_login_rejects_disabled_user_with_clear_403(monkeypatch, tmp_path):
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice", "password": "StrongPass123!"},
     )
 
     assert response.status_code == 403
@@ -193,7 +244,7 @@ def test_login_hides_disabled_user_state_for_wrong_password(monkeypatch, tmp_pat
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "wrong-password"},
+        json={"tenant_id": "tenant-a", "identifier": "alice", "password": "wrong-password"},
     )
 
     assert response.status_code == 401
@@ -209,7 +260,7 @@ def test_login_rejects_expired_user_with_clear_403(monkeypatch, tmp_path):
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice@example.com", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice@example.com", "password": "StrongPass123!"},
     )
 
     assert response.status_code == 403
@@ -225,7 +276,7 @@ def test_login_hides_expired_user_state_for_wrong_password(monkeypatch, tmp_path
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice@example.com", "password": "wrong-password"},
+        json={"tenant_id": "tenant-a", "identifier": "alice@example.com", "password": "wrong-password"},
     )
 
     assert response.status_code == 401
@@ -240,7 +291,7 @@ def test_login_rejects_disabled_tenant_with_clear_403(monkeypatch, tmp_path):
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-disabled", "identifier": "alice", "password": "StrongPass123!"},
     )
 
     assert response.status_code == 403
@@ -255,7 +306,7 @@ def test_login_hides_disabled_tenant_state_for_wrong_password(monkeypatch, tmp_p
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "wrong-password"},
+        json={"tenant_id": "tenant-disabled", "identifier": "alice", "password": "wrong-password"},
     )
 
     assert response.status_code == 401
@@ -273,7 +324,7 @@ def test_login_hides_expired_tenant_state_for_wrong_password(monkeypatch, tmp_pa
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "wrong-password"},
+        json={"tenant_id": "tenant-expired", "identifier": "alice", "password": "wrong-password"},
     )
 
     assert response.status_code == 401
@@ -291,7 +342,7 @@ def test_login_rejects_expired_tenant_with_clear_403(monkeypatch, tmp_path):
 
     response = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-expired", "identifier": "alice", "password": "StrongPass123!"},
     )
 
     assert response.status_code == 403
@@ -319,7 +370,7 @@ def test_change_password_rejects_wrong_old_password(monkeypatch, tmp_path):
     _create_user(store)
     login = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice", "password": "StrongPass123!"},
     )
     assert login.status_code == 200
 
@@ -337,7 +388,7 @@ def test_change_password_rejects_weak_new_password(monkeypatch, tmp_path):
     _create_user(store)
     login = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice", "password": "StrongPass123!"},
     )
     assert login.status_code == 200
 
@@ -355,7 +406,7 @@ def test_change_password_updates_hash_and_clears_must_change(monkeypatch, tmp_pa
     user = _create_user(store, must_change_password=True)
     login = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "StrongPass123!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice", "password": "StrongPass123!"},
     )
     assert login.status_code == 200
 
@@ -372,7 +423,7 @@ def test_change_password_updates_hash_and_clears_must_change(monkeypatch, tmp_pa
 
     relogin = client.post(
         "/api/auth/login",
-        json={"identifier": "alice", "password": "EvenStronger456!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice", "password": "EvenStronger456!"},
     )
     assert relogin.status_code == 200
 
@@ -715,7 +766,7 @@ def test_password_reset_confirm_updates_password_and_allows_login(monkeypatch, t
 
     login = client.post(
         "/api/auth/login",
-        json={"identifier": "alice@example.com", "password": "EvenStronger456!"},
+        json={"tenant_id": "tenant-a", "identifier": "alice@example.com", "password": "EvenStronger456!"},
     )
     assert login.status_code == 200
 
@@ -960,7 +1011,8 @@ def test_admin_delete_soft_disables_user(monkeypatch, tmp_path):
     assert response.status_code == 200
     refreshed = store.get_user(target.id)
     assert refreshed is not None
-    assert refreshed.disabled is True
+    assert refreshed.disabled is False
+    assert refreshed.deleted_at is not None
     assert store.get_session(raw_session_id) is None
 
 

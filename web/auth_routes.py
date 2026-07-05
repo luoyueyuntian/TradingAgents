@@ -162,7 +162,9 @@ def _get_user_by_email(store: UserStore, email: str) -> UserRecord | None:
 @router.post("/login", response_model=AuthMeResponse)
 def login(payload: AuthLoginRequest, request: Request, response: Response) -> AuthMeResponse:
     store = _get_store()
-    user = store.get_user_by_identifier(payload.identifier)
+    if payload.tenant_id is None:
+        raise HTTPException(status_code=400, detail="tenant_id must not be blank")
+    user = store.get_user_by_identifier(payload.tenant_id, payload.identifier)
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not verify_password(payload.password, user.password_hash, user.password_salt):
