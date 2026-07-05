@@ -143,7 +143,7 @@ def test_page_components_keep_existing_backend_api_boundaries():
         "WorkspacePage.vue": ["/api/search", "/api/notes", "/api/members", "/api/views", "/api/public-shares"],
         "AutomationsPage.vue": ["/api/automations", "/run-now", "time_of_day", "analysis_config"],
         "SettingsPage.vue": ["/api/settings", "/api/providers"],
-        "UserManagementPage.vue": ["/api/admin/users", "AdminUserDirectory", "loadUsers", "userPath"],
+        "UserManagementPage.vue": ["/api/admin/users", "UserCrudManager", "loadUsers", "userPath", "resetPasswordPath"],
     }
 
     for filename, api_markers in page_expectations.items():

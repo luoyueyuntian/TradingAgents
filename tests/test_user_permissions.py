@@ -39,10 +39,15 @@ def _auth_client(monkeypatch, tmp_path):
     return TestClient(app), UserStore(db_path)
 
 
-def _login(client: TestClient, identifier: str = "alice", password: str = "StrongPass123!"):
+def _login(
+    client: TestClient,
+    identifier: str = "alice",
+    password: str = "StrongPass123!",
+    tenant_id: str = "tenant-a",
+):
     response = client.post(
         "/api/auth/login",
-        json={"identifier": identifier, "password": password},
+        json={"tenant_id": tenant_id, "identifier": identifier, "password": password},
     )
     assert response.status_code == 200
 
@@ -54,7 +59,7 @@ def _analysis_payload():
 def test_session_tenant_overrides_request_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", tenant_id="alpha")
-    _login(client)
+    _login(client, tenant_id="alpha")
     seen: dict[str, str | None] = {}
 
     monkeypatch.setattr(web_routes, "get_execution_mode", lambda: "external_worker")
@@ -234,7 +239,7 @@ def test_disabled_tenant_blocks_existing_session_requests(monkeypatch, tmp_path)
     client, store = _auth_client(monkeypatch, tmp_path)
     store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
     _create_user(store, role="viewer", tenant_id="tenant-disabled")
-    _login(client)
+    _login(client, tenant_id="tenant-disabled")
     store.update_tenant("tenant-disabled", disabled=True)
     monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [])
 
@@ -248,7 +253,7 @@ def test_expired_tenant_blocks_existing_session_requests(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     store.create_tenant("tenant-expired", display_name="Tenant Expired")
     _create_user(store, role="viewer", tenant_id="tenant-expired")
-    _login(client)
+    _login(client, tenant_id="tenant-expired")
     store.update_tenant(
         "tenant-expired",
         expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
@@ -366,7 +371,7 @@ def test_legacy_write_request_rejects_expired_tenant(monkeypatch, tmp_path):
 def test_authenticated_me_request_populates_auth_state(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     user = _create_user(store, role="viewer", tenant_id="alpha")
-    _login(client)
+    _login(client, tenant_id="alpha")
     observed: dict[str, object | None] = {}
     original = auth_routes._get_current_session
 
