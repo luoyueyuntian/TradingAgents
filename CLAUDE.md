@@ -90,3 +90,4 @@ Test markers: `unit`, `integration`, `smoke`.
 - `tradingagents/dataflows/config.py` uses a `ContextVar` for thread-local config — each thread/async context gets its own isolated config. The web layer keeps a conservative `Semaphore(1)` guard for now.
 - `tradingagents/graph/event_processor.py` contains shared constants and the `ChunkProcessor` class used by the web layer for streaming chunk processing.
 - `.env` files are auto-loaded on `import tradingagents` via python-dotenv.
+- Process documents must not be committed to the repository unless the user explicitly asks for them to be versioned. This includes working notes, execution logs, scratch plans, and other internal workflow documentation.
