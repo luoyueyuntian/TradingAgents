@@ -1324,6 +1324,29 @@ class AlertRuleCreate(BaseModel):
         return trimmed
 
 
+class AlertRuleUpdate(BaseModel):
+    """Payload for updating one saved alert rule."""
+
+    field: str = Field(..., min_length=1)
+    value: str = Field(..., min_length=1)
+
+    @field_validator("field")
+    @classmethod
+    def _normalize_field(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"signal", "status"}:
+            raise ValueError("field must be signal or status")
+        return normalized
+
+    @field_validator("value")
+    @classmethod
+    def _strip_value(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("value must not be blank")
+        return trimmed
+
+
 class AlertHit(BaseModel):
     """One alert rule currently matched by the latest saved run."""
 
@@ -1372,6 +1395,13 @@ class PortfolioPositionCreate(BaseModel):
         if not trimmed:
             raise ValueError("ticker must not be blank")
         return trimmed
+
+
+class PortfolioPositionUpdate(BaseModel):
+    """Payload for updating one portfolio position."""
+
+    quantity: float = Field(..., gt=0)
+    average_cost: float = Field(..., ge=0)
 
 
 class PortfolioSummary(BaseModel):
