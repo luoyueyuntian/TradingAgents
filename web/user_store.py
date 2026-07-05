@@ -56,6 +56,7 @@ class UserRecord:
     must_change_password: bool
     expires_at: int | None
     disabled: bool
+    deleted_at: int | None
     created_at: int
     updated_at: int
     last_login_at: int | None
@@ -221,6 +222,7 @@ def _user_from_row(row: sqlite3.Row) -> UserRecord:
         must_change_password=bool(row["must_change_password"]),
         expires_at=coerce_timestamp_ms(row["expires_at"]),
         disabled=bool(row["disabled"]),
+        deleted_at=coerce_timestamp_ms(row["deleted_at"]) if "deleted_at" in row.keys() else None,
         created_at=coerce_timestamp_ms(row["created_at"]) or 0,
         updated_at=coerce_timestamp_ms(row["updated_at"]) or 0,
         last_login_at=coerce_timestamp_ms(row["last_login_at"]),
@@ -263,6 +265,8 @@ def _password_reset_token_from_row(row: sqlite3.Row) -> PasswordResetTokenRecord
 
 
 def _user_row_is_active(row: sqlite3.Row) -> bool:
+    if "deleted_at" in row.keys() and row["deleted_at"] is not None:
+        return False
     if bool(row["disabled"]):
         return False
     expires_at = row["expires_at"]
@@ -316,8 +320,8 @@ class UserStore:
             """
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
-                username TEXT NOT NULL UNIQUE,
-                email TEXT NOT NULL UNIQUE,
+                username TEXT NOT NULL,
+                email TEXT NOT NULL,
                 display_name TEXT NOT NULL,
                 role TEXT NOT NULL,
                 tenant_id TEXT NOT NULL,
@@ -327,6 +331,7 @@ class UserStore:
                 must_change_password INTEGER NOT NULL DEFAULT 1,
                 expires_at INTEGER,
                 disabled INTEGER NOT NULL DEFAULT 0,
+                deleted_at INTEGER,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
                 last_login_at INTEGER
@@ -379,10 +384,18 @@ class UserStore:
             WHERE archived != 0
             """
         )
+        conn.execute("DROP INDEX IF EXISTS users_username_ci_unique")
+        conn.execute("DROP INDEX IF EXISTS users_email_ci_unique")
         conn.execute(
             """
-            CREATE UNIQUE INDEX IF NOT EXISTS users_username_ci_unique
-            ON users(lower(username))
+            CREATE UNIQUE INDEX IF NOT EXISTS users_tenant_username_ci_unique
+            ON users(tenant_id, lower(username))
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS users_tenant_email_ci_unique
+            ON users(tenant_id, lower(email))
             """
         )
 
@@ -423,14 +436,11 @@ class UserStore:
         )
 
     def _migrate_users_table(self, conn: sqlite3.Connection) -> None:
-        _migrate_table_with_integer_timestamps(
-            conn,
-            table_name="users",
-            create_sql="""
+        create_sql = """
             CREATE TABLE users (
                 id TEXT PRIMARY KEY,
-                username TEXT NOT NULL UNIQUE,
-                email TEXT NOT NULL UNIQUE,
+                username TEXT NOT NULL,
+                email TEXT NOT NULL,
                 display_name TEXT NOT NULL,
                 role TEXT NOT NULL,
                 tenant_id TEXT NOT NULL,
@@ -440,36 +450,68 @@ class UserStore:
                 must_change_password INTEGER NOT NULL DEFAULT 1,
                 expires_at INTEGER,
                 disabled INTEGER NOT NULL DEFAULT 0,
+                deleted_at INTEGER,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
                 last_login_at INTEGER
             )
-            """,
-            column_names=[
-                "id",
-                "username",
-                "email",
-                "display_name",
-                "role",
-                "tenant_id",
-                "password_hash",
-                "password_salt",
-                "password_updated_at",
-                "must_change_password",
-                "expires_at",
-                "disabled",
-                "created_at",
-                "updated_at",
-                "last_login_at",
-            ],
-            timestamp_columns={
-                "password_updated_at",
-                "expires_at",
-                "created_at",
-                "updated_at",
-                "last_login_at",
-            },
+        """
+        column_names = [
+            "id",
+            "username",
+            "email",
+            "display_name",
+            "role",
+            "tenant_id",
+            "password_hash",
+            "password_salt",
+            "password_updated_at",
+            "must_change_password",
+            "expires_at",
+            "disabled",
+            "deleted_at",
+            "created_at",
+            "updated_at",
+            "last_login_at",
+        ]
+        timestamp_columns = {
+            "password_updated_at",
+            "expires_at",
+            "deleted_at",
+            "created_at",
+            "updated_at",
+            "last_login_at",
+        }
+        column_types = _timestamp_column_type_map(conn, "users")
+        table_sql_row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'"
+        ).fetchone()
+        table_sql = str(table_sql_row["sql"] or "").upper() if table_sql_row is not None else ""
+        needs_rebuild = (
+            "deleted_at" not in column_types
+            or any(column_types.get(name) != "INTEGER" for name in timestamp_columns)
+            or "USERNAME TEXT NOT NULL UNIQUE" in table_sql
+            or "EMAIL TEXT NOT NULL UNIQUE" in table_sql
         )
+        if not needs_rebuild:
+            return
+
+        legacy_name = "users__legacy_schema"
+        conn.execute(f"DROP TABLE IF EXISTS {legacy_name}")
+        rows = conn.execute("SELECT * FROM users").fetchall()
+        conn.execute(f"ALTER TABLE users RENAME TO {legacy_name}")
+        conn.execute(create_sql)
+        placeholders = ", ".join("?" for _ in column_names)
+        insert_sql = f"INSERT INTO users ({', '.join(column_names)}) VALUES ({placeholders})"
+        for row in rows:
+            values = []
+            for column_name in column_names:
+                value = row[column_name] if column_name in row.keys() else None
+                if column_name in timestamp_columns:
+                    value = coerce_timestamp_ms(value)
+                values.append(value)
+            conn.execute(insert_sql, tuple(values))
+        conn.execute(f"DROP TABLE {legacy_name}")
 
     def _migrate_sessions_table(self, conn: sqlite3.Connection) -> None:
         _migrate_table_with_integer_timestamps(
@@ -540,12 +582,6 @@ class UserStore:
                 "metadata",
             ],
             timestamp_columns={"created_at"},
-        )
-        conn.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS users_email_ci_unique
-            ON users(lower(email))
-            """
         )
         conn.execute(
             """
@@ -712,11 +748,13 @@ class UserStore:
                 conn,
                 "username",
                 normalized_username,
+                tenant_id=normalized_tenant_id,
             )
             self._raise_for_duplicate_user_field(
                 conn,
                 "email",
                 normalized_email,
+                tenant_id=normalized_tenant_id,
             )
             try:
                 conn.execute(
@@ -734,11 +772,12 @@ class UserStore:
                         must_change_password,
                         expires_at,
                         disabled,
+                        deleted_at,
                         created_at,
                         updated_at,
                         last_login_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
                     """,
                     (
                         resolved_user_id,
@@ -889,8 +928,14 @@ class UserStore:
                 conn,
                 "username",
                 normalized_username,
+                tenant_id=normalized_tenant_id,
             )
-            self._raise_for_duplicate_user_field(conn, "email", normalized_email)
+            self._raise_for_duplicate_user_field(
+                conn,
+                "email",
+                normalized_email,
+                tenant_id=normalized_tenant_id,
+            )
             try:
                 conn.execute(
                     """
@@ -907,11 +952,12 @@ class UserStore:
                         must_change_password,
                         expires_at,
                         disabled,
+                        deleted_at,
                         created_at,
                         updated_at,
                         last_login_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
                     """,
                     (
                         resolved_user_id,
@@ -941,13 +987,35 @@ class UserStore:
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return _user_from_row(row) if row is not None else None
 
-    def get_user_by_identifier(self, identifier: str) -> UserRecord | None:
+    def get_user_by_identifier(
+        self,
+        tenant_id: str,
+        identifier: str | None = None,
+    ) -> UserRecord | None:
         self.ensure_schema()
-        normalized = identifier.strip().casefold()
+        if identifier is None:
+            normalized_tenant_id = None
+            normalized = tenant_id.strip().casefold()
+        else:
+            normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
+            normalized = identifier.strip().casefold()
         if not normalized:
             return None
         with self._connect() as conn:
-            for row in conn.execute("SELECT * FROM users ORDER BY rowid").fetchall():
+            if normalized_tenant_id is None:
+                rows = conn.execute("SELECT * FROM users WHERE deleted_at IS NULL ORDER BY rowid").fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM users
+                    WHERE tenant_id = ?
+                      AND deleted_at IS NULL
+                    ORDER BY rowid
+                    """,
+                    (normalized_tenant_id,),
+                ).fetchall()
+            for row in rows:
                 if row["username"].casefold() == normalized:
                     return _user_from_row(row)
                 if row["email"].casefold() == normalized:
@@ -996,11 +1064,11 @@ class UserStore:
             conn.execute(
                 """
                 UPDATE users
-                SET disabled = 1,
+                SET deleted_at = ?,
                     updated_at = ?
                 WHERE id = ?
                 """,
-                (_utc_now(), user_id),
+                (_utc_now(), _utc_now(), user_id),
             )
             conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
             return self._get_user_by_id(conn, user_id)
@@ -1057,11 +1125,13 @@ class UserStore:
                 value = _validate_bool_flag(value, field_name)
             updates[field_name] = value
 
+        target_tenant_id = updates.get("tenant_id", current["tenant_id"])
         if "username" in updates:
             self._raise_for_duplicate_user_field(
                 conn,
                 "username",
                 updates["username"],
+                tenant_id=target_tenant_id,
                 excluding_user_id=user_id,
             )
         if "email" in updates:
@@ -1069,6 +1139,7 @@ class UserStore:
                 conn,
                 "email",
                 updates["email"],
+                tenant_id=target_tenant_id,
                 excluding_user_id=user_id,
             )
         if "tenant_id" in updates:
@@ -1238,11 +1309,16 @@ class UserStore:
         field_name: str,
         value: str,
         *,
+        tenant_id: str,
         excluding_user_id: str | None = None,
     ) -> None:
         normalized = value.casefold()
-        for row in conn.execute(f"SELECT id, {field_name} FROM users").fetchall():
+        for row in conn.execute(
+            f"SELECT id, tenant_id, {field_name} FROM users"
+        ).fetchall():
             if excluding_user_id is not None and row["id"] == excluding_user_id:
+                continue
+            if row["tenant_id"] != tenant_id:
                 continue
             if row[field_name].casefold() == normalized:
                 raise ValueError(f"{field_name} already exists")
