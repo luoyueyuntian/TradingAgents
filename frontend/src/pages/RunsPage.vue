@@ -53,6 +53,11 @@
           <DataTable :value="group.recent_runs" size="small" data-key="run_id" selection-mode="single" @row-click="openRunDetail($event.data)">
             <Column field="ticker" :header="t('common.ticker')" />
             <Column field="date" :header="t('common.date')" />
+            <Column field="llm_provider" :header="t('common.provider')">
+              <template #body="{ data }">
+                <span>{{ data.llm_provider || t('common.na') }}</span>
+              </template>
+            </Column>
             <Column field="status" :header="t('common.status')">
               <template #body="{ data }">
                 <Tag :value="data.status" :severity="signalSeverity(data.status)" />

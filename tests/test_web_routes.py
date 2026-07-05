@@ -201,6 +201,76 @@ def test_list_runs_returns_history(monkeypatch):
     assert payload[0]["queue_position"] == 2
 
 
+def test_get_ticker_history_returns_paginated_runs_with_active_metadata(monkeypatch, tmp_path):
+    client = TestClient(app)
+    running = _make_run("run-running")
+    running.ticker = "AAPL"
+    running.company_name = "Apple Inc."
+    running.status = "running"
+    running.created_at = "2026-07-05T09:30:00"
+
+    archived = _make_run("run-archived")
+    archived.ticker = "AAPL"
+    archived.company_name = "Apple Inc."
+    archived.status = "completed"
+    archived.signal = "Buy"
+    archived.created_at = "2026-07-04T09:30:00"
+
+    older = _make_run("run-older")
+    older.ticker = "AAPL"
+    older.company_name = "Apple Inc."
+    older.status = "completed"
+    older.signal = "Hold"
+    older.created_at = "2026-07-03T09:30:00"
+
+    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [older, archived, running])
+    monkeypatch.setattr(web_routes, "get_queue_position", lambda run_id, tenant_id=None: None)
+    monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant.json")
+    monkeypatch.setattr(web_routes, "load_settings", lambda path=None: {"archived_runs": {"ids": ["run-archived"]}})
+
+    response = client.get("/api/runs/ticker-history", params={"ticker": "aapl", "page": 1, "page_size": 2})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ticker"] == "AAPL"
+    assert payload["company_name"] == "Apple Inc."
+    assert payload["has_active_run"] is True
+    assert payload["active_run_id"] == "run-running"
+    assert payload["active_run_status"] == "running"
+    assert payload["total_count"] == 3
+    assert [item["run_id"] for item in payload["items"]] == ["run-running", "run-archived"]
+    assert payload["items"][1]["archived"] is True
+
+
+def test_create_analysis_run_rejects_same_ticker_when_active_run_exists(monkeypatch):
+    client = TestClient(app)
+    active = _make_run("run-active")
+    active.ticker = "AAPL"
+    active.status = "running"
+    active.created_at = "2026-07-05T09:30:00"
+
+    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [active])
+    monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _make_run("new-run"))
+
+    response = client.post(
+        "/api/runs",
+        json={
+            "ticker": "AAPL",
+            "date": "2026-07-05",
+            "asset_type": "stock",
+            "analysts": ["market"],
+            "llm_provider": "openai",
+            "research_depth": 3,
+            "output_language": "English",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "ticker_active_run_exists"
+    assert response.json()["detail"]["active_run_id"] == "run-active"
+    assert response.json()["detail"]["active_run_status"] == "running"
+
+
 def test_get_run_terminal_output_returns_saved_log(monkeypatch, tmp_path):
     client = TestClient(app)
     run = _make_run("log-run")

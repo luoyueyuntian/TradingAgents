@@ -297,6 +297,16 @@ describe('RunDetailPage', () => {
     expect(nextDetailCalls).toHaveLength(3);
   });
 
+  it('shows a stop-analysis action for running runs and calls cancel', async () => {
+    apiPost.mockResolvedValue({ run_id: 'source-run', status: 'cancelled', ticker: 'AAPL', date: '2026-07-04' });
+    const wrapper = await mountPage('running');
+
+    await findButtonByText(wrapper, '停止分析').trigger('click');
+    await flushPromises();
+
+    expect(apiPost).toHaveBeenCalledWith('/api/runs/source-run/cancel', {}, session.apiContext.value);
+  });
+
   it('stops polling once the run reaches a terminal status', async () => {
     vi.useFakeTimers();
     const statuses = ['running', 'completed'];

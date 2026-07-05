@@ -1268,6 +1268,21 @@ class RunSummary(BaseModel):
     review: RunReview | None = None
 
 
+class TickerRunHistoryPage(BaseModel):
+    """Ticker-scoped paginated run history returned by GET /api/runs/ticker-history."""
+
+    ticker: str
+    company_name: str | None = None
+    latest_created_at: OptionalTimestampMs = None
+    has_active_run: bool = False
+    active_run_id: str | None = None
+    active_run_status: str | None = None
+    page: int = 1
+    page_size: int = 10
+    total_count: int = 0
+    items: list[RunSummary] = Field(default_factory=list)
+
+
 class RunCompanyGroup(BaseModel):
     """One company-grouped run history card."""
 

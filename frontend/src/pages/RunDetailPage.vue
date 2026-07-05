@@ -47,6 +47,15 @@
             />
           </div>
         </div>
+        <Button
+          v-if="canCancelRun"
+          icon="pi pi-stop"
+          :label="t('runs.stopAnalysis')"
+          severity="danger"
+          outlined
+          :disabled="!canWrite"
+          @click="cancelRun"
+        />
         <Button icon="pi pi-refresh" :label="t('common.refresh')" severity="secondary" @click="() => loadRunDetail()" />
       </template>
     </PageHeader>
@@ -457,6 +466,10 @@ const actionStatusOptions = computed(() => [
 ]);
 const currentPinnedRun = computed(() => pinnedRuns.value.find((item) => item.run_id === selectedRun.value?.run_id) || null);
 const currentPublicShare = computed(() => selectedRun.value?.public_share || null);
+const canCancelRun = computed(() => {
+  const status = String(selectedRun.value?.status || '').trim().toLowerCase();
+  return status === 'queued' || status === 'running';
+});
 const pinForm = reactive({
   note: '',
   category: 'follow-up',
@@ -679,6 +692,16 @@ async function retryRun() {
   }
   selectedRun.value = created;
   terminalOutput.value = '';
+}
+
+async function cancelRun() {
+  if (!selectedRun.value?.run_id) return;
+  await apiPost(
+    `/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}/cancel`,
+    {},
+    session.apiContext.value,
+  );
+  await loadRunDetail({ silent: true });
 }
 
 async function deleteRun() {
