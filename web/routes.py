@@ -106,6 +106,7 @@ from .schemas import (
     AlertHit,
     AlertRule,
     AlertRuleCreate,
+    AlertRuleUpdate,
     AnalysisPreset,
     AnalysisPresetCreate,
     AnalysisPresetUpdate,
@@ -159,6 +160,7 @@ from .schemas import (
     PinnedRunStatusUpdate,
     PortfolioPosition,
     PortfolioPositionCreate,
+    PortfolioPositionUpdate,
     PortfolioResponse,
     PortfolioSummary,
     ProviderInfo,
@@ -5294,6 +5296,28 @@ async def add_portfolio_position(payload: PortfolioPositionCreate, request: Requ
     return _build_portfolio_position(stored, tenant_id)
 
 
+@router.patch("/api/portfolio/positions/{position_id}", response_model=PortfolioPosition)
+async def update_portfolio_position(position_id: str, payload: PortfolioPositionUpdate, request: Request):
+    """Update one saved portfolio position."""
+    tenant_id = _request_tenant_id(request)
+    positions = _load_portfolio_positions(tenant_id)
+    updated: dict[str, object] | None = None
+
+    for position in positions:
+        if str(position.get("id")) != position_id:
+            continue
+        position["quantity"] = float(payload.quantity)
+        position["average_cost"] = float(payload.average_cost)
+        updated = position
+        break
+
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Portfolio position not found")
+
+    _save_portfolio_positions(tenant_id, positions)
+    return _build_portfolio_position(updated, tenant_id)
+
+
 @router.delete("/api/portfolio/positions/{position_id}", response_model=DeleteResult)
 async def delete_portfolio_position(position_id: str, request: Request):
     """Remove one saved portfolio position."""
@@ -5321,6 +5345,28 @@ async def add_alert_rule(payload: AlertRuleCreate, request: Request):
     rules.append(rule)
     _save_alert_rules(tenant_id, rules)
     return rule
+
+
+@router.patch("/api/alerts/rules/{rule_id}", response_model=AlertRule)
+async def update_alert_rule(rule_id: str, payload: AlertRuleUpdate, request: Request):
+    """Update one saved alert rule."""
+    tenant_id = _request_tenant_id(request)
+    rules = _load_alert_rules(tenant_id)
+    updated: AlertRule | None = None
+
+    for rule in rules:
+        if rule.id != rule_id:
+            continue
+        rule.field = payload.field
+        rule.value = _normalize_alert_value(payload.field, payload.value)
+        updated = rule
+        break
+
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Alert rule not found")
+
+    _save_alert_rules(tenant_id, rules)
+    return updated
 
 
 @router.delete("/api/alerts/rules/{rule_id}", response_model=DeleteResult)

@@ -1263,6 +1263,56 @@ def test_alert_rule_delete_removes_saved_rule(monkeypatch, tmp_path):
     assert [rule["id"] for rule in state["alerts"]["rules"]] == ["rule-a"]
 
 
+def test_alert_rule_patch_updates_field_and_value(monkeypatch, tmp_path):
+    client = TestClient(app)
+    state = {
+        "alerts": {
+            "rules": [
+                {"id": "rule-a", "ticker": "NVDA", "field": "signal", "value": "Buy"},
+            ]
+        }
+    }
+
+    monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant.json")
+    monkeypatch.setattr(web_routes, "load_settings", lambda path=None: state)
+
+    def _save(settings, path=None):
+        state.clear()
+        state.update(settings)
+
+    monkeypatch.setattr(web_routes, "save_settings", _save)
+
+    response = client.patch(
+        "/api/alerts/rules/rule-a",
+        json={"field": "status", "value": " failed "},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "rule-a"
+    assert payload["ticker"] == "NVDA"
+    assert payload["field"] == "status"
+    assert payload["value"] == "failed"
+    assert state["alerts"]["rules"][0]["field"] == "status"
+    assert state["alerts"]["rules"][0]["value"] == "failed"
+
+
+def test_alert_rule_patch_returns_404_for_missing_rule(monkeypatch, tmp_path):
+    client = TestClient(app)
+    state = {"alerts": {"rules": []}}
+
+    monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant.json")
+    monkeypatch.setattr(web_routes, "load_settings", lambda path=None: state)
+
+    response = client.patch(
+        "/api/alerts/rules/missing",
+        json={"field": "signal", "value": "Buy"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Alert rule not found"
+
+
 def test_portfolio_endpoint_returns_positions_with_summary(monkeypatch, tmp_path):
     client = TestClient(app)
     state = {
@@ -1323,6 +1373,58 @@ def test_portfolio_post_adds_position_and_normalizes_ticker(monkeypatch, tmp_pat
     assert payload["ticker"] == "NVDA"
     assert payload["cost_basis"] == 376.5
     assert len(state["portfolio"]["positions"]) == 1
+
+
+def test_portfolio_patch_updates_quantity_and_cost(monkeypatch, tmp_path):
+    client = TestClient(app)
+    state = {
+        "portfolio": {
+            "positions": [
+                {"id": "pos-a", "ticker": "NVDA", "quantity": 2, "average_cost": 120.0},
+            ]
+        }
+    }
+
+    monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant.json")
+    monkeypatch.setattr(web_routes, "load_settings", lambda path=None: state)
+    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [])
+
+    def _save(settings, path=None):
+        state.clear()
+        state.update(settings)
+
+    monkeypatch.setattr(web_routes, "save_settings", _save)
+
+    response = client.patch(
+        "/api/portfolio/positions/pos-a",
+        json={"quantity": 5, "average_cost": 145.25},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == "pos-a"
+    assert payload["ticker"] == "NVDA"
+    assert payload["quantity"] == 5
+    assert payload["average_cost"] == 145.25
+    assert payload["cost_basis"] == 726.25
+    assert state["portfolio"]["positions"][0]["quantity"] == 5
+    assert state["portfolio"]["positions"][0]["average_cost"] == 145.25
+
+
+def test_portfolio_patch_returns_404_for_missing_position(monkeypatch, tmp_path):
+    client = TestClient(app)
+    state = {"portfolio": {"positions": []}}
+
+    monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant.json")
+    monkeypatch.setattr(web_routes, "load_settings", lambda path=None: state)
+
+    response = client.patch(
+        "/api/portfolio/positions/missing",
+        json={"quantity": 5, "average_cost": 145.25},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Portfolio position not found"
 
 
 def test_portfolio_delete_removes_position(monkeypatch, tmp_path):
