@@ -11,7 +11,7 @@ const sessionState = {
     display_name: string;
     role: string;
     tenant_id: string;
-    expires_at: string | null;
+    expires_at: number | null;
     must_change_password: boolean;
   },
 };
@@ -65,6 +65,7 @@ describe('router auth guards', () => {
     sessionState.currentUser = null;
     session.loadCurrentUser.mockReset();
     session.loadCurrentUser.mockResolvedValue(undefined);
+    vi.unstubAllEnvs();
   });
 
   it('redirects unauthenticated users to /login', async () => {
@@ -77,6 +78,7 @@ describe('router auth guards', () => {
   });
 
   it('strips the deployed SPA base from the initial browser location', async () => {
+    vi.stubEnv('BASE_URL', '/static/spa/');
     window.history.replaceState({}, '', '/static/spa/');
 
     const { createAppRouter } = await loadRouterModule();

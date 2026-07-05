@@ -1,19 +1,94 @@
 <template>
   <section>
+    <nav data-testid="run-detail-breadcrumb" class="uno-mb-3 uno-flex uno-items-center uno-gap-2 uno-text-sm uno-text-[#607174]">
+      <button
+        type="button"
+        class="uno-inline-flex uno-cursor-pointer uno-items-center uno-gap-1 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#304345] hover:uno-text-[#132a2d]"
+        @click="goBack"
+      >
+        <i class="pi pi-angle-left uno-text-xs" />
+        <span>{{ t('common.back') }}</span>
+      </button>
+      <span class="uno-text-[#9ab0b1]">/</span>
+      <span>{{ t('runs.runDetail') }}</span>
+    </nav>
+
     <PageHeader
       :eyebrow="t('runs.eyebrow')"
-      :title="selectedRun ? `${selectedRun.ticker} · ${selectedRun.date}` : t('runs.runDetail')"
+      :title="selectedRun ? runHeaderTitle : t('runs.runDetail')"
       :description="t('runs.description')"
     >
       <template #actions>
-        <Button icon="pi pi-arrow-left" :label="t('nav.runs')" severity="secondary" @click="goBack" />
-        <Button icon="pi pi-refresh" :label="t('common.refresh')" severity="secondary" @click="loadRunDetail" />
+        <div v-if="selectedRun" data-testid="run-detail-history-badge" class="uno-relative">
+          <OverlayBadge :value="historyRunCount" severity="contrast">
+            <Button
+              data-testid="run-detail-history-toggle"
+              icon="pi pi-calendar"
+              severity="secondary"
+              :aria-label="t('runs.historyCalendar')"
+              @click="historyPickerOpen = !historyPickerOpen"
+            />
+          </OverlayBadge>
+          <div
+            v-if="historyPickerOpen"
+            data-testid="run-detail-history-panel"
+            class="uno-absolute uno-right-0 uno-top-[calc(100%+0.45rem)] uno-z-20 uno-grid uno-gap-3 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3 uno-shadow-lg"
+          >
+            <span class="uno-text-sm uno-text-[#607174]">{{ t('runs.historySelectDate') }}</span>
+            <DatePicker
+              :model-value="historyPickerValue"
+              inline
+              date-format="yy-mm-dd"
+              :manual-input="false"
+              :disabled-dates="historyDisabledDates"
+              :min-date="historyMinDate"
+              :max-date="historyMaxDate"
+              @update:model-value="handleHistoryDateSelect"
+            />
+          </div>
+        </div>
+        <Button icon="pi pi-refresh" :label="t('common.refresh')" severity="secondary" @click="() => loadRunDetail()" />
       </template>
     </PageHeader>
 
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
-    <Card v-if="selectedRun">
+    <details v-if="selectedRun" data-testid="run-detail-pinned-action-card" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+      <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.pinnedAction') }}</summary>
+      <div class="uno-mt-3 uno-grid uno-grid-cols-[repeat(auto-fit,minmax(180px,1fr))] uno-gap-[0.8rem]">
+        <label class="uno-grid uno-gap-[0.35rem]">
+          <span class="uno-text-[#6f8183]">{{ t('runs.pinCategory') }}</span>
+          <Select v-model="pinForm.category" :options="categoryOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+        </label>
+        <label class="uno-grid uno-gap-[0.35rem]">
+          <span class="uno-text-[#6f8183]">{{ t('runs.pinPriority') }}</span>
+          <Select v-model="pinForm.priority" :options="priorityOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+        </label>
+        <label class="uno-grid uno-gap-[0.35rem]">
+          <span class="uno-text-[#6f8183]">{{ t('runs.pinStatus') }}</span>
+          <Select v-model="pinForm.action_status" :options="actionStatusOptions" option-label="label" option-value="value" :disabled="!canWrite" />
+        </label>
+        <label class="uno-grid uno-gap-[0.35rem]">
+          <span class="uno-text-[#6f8183]">{{ t('runs.pinAssignee') }}</span>
+          <Select v-model="pinForm.assignee" :options="memberOptions" option-label="label" option-value="value" :placeholder="t('common.optional')" :disabled="!canWrite" />
+        </label>
+        <label class="uno-grid uno-gap-[0.35rem]">
+          <span class="uno-text-[#6f8183]">{{ t('runs.pinNextAction') }}</span>
+          <InputText v-model="pinForm.next_action" :placeholder="t('runs.pinNextAction')" :disabled="!canWrite" />
+        </label>
+        <label class="uno-grid uno-gap-[0.35rem]">
+          <span class="uno-text-[#6f8183]">{{ t('runs.pinDueDate') }}</span>
+          <InputText v-model="pinForm.due_date" type="date" :disabled="!canWrite" />
+        </label>
+      </div>
+      <Textarea v-model="pinForm.note" rows="3" auto-resize :placeholder="t('runs.pinNote')" class="uno-mt-3 uno-w-full" :disabled="!canWrite" />
+      <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-justify-end uno-gap-[0.55rem]">
+        <Button icon="pi pi-bookmark" :label="t('runs.savePinnedAction')" severity="secondary" :disabled="!canWrite" @click="savePinnedRun" />
+        <Button v-if="currentPinnedRun" icon="pi pi-times" :label="t('runs.removePinnedAction')" severity="danger" outlined :disabled="!canWrite" @click="deletePinnedRun" />
+      </div>
+    </details>
+
+    <Card v-if="selectedRun" data-testid="run-detail-main-card">
       <template #title>{{ t('runs.runDetail') }}</template>
       <template #content>
         <div class="uno-grid uno-gap-4">
@@ -21,7 +96,7 @@
             <div class="uno-flex uno-items-start uno-justify-between uno-gap-4">
               <div>
                 <p class="uno-m-0 uno-text-xs uno-font-700 uno-uppercase uno-text-[#6f8183]">{{ t('runs.summary') }}</p>
-                <h2 class="uno-mb-0 uno-mt-[0.15rem] uno-text-[1.2rem] uno-tracking-normal uno-text-[#132a2d]">{{ selectedRun.ticker }} · {{ selectedRun.date }}</h2>
+                <h2 class="uno-mb-0 uno-mt-[0.15rem] uno-text-[1.2rem] uno-tracking-normal uno-text-[#132a2d]">{{ runIdentityLabel }} · {{ selectedRun.date }}</h2>
               </div>
               <Tag :value="selectedRun.signal || selectedRun.status" :severity="signalSeverity(selectedRun.signal || selectedRun.status)" />
             </div>
@@ -35,7 +110,7 @@
             <p class="uno-m-0 uno-leading-[1.55] uno-text-[#304345]">{{ decisionSummary }}</p>
           </div>
 
-          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(210px,1fr))] uno-gap-3">
+          <div data-testid="run-detail-insight-panels" class="uno-grid uno-gap-3">
             <div v-for="panel in insightPanels" :key="panel.key" class="uno-min-w-0 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-[0.85rem]">
               <span class="uno-text-[#6f8183]">{{ insightTitle(panel.key) }}</span>
               <ul v-if="panel.items.length" class="uno-mb-0 uno-mt-[0.55rem] uno-grid uno-gap-[0.45rem] uno-pl-[1.1rem] uno-leading-[1.45] uno-text-[#304345]">
@@ -45,70 +120,45 @@
             </div>
           </div>
 
-          <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
-            <div class="uno-flex uno-flex-wrap uno-gap-[0.35rem]" role="tablist" :aria-label="t('runs.reportSections')">
-              <button
-                v-for="section in sectionOptions"
-                :key="section.value"
-                type="button"
-                role="tab"
-                :aria-selected="selectedSectionKey === section.value"
-                :class="[
-                  'uno-min-h-9 uno-cursor-pointer uno-rounded-lg uno-border uno-px-3 uno-py-[0.45rem]',
-                  selectedSectionKey === section.value
-                    ? 'uno-border-[#162326] uno-bg-[#162326] uno-text-white'
-                    : 'uno-border-[#d5e2e2] uno-bg-white uno-text-[#304345] hover:uno-border-[#90a9aa]',
-                ]"
-                @click="selectedSectionKey = section.value"
-              >
-                {{ section.label }}
-              </button>
-            </div>
-            <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-              <Button icon="pi pi-refresh" :label="t('common.retry')" severity="secondary" :disabled="!canWrite" @click="retryRun" />
-              <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined :disabled="!canWrite" @click="deleteRun" />
+          <div
+            data-testid="run-detail-section-tabs"
+            class="uno-sticky uno-top-[76px] uno-z-[6] uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white/95 uno-p-1.5 uno-shadow-sm uno-backdrop-blur-md max-[900px]:uno-top-[128px]"
+          >
+            <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
+              <div class="uno-flex uno-flex-wrap uno-gap-1" role="tablist" :aria-label="t('runs.reportSections')">
+                <button
+                  v-for="section in sectionOptions"
+                  :key="section.value"
+                  type="button"
+                  role="tab"
+                  :aria-selected="selectedSectionKey === section.value"
+                  :class="[
+                    'uno-min-h-10 uno-cursor-pointer uno-rounded-lg uno-border-b-2 uno-border-transparent uno-px-3 uno-py-[0.55rem] uno-text-sm uno-font-600',
+                    selectedSectionKey === section.value
+                      ? 'uno-bg-[#162326] uno-text-white uno-shadow-sm'
+                      : 'uno-bg-transparent uno-text-[#304345] hover:uno-bg-[#f4f8f8] hover:uno-text-[#132a2d]',
+                  ]"
+                  @click="selectedSectionKey = section.value"
+                >
+                  {{ section.label }}
+                </button>
+              </div>
+              <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
+                <Button icon="pi pi-refresh" :label="t('common.retry')" severity="secondary" :disabled="!canWrite" @click="retryRun" />
+                <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined :disabled="!canWrite" @click="deleteRun" />
+              </div>
             </div>
           </div>
 
-          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(280px,1fr))] uno-gap-4">
-            <Card>
-              <template #title>{{ t('runs.pinnedAction') }}</template>
-              <template #content>
-                <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(180px,1fr))] uno-gap-[0.8rem]">
-                  <label class="uno-grid uno-gap-[0.35rem]">
-                    <span class="uno-text-[#6f8183]">{{ t('runs.pinCategory') }}</span>
-                    <Select v-model="pinForm.category" :options="categoryOptions" option-label="label" option-value="value" :disabled="!canWrite" />
-                  </label>
-                  <label class="uno-grid uno-gap-[0.35rem]">
-                    <span class="uno-text-[#6f8183]">{{ t('runs.pinPriority') }}</span>
-                    <Select v-model="pinForm.priority" :options="priorityOptions" option-label="label" option-value="value" :disabled="!canWrite" />
-                  </label>
-                  <label class="uno-grid uno-gap-[0.35rem]">
-                    <span class="uno-text-[#6f8183]">{{ t('runs.pinStatus') }}</span>
-                    <Select v-model="pinForm.action_status" :options="actionStatusOptions" option-label="label" option-value="value" :disabled="!canWrite" />
-                  </label>
-                  <label class="uno-grid uno-gap-[0.35rem]">
-                    <span class="uno-text-[#6f8183]">{{ t('runs.pinAssignee') }}</span>
-                    <Select v-model="pinForm.assignee" :options="memberOptions" option-label="label" option-value="value" :placeholder="t('common.optional')" :disabled="!canWrite" />
-                  </label>
-                  <label class="uno-grid uno-gap-[0.35rem]">
-                    <span class="uno-text-[#6f8183]">{{ t('runs.pinNextAction') }}</span>
-                    <InputText v-model="pinForm.next_action" :placeholder="t('runs.pinNextAction')" :disabled="!canWrite" />
-                  </label>
-                  <label class="uno-grid uno-gap-[0.35rem]">
-                    <span class="uno-text-[#6f8183]">{{ t('runs.pinDueDate') }}</span>
-                    <InputText v-model="pinForm.due_date" type="date" :disabled="!canWrite" />
-                  </label>
-                </div>
-                <Textarea v-model="pinForm.note" rows="3" auto-resize :placeholder="t('runs.pinNote')" class="uno-mt-3 uno-w-full" :disabled="!canWrite" />
-                <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
-                  <Button icon="pi pi-bookmark" :label="t('runs.savePinnedAction')" severity="secondary" :disabled="!canWrite" @click="savePinnedRun" />
-                  <Button v-if="currentPinnedRun" icon="pi pi-times" :label="t('runs.removePinnedAction')" severity="danger" outlined :disabled="!canWrite" @click="deletePinnedRun" />
-                </div>
-              </template>
-            </Card>
+          <ReportMarkdown
+            data-testid="run-detail-report-markdown"
+            :content="selectedSectionText"
+            :empty-text="t('runs.noReport')"
+            :constrain-height="false"
+          />
 
-            <Card>
+          <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(280px,1fr))] uno-gap-4">
+            <Card data-testid="run-detail-comments-card">
               <template #title>{{ t('runs.comments') }}</template>
               <template #content>
                 <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
@@ -124,7 +174,7 @@
                       <span>{{ comment.author }}</span>
                       <Tag :value="comment.resolved ? t('common.completed') : t('common.pending')" :severity="comment.resolved ? 'success' : 'warn'" />
                     </div>
-                    <small class="uno-text-[#6f8183]">{{ compactText(comment.created_at) }}</small>
+                    <small class="uno-text-[#6f8183]">{{ formatDateTime(comment.created_at) }}</small>
                     <p class="uno-mb-0 uno-mt-2">{{ comment.content }}</p>
                     <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                       <Button
@@ -142,7 +192,7 @@
               </template>
             </Card>
 
-            <Card>
+            <Card data-testid="run-detail-public-share-card">
               <template #title>{{ t('runs.publicShare') }}</template>
               <template #content>
                 <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(180px,1fr))] uno-gap-[0.8rem]">
@@ -173,14 +223,12 @@
                       <span class="uno-break-all">{{ currentPublicShare.url }}</span>
                       <Tag :value="String(currentPublicShare.view_count || 0)" severity="info" />
                     </div>
-                    <small class="uno-text-[#6f8183]">{{ currentPublicShare.expires_at || t('common.na') }}</small>
+                    <small class="uno-text-[#6f8183]">{{ formatDateTime(currentPublicShare.expires_at) }}</small>
                   </div>
                 </div>
               </template>
             </Card>
           </div>
-
-          <ReportMarkdown :content="selectedSectionText" :empty-text="t('runs.noReport')" />
 
           <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
             <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.terminalOutput') }}</summary>
@@ -207,12 +255,14 @@
 <script setup lang="ts">
 import Button from 'primevue/button';
 import Card from 'primevue/card';
+import DatePicker from 'primevue/datepicker';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
+import OverlayBadge from 'primevue/overlaybadge';
 import Select from 'primevue/select';
 import Tag from 'primevue/tag';
 import Textarea from 'primevue/textarea';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import MetricGrid from '../components/MetricGrid.vue';
@@ -221,7 +271,7 @@ import ReportMarkdown from '../components/ReportMarkdown.vue';
 import { useI18n } from '../i18n';
 import { apiDelete, apiGet, apiPatch, apiPost, buildApiUrl } from '../services/api';
 import { useSession } from '../stores/session';
-import { compactText, signalSeverity, type JsonRecord } from '../utils/format';
+import { formatDateTime, signalSeverity, type JsonRecord } from '../utils/format';
 import { buildDecisionHighlights, buildInsightPanels } from '../utils/runDisplay';
 
 const SECTION_ORDER = [
@@ -243,6 +293,8 @@ const artifacts = ref<JsonRecord[]>([]);
 const members = ref<JsonRecord[]>([]);
 const pinnedRuns = ref<JsonRecord[]>([]);
 const comments = ref<JsonRecord[]>([]);
+const historyRuns = ref<JsonRecord[]>([]);
+const historyPickerOpen = ref(false);
 const terminalOutput = ref('');
 const selectedSectionKey = ref('');
 const commentBody = ref('');
@@ -258,8 +310,65 @@ const detailMetrics = computed(() => [
   { label: t('common.runId'), value: selectedRun.value?.run_id || t('common.na') },
   { label: t('common.ticker'), value: selectedRun.value?.ticker || t('common.na') },
   { label: t('common.provider'), value: selectedRun.value?.config_summary?.llm_provider || t('common.na') },
-  { label: t('common.created'), value: compactText(selectedRun.value?.created_at) },
+  { label: t('common.created'), value: formatDateTime(selectedRun.value?.created_at) },
 ]);
+const runIdentityLabel = computed(() => {
+  if (!selectedRun.value) {
+    return '';
+  }
+  const companyName = String(selectedRun.value.company_name || '').trim();
+  const ticker = String(selectedRun.value.ticker || '').trim();
+  return companyName ? `${companyName} (${ticker})` : ticker;
+});
+const runHeaderTitle = computed(() => (
+  selectedRun.value ? `${runIdentityLabel.value} · ${selectedRun.value.date}` : ''
+));
+const historyRunCount = computed(() => historyRuns.value.length);
+const historyRunsByDate = computed(() => {
+  const byDate = new Map<string, JsonRecord>();
+  for (const run of historyRuns.value) {
+    const date = String(run.date || '').trim();
+    if (!date) {
+      continue;
+    }
+    const current = byDate.get(date);
+    if (!current || Number(run.created_at || 0) > Number(current.created_at || 0)) {
+      byDate.set(date, run);
+    }
+  }
+  return byDate;
+});
+const historyPickerValue = computed(() => dateFromRunDate(selectedRun.value?.date));
+const historyMinDate = computed(() => {
+  const runs = historyRuns.value
+    .map((run) => dateFromRunDate(run.date))
+    .filter((value): value is Date => value instanceof Date)
+    .sort((left, right) => left.getTime() - right.getTime());
+  return runs[0];
+});
+const historyMaxDate = computed(() => {
+  const runs = historyRuns.value
+    .map((run) => dateFromRunDate(run.date))
+    .filter((value): value is Date => value instanceof Date)
+    .sort((left, right) => right.getTime() - left.getTime());
+  return runs[0];
+});
+const historyDisabledDates = computed(() => {
+  if (!historyMinDate.value || !historyMaxDate.value) {
+    return [];
+  }
+  const available = new Set(historyRunsByDate.value.keys());
+  const disabled: Date[] = [];
+  const cursor = new Date(historyMinDate.value);
+  while (cursor.getTime() <= historyMaxDate.value.getTime()) {
+    const runDate = runDateFromDate(cursor);
+    if (!available.has(runDate)) {
+      disabled.push(new Date(cursor));
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return disabled;
+});
 const orderedReportKeys = computed(() => {
   const sections = selectedRun.value?.report_sections || {};
   const keys = Object.keys(sections);
@@ -362,6 +471,10 @@ const shareForm = reactive({
   share_title: '',
   share_summary: '',
 });
+const ACTIVE_RUN_STATUSES = new Set(['queued', 'pending', 'running']);
+const AUTO_REFRESH_INTERVAL_MS = 5000;
+let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let autoRefreshInFlight = false;
 
 function sectionLabel(key: string): string {
   switch (key) {
@@ -397,30 +510,44 @@ function insightTitle(key: 'evidence' | 'risks' | 'actions'): string {
   }
 }
 
-async function loadRunDetail() {
+async function loadRunDetail(options: { silent?: boolean } = {}) {
   if (!routeRunId.value) return;
+  const { silent = false } = options;
   error.value = '';
-  selectedRun.value = null;
-  artifacts.value = [];
-  terminalOutput.value = '';
-  selectedSectionKey.value = '';
+  if (!silent) {
+    selectedRun.value = null;
+    artifacts.value = [];
+    historyRuns.value = [];
+    historyPickerOpen.value = false;
+    terminalOutput.value = '';
+    selectedSectionKey.value = '';
+  }
   try {
     const encodedRunId = encodeURIComponent(routeRunId.value);
     selectedRun.value = await apiGet<JsonRecord>(`/api/runs/${encodedRunId}`, session.apiContext.value);
+    if (!shouldAutoRefreshRun(selectedRun.value?.status)) {
+      stopAutoRefresh();
+    }
     const hasOverview = Boolean(selectedRun.value.final_report || selectedRun.value.current_report);
-    selectedSectionKey.value = hasOverview ? 'overview' : orderedReportKeys.value[0] || '';
-    const [artifactRows, output, pinnedItems, commentItems, memberItems] = await Promise.all([
+    if (!silent || !selectedSectionKey.value) {
+      selectedSectionKey.value = hasOverview ? 'overview' : orderedReportKeys.value[0] || '';
+    }
+    const [artifactRows, output, pinnedItems, commentItems, memberItems, runRows] = await Promise.all([
       apiGet<JsonRecord[]>(`/api/runs/${encodedRunId}/artifacts`, session.apiContext.value),
       loadTerminalOutput(encodedRunId),
       apiGet<JsonRecord[]>('/api/pinned-runs', session.apiContext.value),
       apiGet<JsonRecord[]>(`/api/runs/${encodedRunId}/comments`, session.apiContext.value),
       apiGet<JsonRecord[]>('/api/members', session.apiContext.value),
+      apiGet<JsonRecord[]>('/api/runs', session.apiContext.value),
     ]);
     artifacts.value = artifactRows;
     terminalOutput.value = output;
     pinnedRuns.value = pinnedItems;
     comments.value = commentItems;
     members.value = memberItems;
+    historyRuns.value = runRows
+      .filter((item) => String(item.ticker || '').trim().toUpperCase() === String(selectedRun.value?.ticker || '').trim().toUpperCase())
+      .sort((left, right) => Number(right.created_at || 0) - Number(left.created_at || 0));
     commentAuthor.value = session.state.currentMemberId
       ? (memberItems.find((item) => item.id === session.state.currentMemberId)?.name || '')
       : '';
@@ -429,6 +556,57 @@ async function loadRunDetail() {
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('runs.loadError');
   }
+}
+
+function normalizedRunStatus(status: unknown): string {
+  return String(status || '').trim().toLowerCase();
+}
+
+function shouldAutoRefreshRun(status: unknown): boolean {
+  return ACTIVE_RUN_STATUSES.has(normalizedRunStatus(status));
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshTimer !== null) {
+    clearTimeout(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+}
+
+async function refreshRunningRun() {
+  if (autoRefreshInFlight) {
+    return;
+  }
+  if (!shouldAutoRefreshRun(selectedRun.value?.status)) {
+    stopAutoRefresh();
+    return;
+  }
+
+  autoRefreshInFlight = true;
+  try {
+    await loadRunDetail({ silent: true });
+  } finally {
+    autoRefreshInFlight = false;
+    if (shouldAutoRefreshRun(selectedRun.value?.status)) {
+      ensureAutoRefresh();
+      return;
+    }
+    stopAutoRefresh();
+  }
+}
+
+function ensureAutoRefresh() {
+  if (!shouldAutoRefreshRun(selectedRun.value?.status)) {
+    stopAutoRefresh();
+    return;
+  }
+  if (autoRefreshTimer !== null) {
+    return;
+  }
+  autoRefreshTimer = setTimeout(() => {
+    autoRefreshTimer = null;
+    void refreshRunningRun();
+  }, AUTO_REFRESH_INTERVAL_MS);
 }
 
 function hydratePinForm() {
@@ -477,6 +655,19 @@ async function loadTerminalOutput(encodedRunId: string) {
 
 async function retryRun() {
   if (!selectedRun.value?.run_id) return;
+  const runStatus = String(selectedRun.value.status || '').trim().toLowerCase();
+  if (runStatus === 'completed') {
+    const runLabel = runIdentityLabel.value || String(selectedRun.value.ticker || '').trim();
+    const confirmed = window.confirm(
+      t('runs.retryCompletedConfirm', {
+        run: runLabel,
+        date: String(selectedRun.value.date || ''),
+      }),
+    );
+    if (!confirmed) {
+      return;
+    }
+  }
   const created = await apiPost<JsonRecord>(
     `/api/runs/${encodeURIComponent(String(selectedRun.value.run_id))}/retry`,
     {},
@@ -605,9 +796,59 @@ async function deleteRunComment(commentId: string) {
   );
 }
 
+async function handleHistoryDateSelect(value: Date | Date[] | (Date | null)[] | null | undefined) {
+  if (!(value instanceof Date) || !selectedRun.value?.run_id) {
+    return;
+  }
+  const selectedDate = runDateFromDate(value);
+  const matched = historyRunsByDate.value.get(selectedDate);
+  if (!matched?.run_id) {
+    error.value = t('runs.historyUnavailable');
+    return;
+  }
+  historyPickerOpen.value = false;
+  if (String(matched.run_id) === String(selectedRun.value.run_id)) {
+    return;
+  }
+  await router.push({ name: 'run-detail', params: { runId: String(matched.run_id) } });
+}
+
+function dateFromRunDate(value: unknown): Date | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function runDateFromDate(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function goBack() {
   void router.push('/runs');
 }
 
-watch(routeRunId, loadRunDetail, { immediate: true });
+watch(() => selectedRun.value?.status, (status) => {
+  if (shouldAutoRefreshRun(status)) {
+    ensureAutoRefresh();
+    return;
+  }
+  stopAutoRefresh();
+});
+
+watch(routeRunId, () => {
+  stopAutoRefresh();
+  void loadRunDetail();
+}, { immediate: true });
+
+onBeforeUnmount(() => {
+  stopAutoRefresh();
+});
 </script>

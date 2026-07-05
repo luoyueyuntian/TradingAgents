@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator
+
+from tradingagents.service.timestamps import coerce_timestamp_ms
 
 _DEFAULT_ANALYSTS = ["market", "social", "news", "fundamentals"]
 _ALLOWED_ANALYSTS = set(_DEFAULT_ANALYSTS)
@@ -108,6 +111,30 @@ def _normalize_blank_optional_string(value: str | None) -> str | None:
     return value
 
 
+def _normalize_optional_timestamp_ms(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if not trimmed:
+            return None
+    normalized = coerce_timestamp_ms(value)
+    if normalized is None:
+        raise ValueError("value must be a Unix millisecond timestamp")
+    return normalized
+
+
+def _normalize_required_timestamp_ms(value: Any) -> int:
+    normalized = _normalize_optional_timestamp_ms(value)
+    if normalized is None:
+        raise ValueError("value must be a Unix millisecond timestamp")
+    return normalized
+
+
+TimestampMs = Annotated[int, BeforeValidator(_normalize_required_timestamp_ms)]
+OptionalTimestampMs = Annotated[int | None, BeforeValidator(_normalize_optional_timestamp_ms)]
+
+
 def _require_non_null_patch_fields(model: BaseModel, field_names: tuple[str, ...]) -> None:
     for field_name in field_names:
         if field_name in model.model_fields_set and getattr(model, field_name) is None:
@@ -118,6 +145,7 @@ class AnalysisRequest(BaseModel):
     """Request body for creating an analysis run."""
 
     ticker: str = Field(..., min_length=1, max_length=32, description="Ticker symbol")
+    company_name: str | None = Field(default=None, description="Selected company name")
     date: str = Field(..., description="Analysis date (YYYY-MM-DD)")
     asset_type: str = Field(default="stock", description="Asset type: stock or crypto")
     analysts: list[str] = Field(
@@ -155,6 +183,7 @@ class AnalysisRequest(BaseModel):
         "backend_url",
         "market_profile",
         "benchmark_ticker",
+        "company_name",
         "google_thinking_level",
         "openai_reasoning_effort",
         "anthropic_effort",
@@ -209,6 +238,7 @@ class AnalysisResponse(BaseModel):
     run_id: str
     status: str
     ticker: str
+    company_name: str | None = None
     date: str
 
 
@@ -363,7 +393,7 @@ class AdminUserCreate(BaseModel):
     display_name: str = Field(..., min_length=1)
     role: str = Field(..., min_length=1)
     password: str = Field(..., min_length=1)
-    expires_at: str | None = None
+    expires_at: OptionalTimestampMs = None
 
     @field_validator("username", mode="before")
     @classmethod
@@ -394,7 +424,7 @@ class AdminUserCreate(BaseModel):
 class AdminUserUpdate(BaseModel):
     display_name: str | None = None
     role: str | None = None
-    expires_at: str | None = None
+    expires_at: OptionalTimestampMs = None
     disabled: bool | None = None
     password: str | None = None
 
@@ -426,12 +456,12 @@ class AdminUserResponse(BaseModel):
     display_name: str
     role: str
     tenant_id: str
-    expires_at: str | None = None
+    expires_at: OptionalTimestampMs = None
     disabled: bool
     must_change_password: bool
-    created_at: str
-    updated_at: str
-    last_login_at: str | None = None
+    created_at: TimestampMs
+    updated_at: TimestampMs
+    last_login_at: OptionalTimestampMs = None
 
 
 class TenantAdminCreate(BaseModel):
@@ -495,8 +525,8 @@ class AdminTenantResponse(BaseModel):
     archived: bool
     user_count: int
     active_admin_count: int
-    created_at: str
-    updated_at: str
+    created_at: TimestampMs
+    updated_at: TimestampMs
 
 
 class RunBulkAction(BaseModel):
@@ -862,11 +892,11 @@ class AutomationRule(BaseModel):
     cadence: str = "daily"
     weekday: str | None = None
     time_of_day: str = "09:00"
-    created_at: str
-    updated_at: str
-    last_triggered_at: str | None = None
+    created_at: TimestampMs
+    updated_at: TimestampMs
+    last_triggered_at: OptionalTimestampMs = None
     last_queued_count: int = 0
-    next_run_at: str | None = None
+    next_run_at: OptionalTimestampMs = None
     analysis_config: AutomationAnalysisConfig
 
 
@@ -972,8 +1002,8 @@ class RunAnnotation(BaseModel):
     label: str
     summary: str | None = None
     next_step: str | None = None
-    created_at: str
-    updated_at: str
+    created_at: TimestampMs
+    updated_at: TimestampMs
 
 
 class RunAnnotationCreate(BaseModel):
@@ -1007,8 +1037,8 @@ class RunReview(BaseModel):
     reviewer: str
     status: str
     note: str | None = None
-    created_at: str
-    updated_at: str
+    created_at: TimestampMs
+    updated_at: TimestampMs
 
     @field_validator("status")
     @classmethod
@@ -1058,10 +1088,10 @@ class PublicRunShareInfo(BaseModel):
 
     share_id: str
     url: str
-    created_at: str
+    created_at: TimestampMs
     view_count: int = 0
-    last_viewed_at: str | None = None
-    expires_at: str | None = None
+    last_viewed_at: OptionalTimestampMs = None
+    expires_at: OptionalTimestampMs = None
     share_title: str | None = None
     share_summary: str | None = None
 
@@ -1071,15 +1101,15 @@ class PublicRunShareListItem(BaseModel):
 
     share_id: str
     url: str
-    created_at: str
+    created_at: TimestampMs
     run_id: str
     ticker: str
     date: str
     status: str
     signal: str | None = None
     view_count: int = 0
-    last_viewed_at: str | None = None
-    expires_at: str | None = None
+    last_viewed_at: OptionalTimestampMs = None
+    expires_at: OptionalTimestampMs = None
     share_title: str | None = None
     share_summary: str | None = None
 
@@ -1102,7 +1132,7 @@ class PublicRunShareSnapshot(BaseModel):
     date: str
     asset_type: str
     status: str
-    created_at: str
+    created_at: TimestampMs
     signal: str | None = None
     error: str | None = None
     config_summary: dict[str, object] = Field(default_factory=dict)
@@ -1110,8 +1140,8 @@ class PublicRunShareSnapshot(BaseModel):
     current_report: str | None = None
     final_report: str | None = None
     view_count: int = 0
-    last_viewed_at: str | None = None
-    expires_at: str | None = None
+    last_viewed_at: OptionalTimestampMs = None
+    expires_at: OptionalTimestampMs = None
     share_title: str | None = None
     share_summary: str | None = None
     annotation: RunAnnotation | None = None
@@ -1124,11 +1154,12 @@ class RunStatus(BaseModel):
     run_id: str
     status: str
     ticker: str
+    company_name: str | None = None
     date: str
     asset_type: str
-    created_at: str
-    started_at: str | None = None
-    completed_at: str | None = None
+    created_at: TimestampMs
+    started_at: OptionalTimestampMs = None
+    completed_at: OptionalTimestampMs = None
     queue_position: int | None = None
     agents: dict[str, str] = Field(default_factory=dict)
     report_sections: dict[str, str | None] = Field(default_factory=dict)
@@ -1148,11 +1179,12 @@ class RunSummary(BaseModel):
     run_id: str
     status: str
     ticker: str
+    company_name: str | None = None
     date: str
     asset_type: str
-    created_at: str
-    started_at: str | None = None
-    completed_at: str | None = None
+    created_at: TimestampMs
+    started_at: OptionalTimestampMs = None
+    completed_at: OptionalTimestampMs = None
     queue_position: int | None = None
     llm_provider: str | None = None
     archived: bool = False
@@ -1160,6 +1192,31 @@ class RunSummary(BaseModel):
     error: str | None = None
     annotation: RunAnnotation | None = None
     review: RunReview | None = None
+
+
+class RunCompanyGroup(BaseModel):
+    """One company-grouped run history card."""
+
+    group_key: str
+    company_name: str
+    asset_type: str
+    tickers: list[str] = Field(default_factory=list)
+    run_count: int = 0
+    latest_run_id: str | None = None
+    latest_status: str | None = None
+    latest_signal: str | None = None
+    latest_date: str | None = None
+    latest_created_at: OptionalTimestampMs = None
+    recent_runs: list[RunSummary] = Field(default_factory=list)
+
+
+class RunCompanyGroupPage(BaseModel):
+    """Paginated run history grouped by company."""
+
+    items: list[RunCompanyGroup] = Field(default_factory=list)
+    page: int = 1
+    page_size: int = 20
+    total_count: int = 0
 
 
 class TickerOverview(BaseModel):
@@ -1171,7 +1228,7 @@ class TickerOverview(BaseModel):
     latest_signal: str | None = None
     latest_status: str | None = None
     latest_date: str | None = None
-    latest_created_at: str | None = None
+    latest_created_at: OptionalTimestampMs = None
     recent_runs: list[RunSummary] = Field(default_factory=list)
 
 
@@ -1180,12 +1237,12 @@ class WatchlistEntry(BaseModel):
 
     ticker: str
     run_count: int = 0
-    created_at: str | None = None
+    created_at: OptionalTimestampMs = None
     latest_run_id: str | None = None
     latest_signal: str | None = None
     latest_status: str | None = None
     latest_date: str | None = None
-    latest_created_at: str | None = None
+    latest_created_at: OptionalTimestampMs = None
 
 
 class WatchlistUpdate(BaseModel):
@@ -1232,7 +1289,7 @@ class AlertRule(BaseModel):
     ticker: str
     field: str
     value: str
-    created_at: str | None = None
+    created_at: OptionalTimestampMs = None
 
 
 class AlertRuleCreate(BaseModel):
@@ -1295,7 +1352,7 @@ class PortfolioPosition(BaseModel):
     quantity: float
     average_cost: float
     cost_basis: float
-    created_at: str | None = None
+    created_at: OptionalTimestampMs = None
     latest_signal: str | None = None
     latest_status: str | None = None
     latest_date: str | None = None
@@ -1336,7 +1393,7 @@ class PortfolioResponse(BaseModel):
 class DailyBriefingSummary(BaseModel):
     """Top-line counts and headline for the current tenant briefing."""
 
-    generated_at: str
+    generated_at: TimestampMs
     headline: str
     alert_hit_count: int = 0
     watchlist_count: int = 0
@@ -1357,7 +1414,7 @@ class DailyBriefingResponse(BaseModel):
 class DashboardSummary(BaseModel):
     """Workspace dashboard headline metrics."""
 
-    generated_at: str
+    generated_at: TimestampMs
     watchlist_count: int = 0
     bullish_focus_count: int = 0
     needs_attention_count: int = 0
@@ -1492,7 +1549,7 @@ class DashboardPreferences(BaseModel):
 class AnalyticsSummary(BaseModel):
     """Top-line metrics for workspace usage and operational health."""
 
-    generated_at: str
+    generated_at: TimestampMs
     total_runs: int = 0
     terminal_runs: int = 0
     queued_runs: int = 0
@@ -1540,7 +1597,7 @@ class ScreenerRow(BaseModel):
     latest_signal: str | None = None
     latest_status: str | None = None
     latest_date: str | None = None
-    latest_created_at: str | None = None
+    latest_created_at: OptionalTimestampMs = None
     asset_type: str | None = None
     llm_provider: str | None = None
     research_depth: int | None = None
@@ -1605,7 +1662,7 @@ class AnalysisPreset(BaseModel):
 
     id: str
     name: str
-    created_at: str | None = None
+    created_at: OptionalTimestampMs = None
     analysis_request: PresetAnalysisRequest
 
 
@@ -1617,8 +1674,8 @@ class Note(BaseModel):
     tags: list[str] = Field(default_factory=list)
     ticker: str | None = None
     run_id: str | None = None
-    created_at: str
-    updated_at: str
+    created_at: TimestampMs
+    updated_at: TimestampMs
 
 
 class NoteCreate(BaseModel):
@@ -1706,10 +1763,10 @@ class RunComment(BaseModel):
     run_id: str
     author: str
     content: str
-    created_at: str
+    created_at: TimestampMs
     resolved: bool = False
     resolved_by: str | None = None
-    resolved_at: str | None = None
+    resolved_at: OptionalTimestampMs = None
 
 
 class RunCommentCreate(BaseModel):
@@ -1746,7 +1803,7 @@ class WorkspaceTimelineEvent(BaseModel):
     """One saved workspace event rendered in chronological order."""
 
     kind: str
-    occurred_at: str
+    occurred_at: TimestampMs
     title: str
     detail: str
     ticker: str | None = None
@@ -1812,7 +1869,7 @@ class ShareLink(BaseModel):
 class WorkspaceExportSummary(BaseModel):
     """Top-line counts for one exported workspace snapshot."""
 
-    exported_at: str
+    exported_at: TimestampMs
     tenant_id: str | None = None
     run_count: int = 0
     watchlist_count: int = 0
@@ -1833,6 +1890,7 @@ class WorkspaceExportSummary(BaseModel):
 class WorkspaceSettings(BaseModel):
     default_home_view: str = "auto"
     default_saved_view_id: str | None = None
+    default_ui_language: str = "zh-CN"
 
     @field_validator("default_home_view")
     @classmethod
@@ -1862,6 +1920,14 @@ class WorkspaceSettings(BaseModel):
             return None
         trimmed = value.strip()
         return trimmed or None
+
+    @field_validator("default_ui_language")
+    @classmethod
+    def _normalize_default_ui_language(cls, value: str) -> str:
+        trimmed = value.strip()
+        if trimmed not in {"en", "zh-CN"}:
+            raise ValueError("default_ui_language must be one of en, zh-CN")
+        return trimmed
 
 
 class WorkspaceSearchResult(BaseModel):
@@ -1896,7 +1962,7 @@ class SavedSearch(BaseModel):
     archived: bool = False
     member_id: str | None = None
     member_name: str | None = None
-    created_at: str | None = None
+    created_at: OptionalTimestampMs = None
 
 
 class SavedSearchCreate(BaseModel):
@@ -2035,7 +2101,7 @@ class SavedView(BaseModel):
     archived: bool = False
     member_id: str | None = None
     member_name: str | None = None
-    created_at: str | None = None
+    created_at: OptionalTimestampMs = None
 
 
 class SavedViewCreate(BaseModel):
@@ -2124,7 +2190,7 @@ class WorkspaceMember(BaseModel):
     id: str
     name: str
     role: str | None = None
-    created_at: str | None = None
+    created_at: OptionalTimestampMs = None
 
 
 class WorkspaceMemberCreate(BaseModel):
@@ -2169,7 +2235,7 @@ class PinnedRun(BaseModel):
     assignee: str | None = None
     due_date: str | None = None
     snoozed_until: str | None = None
-    created_at: str | None = None
+    created_at: OptionalTimestampMs = None
 
 
 class PinnedRunCreate(BaseModel):
@@ -2297,7 +2363,7 @@ class NotificationItem(BaseModel):
     severity: str
     title: str
     message: str
-    created_at: str
+    created_at: TimestampMs
     is_read: bool = False
     target_url: str | None = None
     ticker: str | None = None
@@ -2308,7 +2374,7 @@ class NotificationItem(BaseModel):
 class NotificationCenterResponse(BaseModel):
     """Notification feed plus unread counts for the current tenant."""
 
-    generated_at: str
+    generated_at: TimestampMs
     unread_count: int = 0
     total_count: int = 0
     unread_only: bool = False
@@ -2354,8 +2420,8 @@ class RunReviewHistoryRow(BaseModel):
     reviewer: str
     status: str
     note: str | None = None
-    created_at: str
-    updated_at: str
+    created_at: TimestampMs
+    updated_at: TimestampMs
     ticker: str | None = None
     date: str | None = None
     signal: str | None = None
@@ -2452,7 +2518,7 @@ class CompareRun(BaseModel):
     ticker: str
     date: str
     asset_type: str
-    created_at: str
+    created_at: TimestampMs
     signal: str | None = None
     error: str | None = None
     config_summary: dict[str, object] = Field(default_factory=dict)
@@ -2520,7 +2586,7 @@ class RunChatResponse(BaseModel):
 class RunEvent(BaseModel):
     """Persisted timeline event for a run."""
 
-    timestamp: str
+    timestamp: TimestampMs
     event: str
     data: dict[str, str | int | float | bool | None] | dict[str, object]
 
@@ -2539,6 +2605,8 @@ class ProviderInfo(BaseModel):
     display_name: str
     quick_models: list[ProviderModel]
     deep_models: list[ProviderModel]
+    backend_url: str | None = None
+    api_key_env: str | None = None
 
 
 class TenantInfo(BaseModel):
@@ -2577,6 +2645,12 @@ class DeleteResult(BaseModel):
     """Count of files deleted by a maintenance action."""
 
     deleted: int
+
+
+class MigrationResult(BaseModel):
+    """Count of files updated by a maintenance action."""
+
+    updated: int
 
 
 # ── Settings schemas ──────────────────────────────────────────────────────
@@ -2647,7 +2721,7 @@ class WebhookSettings(BaseModel):
     url: str | None = None
     bearer_token: str | None = None
     event_kinds: list[str] = Field(default_factory=lambda: ["run", "alert", "action"])
-    last_delivery_at: str | None = None
+    last_delivery_at: OptionalTimestampMs = None
     last_error: str | None = None
 
     @field_validator("url", "bearer_token", mode="before")
@@ -2710,7 +2784,7 @@ class ArtifactLibraryItem(BaseModel):
     ticker: str
     date: str
     status: str
-    created_at: str
+    created_at: TimestampMs
     signal: str | None = None
     error: str | None = None
     artifact_count: int = 0
@@ -2744,7 +2818,7 @@ class AuthUser(BaseModel):
     display_name: str
     role: str
     tenant_id: str
-    expires_at: str | None = None
+    expires_at: OptionalTimestampMs = None
     must_change_password: bool = False
 
 
@@ -2756,7 +2830,7 @@ class PasswordResetAvailability(BaseModel):
 
 class AuthMeResponse(BaseModel):
     user: AuthUser
-    session_expires_at: str
+    session_expires_at: TimestampMs
     password_reset: PasswordResetAvailability
 
 

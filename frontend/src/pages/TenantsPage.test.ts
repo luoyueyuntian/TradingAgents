@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import TenantsPage from './TenantsPage.vue';
 
+const { formatDateTime } = vi.hoisted(() => ({
+  formatDateTime: vi.fn((value: unknown) => `LOCAL:${String(value)}`),
+}));
+
 const { apiGet, apiPost, apiPatch } = vi.hoisted(() => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
@@ -20,6 +24,14 @@ vi.mock('../services/api', () => ({
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push }),
 }));
+
+vi.mock('../utils/format', async () => {
+  const actual = await vi.importActual<typeof import('../utils/format')>('../utils/format');
+  return {
+    ...actual,
+    formatDateTime,
+  };
+});
 
 const ButtonStub = {
   props: ['label', 'disabled', 'loading', 'type', 'icon', 'severity', 'outlined', 'text'],
@@ -69,6 +81,7 @@ describe('TenantsPage', () => {
     apiPost.mockReset();
     apiPatch.mockReset();
     push.mockReset();
+    formatDateTime.mockClear();
   });
 
   it('loads the tenant list on mount', async () => {
@@ -94,6 +107,7 @@ describe('TenantsPage', () => {
     expect(apiGet).toHaveBeenCalledWith('/api/admin/tenants');
     expect(wrapper.text()).toContain('Tenant A');
     expect(wrapper.text()).toContain('tenant-a');
+    expect(wrapper.text()).toContain('LOCAL:2026-07-04T08:00:00Z');
   });
 
   it('only shows archived tenants after enabling the archived filter', async () => {

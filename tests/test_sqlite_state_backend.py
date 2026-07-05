@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -64,6 +65,15 @@ def test_sqlite_backend_round_trip_for_event_history(monkeypatch, tmp_path):
     assert history[0]["data"]["message"] == "hello"
     assert db_path.exists()
     assert not (tmp_path / "run-1.jsonl").exists()
+    assert isinstance(history[0]["timestamp"], int)
+
+    with sqlite3.connect(db_path) as conn:
+        timestamp = conn.execute(
+            "SELECT timestamp FROM events WHERE run_id = ?",
+            ("run-1",),
+        ).fetchone()[0]
+
+    assert isinstance(timestamp, int)
 
 
 def test_sqlite_backend_round_trip_for_worker_status(monkeypatch, tmp_path):
@@ -79,6 +89,7 @@ def test_sqlite_backend_round_trip_for_worker_status(monkeypatch, tmp_path):
     assert status["worker_mode"] == "external_worker"
     assert db_path.exists()
     assert not path.exists()
+    assert isinstance(status["last_seen"], int)
 
 
 def test_sqlite_backend_round_trip_for_run_claims(monkeypatch, tmp_path):

@@ -1,11 +1,12 @@
-import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
 import AppLayout from './AppLayout.vue';
 import layoutSource from './AppLayout.vue?raw';
 import { navigationGroups } from '../router/pages';
 import { setLocale, useI18n } from '../i18n';
+import * as apiService from '../services/api';
 import { useSession } from '../stores/session';
 
 function createTestRouter() {
@@ -31,6 +32,23 @@ describe('AppLayout', () => {
       expires_at: null,
       must_change_password: false,
     };
+    session.state.currentMemberId = 'member-2';
+    vi.spyOn(apiService, 'apiGet').mockImplementation(async (path: string) => {
+      if (path === '/api/members') {
+        return [
+          { id: 'member-1', name: 'Alice Analyst' },
+          { id: 'member-2', name: 'Bob Builder' },
+        ];
+      }
+      if (path === '/api/settings') {
+        return {
+          workspace: {
+            default_ui_language: 'zh-CN',
+          },
+        };
+      }
+      throw new Error(`Unexpected apiGet path: ${path}`);
+    });
   });
 
   it('lets page content use the full available width instead of capping at 1440px', async () => {
@@ -86,5 +104,159 @@ describe('AppLayout', () => {
 
     expect(useI18n().locale.value).toBe('zh-CN');
     expect(window.localStorage.getItem('tradingagents.locale')).toBe('zh-CN');
+  });
+
+  it('renders the language trigger as plain text and flips the chevron when open', async () => {
+    setLocale('en');
+    const router = createTestRouter();
+    await router.push('/');
+    await router.isReady();
+
+    const wrapper = mount(AppLayout, {
+      global: {
+        plugins: [router],
+        stubs: {
+          Button: true,
+          Select: true,
+          Tag: true,
+        },
+      },
+    });
+
+    const trigger = wrapper.get('[data-testid="language-trigger"]');
+
+    expect(trigger.text()).toContain('English');
+    expect(trigger.classes()).toContain('uno-bg-transparent');
+    expect(trigger.classes()).not.toContain('uno-border');
+    expect(trigger.find('.pi-angle-down').exists()).toBe(true);
+
+    await trigger.trigger('click');
+
+    expect(wrapper.get('[data-testid="language-trigger"]').find('.pi-angle-up').exists()).toBe(true);
+  });
+
+  it('hides the language menu when clicking outside the menu', async () => {
+    setLocale('en');
+    const router = createTestRouter();
+    await router.push('/');
+    await router.isReady();
+
+    const wrapper = mount(AppLayout, {
+      attachTo: document.body,
+      global: {
+        plugins: [router],
+        stubs: {
+          Button: true,
+          Select: true,
+          Tag: true,
+        },
+      },
+    });
+
+    await wrapper.get('[data-testid="language-trigger"]').trigger('click');
+    expect(wrapper.find('[data-testid="language-option-zh-CN"]').exists()).toBe(true);
+
+    document.body.click();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="language-option-zh-CN"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('applies the saved default UI language when no explicit locale override exists', async () => {
+    window.localStorage.clear();
+    vi.mocked(apiService.apiGet).mockImplementation(async (path: string) => {
+      if (path === '/api/members') {
+        return [
+          { id: 'member-1', name: 'Alice Analyst' },
+          { id: 'member-2', name: 'Bob Builder' },
+        ];
+      }
+      if (path === '/api/settings') {
+        return {
+          workspace: {
+            default_ui_language: 'en',
+          },
+        };
+      }
+      throw new Error(`Unexpected apiGet path: ${path}`);
+    });
+
+    const router = createTestRouter();
+    await router.push('/');
+    await router.isReady();
+
+    const wrapper = mount(AppLayout, {
+      global: {
+        plugins: [router],
+        stubs: {
+          Button: true,
+          Select: true,
+          Tag: true,
+        },
+      },
+    });
+
+    await flushPromises();
+
+    expect(useI18n().locale.value).toBe('en');
+    expect(window.localStorage.getItem('tradingagents.defaultLocale')).toBe('en');
+    wrapper.unmount();
+  });
+
+  it('renders the user menu trigger as plain text and flips the chevron when open', async () => {
+    const router = createTestRouter();
+    await router.push('/');
+    await router.isReady();
+
+    const wrapper = mount(AppLayout, {
+      global: {
+        plugins: [router],
+        stubs: {
+          Button: true,
+          Select: true,
+          Tag: true,
+        },
+      },
+    });
+
+    const trigger = wrapper.get('[data-testid="user-menu-trigger"]');
+
+    expect(trigger.text()).toContain('Alice Analyst');
+    expect(trigger.classes()).toContain('uno-bg-transparent');
+    expect(trigger.classes()).not.toContain('uno-border');
+    expect(trigger.find('.pi-angle-down').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="user-menu"]').trigger('mouseenter');
+
+    expect(wrapper.get('[data-testid="user-menu-trigger"]').find('.pi-angle-up').exists()).toBe(true);
+  });
+
+  it('shows the current member as a text trigger and opens a member menu on click', async () => {
+    const router = createTestRouter();
+    await router.push('/');
+    await router.isReady();
+
+    const wrapper = mount(AppLayout, {
+      global: {
+        plugins: [router],
+        stubs: {
+          Button: true,
+          Select: true,
+          Tag: true,
+        },
+      },
+    });
+
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="current-member-select"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('当前成员');
+    expect(wrapper.get('[data-testid="current-member-trigger"]').text()).toContain('Bob Builder');
+
+    await wrapper.get('[data-testid="current-member-trigger"]').trigger('click');
+
+    expect(wrapper.get('[data-testid="current-member-option-member-1"]').text()).toContain('Alice Analyst');
+    expect(wrapper.get('[data-testid="current-member-option-member-2"]').find('.pi-check').exists()).toBe(true);
   });
 });

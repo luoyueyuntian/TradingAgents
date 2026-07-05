@@ -24,6 +24,7 @@ from tradingagents.service.execution_lock import PROCESS_EXECUTION_LOCK
 from tradingagents.service.models import TERMINAL_RUN_STATUSES, RunCancelledError, RunState
 from tradingagents.service.runtime_context import RuntimeContext, build_runtime_context
 from tradingagents.service.state_backend import StateBackendAdapter, get_state_backend_adapter
+from tradingagents.service.timestamps import current_timestamp_ms
 from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import export_api_keys_to_env, load_settings
 
@@ -220,7 +221,7 @@ class RunService:
         if not line:
             return
         path = self._ensure_terminal_log(run)
-        timestamp = datetime.datetime.now().isoformat(timespec="seconds")
+        timestamp = str(current_timestamp_ms(datetime.datetime.now()))
         rendered = f"{timestamp} [run:{run.run_id}] {line}"
         with self._terminal_log_lock:
             try:
@@ -331,7 +332,7 @@ class RunService:
     def resume_incomplete_runs(self) -> None:
         """Requeue unfinished work after startup."""
         to_enqueue: list[str] = []
-        now = datetime.datetime.now().isoformat()
+        now = current_timestamp_ms(datetime.datetime.now())
         with self._runs_lock:
             for run in self._runs.values():
                 if run.status in TERMINAL_RUN_STATUSES:
@@ -386,7 +387,7 @@ class RunService:
         with self._runs_lock:
             return sorted(
                 self._runs.values(),
-                key=lambda run: run.created_at or "",
+                key=lambda run: run.created_at or 0,
                 reverse=True,
             )
 
@@ -395,7 +396,7 @@ class RunService:
         with self._runs_lock:
             queued_runs = sorted(
                 (run for run in self._runs.values() if run.status == "queued"),
-                key=lambda run: (run.queue_sequence or 10**12, run.created_at or ""),
+                key=lambda run: (run.queue_sequence or 10**12, run.created_at or 0),
             )
         for index, run in enumerate(queued_runs, start=1):
             if run.run_id == run_id:
@@ -458,7 +459,7 @@ class RunService:
                 if run.status in TERMINAL_RUN_STATUSES
             ]
             terminal_runs.sort(
-                key=lambda item: item[1].completed_at or item[1].created_at or ""
+                key=lambda item: item[1].completed_at or item[1].created_at or 0
             )
 
             while len(terminal_runs) > limit:
@@ -542,7 +543,7 @@ class RunService:
             if run.status == "queued":
                 run.status = "cancelled"
                 run.error = None
-                run.completed_at = datetime.datetime.now().isoformat()
+                run.completed_at = current_timestamp_ms(datetime.datetime.now())
                 run.queue_sequence = None
                 if run_id in self._queued_run_ids:
                     self._queued_run_ids.remove(run_id)
@@ -600,6 +601,7 @@ class RunService:
             config=deepcopy(source.config),
             selected_analysts=list(source.selected_analysts),
             runtime_context=runtime_context,
+            company_name=source.company_name,
             status="queued",
             queue_sequence=self._next_queue_sequence,
         )
@@ -637,7 +639,7 @@ class RunService:
                     self._log_run_phase(run, "applying tenant API keys")
                     self.apply_tenant_api_keys()
                     run.status = "running"
-                    run.started_at = datetime.datetime.now().isoformat()
+                    run.started_at = current_timestamp_ms(datetime.datetime.now())
                     run.queue_sequence = None
                     self._log_run_phase(run, "status set to running")
                     self._put_event(run, {"event": "progress", "data": {"message": f"Starting analysis for {run.ticker} on {run.date}"}})
@@ -703,7 +705,7 @@ class RunService:
                         run.agents[agent] = "completed"
 
                     run.status = "completed"
-                    run.completed_at = datetime.datetime.now().isoformat()
+                    run.completed_at = current_timestamp_ms(datetime.datetime.now())
                     self._log_run_phase(run, "completed analysis")
                     terminal_event = self.build_terminal_event(run)
                     if terminal_event is not None:
@@ -715,7 +717,7 @@ class RunService:
             self._log_run_phase(run, "cancelled analysis")
             run.status = "cancelled"
             run.error = None
-            run.completed_at = datetime.datetime.now().isoformat()
+            run.completed_at = current_timestamp_ms(datetime.datetime.now())
             self._update_final_report(run)
             terminal_event = self.build_terminal_event(run)
             if terminal_event is not None:
@@ -728,7 +730,7 @@ class RunService:
                 self._write_terminal_line(run, "stderr", line)
             run.status = "failed"
             run.error = str(e)
-            run.completed_at = datetime.datetime.now().isoformat()
+            run.completed_at = current_timestamp_ms(datetime.datetime.now())
             terminal_event = self.build_terminal_event(run)
             if terminal_event is not None:
                 self._put_event(run, terminal_event)
@@ -758,7 +760,7 @@ class RunService:
         run.queue_sequence = None
         if run.cancel_requested.is_set():
             run.status = "cancelled"
-            run.completed_at = run.completed_at or datetime.datetime.now().isoformat()
+            run.completed_at = run.completed_at or current_timestamp_ms(datetime.datetime.now())
             terminal_event = self.build_terminal_event(run)
             if terminal_event is not None:
                 self._put_event(run, terminal_event)
@@ -836,6 +838,7 @@ class RunService:
             config=config,
             selected_analysts=req.analysts,
             runtime_context=runtime_context,
+            company_name=req.company_name,
             status="queued",
             queue_sequence=self._next_queue_sequence,
         )

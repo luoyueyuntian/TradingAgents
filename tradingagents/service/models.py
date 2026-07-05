@@ -15,6 +15,7 @@ from tradingagents.graph.event_processor import (
     build_report_sections,
 )
 from tradingagents.service.runtime_context import RuntimeContext
+from tradingagents.service.timestamps import current_timestamp_ms
 
 TERMINAL_RUN_STATUSES = {"completed", "failed", "cancelled"}
 
@@ -34,6 +35,7 @@ class RunState:
     config: dict[str, Any]
     selected_analysts: list[str]
     runtime_context: RuntimeContext
+    company_name: str | None = None
     status: str = "pending"
     agents: dict[str, str] = field(default_factory=dict)
     report_sections: dict[str, str | None] = field(default_factory=dict)
@@ -48,9 +50,9 @@ class RunState:
     event_log_path: str | None = None
     event_history: list[dict[str, Any]] = field(default_factory=list)
     queue_sequence: int | None = None
-    created_at: str = ""
-    started_at: str | None = None
-    completed_at: str | None = None
+    created_at: int = 0
+    started_at: int | None = None
+    completed_at: int | None = None
     cancel_requested: threading.Event = field(default_factory=threading.Event, repr=False)
     _chunk_processor: ChunkProcessor | None = field(default=None, repr=False)
     _event_subscribers: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = field(
@@ -61,7 +63,7 @@ class RunState:
 
     def __post_init__(self):
         if not self.created_at:
-            self.created_at = datetime.datetime.now().isoformat()
+            self.created_at = current_timestamp_ms(datetime.datetime.now())
         self.agents = build_agent_status_map(self.selected_analysts)
         self.report_sections = build_report_sections(self.selected_analysts)
         self._chunk_processor = ChunkProcessor(self.selected_analysts)

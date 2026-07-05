@@ -25,7 +25,7 @@
                 <span>{{ run.ticker }} · {{ run.date }}</span>
                 <Tag :value="run.signal || run.status" :severity="signalSeverity(run.signal || run.status)" />
               </div>
-              <small class="uno-text-[#6f8183]">{{ compactText(run.error || run.created_at) }}</small>
+              <small class="uno-text-[#6f8183]">{{ run.error ? compactText(run.error) : formatDateTime(run.created_at) }}</small>
             </div>
           </div>
         </template>
@@ -117,7 +117,7 @@ import PageHeader from '../components/PageHeader.vue';
 import { useI18n } from '../i18n';
 import { apiGet, apiPost, buildApiUrl } from '../services/api';
 import { useSession } from '../stores/session';
-import { asArray, compactText, signalSeverity, type JsonRecord } from '../utils/format';
+import { asArray, compactText, formatDateTime, signalSeverity, type JsonRecord } from '../utils/format';
 
 const session = useSession();
 const canWrite = computed(() => session.canWrite.value);

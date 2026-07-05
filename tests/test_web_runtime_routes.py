@@ -98,6 +98,40 @@ def test_delete_runtime_memory_endpoint_returns_deleted_count(monkeypatch):
     assert response.json() == {"deleted": 1}
 
 
+def test_migrate_all_settings_timestamps_endpoint_returns_updated_count(monkeypatch):
+    client = TestClient(app)
+
+    monkeypatch.setattr(web_routes, "migrate_all_web_settings_timestamps_to_ms", lambda: 2)
+
+    response = client.post("/api/system/settings/migrate-timestamps")
+
+    assert response.status_code == 200
+    assert response.json() == {"updated": 2}
+
+
+def test_migrate_tenant_settings_timestamps_endpoint_targets_current_tenant(monkeypatch):
+    client = TestClient(app)
+
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(web_routes, "get_auth_scope", lambda tenant_id=None: "tenant")
+    monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: f"/tmp/{tenant_id or 'default'}.json")
+
+    def _migrate(path):
+        seen["path"] = path
+        return True
+
+    monkeypatch.setattr(web_routes, "migrate_web_settings_timestamps_to_ms", _migrate)
+
+    response = client.post(
+        "/api/system/settings/migrate-timestamps",
+        headers={"X-TradingAgents-Tenant": "tenant-a"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"updated": 1}
+    assert seen["path"] == "/tmp/tenant-a.json"
+
+
 def test_list_tenants_endpoint_requires_tenant_scoped_auth_for_explicit_tenant(monkeypatch):
     client = TestClient(app)
 
@@ -116,3 +150,7 @@ def test_runtime_maintenance_requires_tenant_scoped_auth_for_explicit_tenant(mon
     response = client.get("/api/system/checkpoints", headers={"X-TradingAgents-Tenant": "tenant-a"})
 
     assert response.status_code == 403
+
+    migrate_response = client.post("/api/system/settings/migrate-timestamps", headers={"X-TradingAgents-Tenant": "tenant-a"})
+
+    assert migrate_response.status_code == 403

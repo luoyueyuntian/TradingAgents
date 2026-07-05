@@ -35,6 +35,55 @@ def test_run_service_create_run_starts_queued(tmp_path):
     assert enqueued == [run.run_id]
 
 
+def test_run_service_create_run_keeps_company_name(tmp_path):
+    from tradingagents.service.run_service import RunService
+
+    service = RunService(
+        runs_index_path=tmp_path / "runs.json",
+        run_events_dir=tmp_path / "events",
+        runs_root_dir=tmp_path / "runs",
+    )
+    service.ensure_worker_started = lambda: None
+    service._enqueue_run = lambda run_id: None
+
+    run = service.create_run(
+        AnalysisRequest(
+            ticker="AAPL",
+            company_name="Apple Inc.",
+            date="2026-01-15",
+        )
+    )
+
+    assert run.company_name == "Apple Inc."
+
+
+def test_run_service_retry_run_keeps_company_name(tmp_path):
+    from tradingagents.service.run_service import RunService
+
+    service = RunService(
+        runs_index_path=tmp_path / "runs.json",
+        run_events_dir=tmp_path / "events",
+        runs_root_dir=tmp_path / "runs",
+    )
+    source = RunState(
+        run_id="source-run",
+        ticker="AAPL",
+        date="2026-01-15",
+        asset_type="stock",
+        config=DEFAULT_CONFIG.copy(),
+        selected_analysts=["market"],
+        runtime_context=build_runtime_context("source-run", base_dir=tmp_path / "runs"),
+        company_name="Apple Inc.",
+        status="completed",
+    )
+    service._runs[source.run_id] = source
+
+    retried = service.retry_run(source.run_id, start_worker=False)
+
+    assert retried is not None
+    assert retried.company_name == "Apple Inc."
+
+
 def test_run_service_persists_terminal_output_from_analysis(tmp_path):
     from tradingagents.service.run_service import RunService
 

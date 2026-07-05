@@ -19,16 +19,45 @@
         <template #title>{{ t('settings.llmConfiguration') }}</template>
         <template #content>
           <div data-testid="llm-settings-grid" class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] uno-gap-[0.8rem]">
-            <label class="uno-grid uno-gap-[0.35rem]">
+            <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
               <span class="uno-text-[#6f8183]">{{ t('common.provider') }}</span>
-              <Select v-model="form.llm.provider" :options="providerOptions" option-label="label" option-value="value" class="uno-w-full" />
+              <Select
+                v-model="form.llm.provider"
+                :options="providerOptions"
+                option-label="label"
+                option-value="value"
+                class="uno-w-full uno-min-w-0"
+                :pt="formSelectPt"
+              />
             </label>
-            <label class="uno-grid uno-gap-[0.35rem]">
+            <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
               <span class="uno-text-[#6f8183]">{{ t('analysis.quickModel') }}</span>
+              <Select
+                v-model="quickModelSelectValue"
+                :options="quickModelOptions"
+                option-label="label"
+                option-value="value"
+                class="uno-w-full uno-min-w-0"
+                :pt="formSelectPt"
+              />
+            </label>
+            <label v-if="showQuickCustomModelInput" data-testid="settings-quick-custom-model-input" class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.quickCustomModelId') }}</span>
               <InputText v-model="form.llm.quick_think_model" class="uno-w-full" />
             </label>
-            <label class="uno-grid uno-gap-[0.35rem]">
+            <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
               <span class="uno-text-[#6f8183]">{{ t('analysis.deepModel') }}</span>
+              <Select
+                v-model="deepModelSelectValue"
+                :options="deepModelOptions"
+                option-label="label"
+                option-value="value"
+                class="uno-w-full uno-min-w-0"
+                :pt="formSelectPt"
+              />
+            </label>
+            <label v-if="showDeepCustomModelInput" data-testid="settings-deep-custom-model-input" class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('analysis.deepCustomModelId') }}</span>
               <InputText v-model="form.llm.deep_think_model" class="uno-w-full" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
@@ -39,19 +68,14 @@
               <span class="uno-text-[#6f8183]">{{ t('settings.backendUrl') }}</span>
               <InputText v-model="form.llm.backend_url" :placeholder="t('common.providerDefault')" class="uno-w-full" />
             </label>
-          </div>
-        </template>
-      </Card>
-
-      <Card>
-        <template #title>{{ t('settings.apiKeys') }}</template>
-        <template #content>
-          <div data-testid="api-key-settings-grid" class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] uno-gap-[0.8rem]">
-            <label v-for="keyName in apiKeyNames" :key="keyName" class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ keyName }}</span>
-              <InputText v-model="form.api_keys[keyName]" type="password" :placeholder="t('common.notSet')" class="uno-w-full" />
+            <label v-if="currentProviderApiKeyEnv" data-testid="provider-api-key-field" class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('settings.providerApiKey', { env: currentProviderApiKeyEnv }) }}</span>
+              <InputText v-model="currentProviderApiKey" type="password" :placeholder="t('common.notSet')" class="uno-w-full" />
             </label>
           </div>
+          <p v-if="!currentProviderApiKeyEnv" data-testid="provider-api-key-empty" class="uno-mt-3 uno-text-sm uno-text-[#6f8183]">
+            {{ t('settings.noProviderApiKeyRequired') }}
+          </p>
         </template>
       </Card>
 
@@ -59,6 +83,10 @@
         <template #title>{{ t('settings.analysisDefaults') }}</template>
         <template #content>
           <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
+            <label class="uno-grid uno-gap-[0.35rem]">
+              <span class="uno-text-[#6f8183]">{{ t('settings.defaultUiLanguage') }}</span>
+              <Select v-model="form.workspace.default_ui_language" :options="uiLanguageOptions" option-label="label" option-value="value" />
+            </label>
             <label class="uno-grid uno-gap-[0.35rem]">
               <span class="uno-text-[#6f8183]">{{ t('common.language') }}</span>
               <Select v-model="form.analysis.output_language" :options="languageOptions" option-label="label" option-value="value" />
@@ -137,13 +165,18 @@ import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import Select from 'primevue/select';
 import Textarea from 'primevue/textarea';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import PageHeader from '../components/PageHeader.vue';
-import { useI18n } from '../i18n';
+import { locales as uiLocales, setDefaultLocale, useI18n, type Locale } from '../i18n';
 import { apiGet, apiPut } from '../services/api';
 import { useSession } from '../stores/session';
 import type { JsonRecord } from '../utils/format';
+import {
+  displayedModelSelection,
+  nextModelValueFromSelection,
+  normalizeModelValueForProvider,
+} from './providerModelSelection';
 
 const session = useSession();
 const canManageSettings = computed(() => session.isAdmin.value);
@@ -151,7 +184,6 @@ const providers = ref<JsonRecord[]>([]);
 const error = ref('');
 const notice = ref('');
 const { t } = useI18n();
-const apiKeyNames = ['openai', 'anthropic', 'google', 'deepseek', 'qwen', 'glm', 'minimax', 'mimo', 'openrouter', 'alpha_vantage'];
 const vendorFields = computed(() => [
   { key: 'core_stock_apis', label: t('settings.coreStockApis') },
   { key: 'technical_indicators', label: t('settings.technicalIndicators') },
@@ -169,6 +201,10 @@ const languageOptions = computed(() => [
   { label: t('analysis.languageFrench'), value: 'French' },
   { label: t('analysis.languageGerman'), value: 'German' },
 ]);
+const uiLanguageOptions = computed(() => uiLocales.map((locale) => ({
+  label: locale.value === 'zh-CN' ? t('analysis.languageChinese') : t('analysis.languageEnglish'),
+  value: locale.value,
+})));
 const marketProfileOptions = computed(() => [
   { label: t('analysis.marketDefault'), value: 'default' },
   { label: t('analysis.marketChinaA'), value: 'cn_a' },
@@ -190,6 +226,11 @@ const form = reactive<JsonRecord>({
     max_risk_discuss_rounds: 1,
     benchmark_ticker: '',
     checkpoint_enabled: false,
+  },
+  workspace: {
+    default_home_view: 'auto',
+    default_saved_view_id: '',
+    default_ui_language: 'zh-CN',
   },
   data: {
     data_vendors: {},
@@ -219,11 +260,78 @@ const providerOptions = computed(() => providers.value.map((provider) => ({
   label: provider.display_name || provider.provider,
   value: provider.provider,
 })));
+const formSelectPt = {
+  root: { class: 'uno-min-w-0' },
+  label: { class: 'uno-block uno-min-w-0 uno-max-w-full uno-overflow-hidden uno-text-ellipsis uno-whitespace-nowrap' },
+  optionLabel: { class: 'uno-block uno-max-w-full uno-overflow-hidden uno-text-ellipsis uno-whitespace-nowrap' },
+};
+const selectedProvider = computed(() => providers.value.find((provider) => provider.provider === form.llm.provider));
+const quickModelOptions = computed(() => selectedProvider.value?.quick_models || []);
+const deepModelOptions = computed(() => selectedProvider.value?.deep_models || []);
+const quickModelSelectValue = computed({
+  get: () => displayedModelSelection(quickModelOptions.value, form.llm.quick_think_model),
+  set: (value: string) => {
+    form.llm.quick_think_model = nextModelValueFromSelection(
+      quickModelOptions.value,
+      form.llm.quick_think_model,
+      value,
+    );
+  },
+});
+const deepModelSelectValue = computed({
+  get: () => displayedModelSelection(deepModelOptions.value, form.llm.deep_think_model),
+  set: (value: string) => {
+    form.llm.deep_think_model = nextModelValueFromSelection(
+      deepModelOptions.value,
+      form.llm.deep_think_model,
+      value,
+    );
+  },
+});
+const showQuickCustomModelInput = computed(() => quickModelSelectValue.value === 'custom');
+const showDeepCustomModelInput = computed(() => deepModelSelectValue.value === 'custom');
+const currentProviderApiKeyEnv = computed(() => {
+  const value = selectedProvider.value?.api_key_env;
+  return typeof value === 'string' ? value : '';
+});
+const currentProviderApiKey = computed({
+  get: () => String(form.api_keys?.[String(form.llm.provider || '')] || ''),
+  set: (value: string) => {
+    const provider = String(form.llm.provider || '');
+    if (!provider) return;
+    if (!form.api_keys || typeof form.api_keys !== 'object') {
+      form.api_keys = {};
+    }
+    form.api_keys[provider] = value;
+  },
+});
+const providerSelectionReady = ref(false);
+
+function syncProviderFields(force = false) {
+  const provider = selectedProvider.value;
+  const quickOptions = provider?.quick_models;
+  const deepOptions = provider?.deep_models;
+
+  form.llm.quick_think_model = normalizeModelValueForProvider(
+    quickOptions,
+    form.llm.quick_think_model,
+    force,
+  );
+  form.llm.deep_think_model = normalizeModelValueForProvider(
+    deepOptions,
+    form.llm.deep_think_model,
+    force,
+  );
+  if (force || !form.llm.backend_url) {
+    form.llm.backend_url = String(provider?.backend_url || '');
+  }
+}
 
 function mergeSettings(payload: JsonRecord) {
-  form.api_keys = { ...Object.fromEntries(apiKeyNames.map((key) => [key, ''])), ...(payload.api_keys || {}) };
+  form.api_keys = { ...(payload.api_keys || {}) };
   form.llm = { ...form.llm, ...(payload.llm || {}) };
   form.analysis = { ...form.analysis, ...(payload.analysis || {}) };
+  form.workspace = { ...form.workspace, ...(payload.workspace || {}) };
   form.data = {
     ...form.data,
     ...(payload.data || {}),
@@ -238,6 +346,7 @@ function mergeSettings(payload: JsonRecord) {
 async function loadSettings() {
   error.value = '';
   notice.value = '';
+  providerSelectionReady.value = false;
   try {
     const context = session.apiContext.value;
     const [settings, providerItems] = await Promise.all([
@@ -246,10 +355,22 @@ async function loadSettings() {
     ]);
     providers.value = providerItems;
     mergeSettings(settings);
+    if (!selectedProvider.value && providers.value.length) {
+      form.llm.provider = String(providers.value[0].provider);
+    }
+    syncProviderFields();
+    providerSelectionReady.value = true;
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('settings.loadError');
   }
 }
+
+watch(() => form.llm.provider, (provider, previousProvider) => {
+  if (!providerSelectionReady.value || provider === previousProvider) {
+    return;
+  }
+  syncProviderFields(true);
+});
 
 function cleanMasked(value: unknown) {
   return value === '***' ? undefined : value;
@@ -272,6 +393,9 @@ async function saveSettings() {
         research_depth: Number(form.analysis.research_depth || 3),
         max_risk_discuss_rounds: Number(form.analysis.max_risk_discuss_rounds || 1),
       },
+      workspace: {
+        ...form.workspace,
+      },
       data: form.data,
       security: {
         web_api_token: cleanMasked(form.security.web_api_token),
@@ -283,6 +407,7 @@ async function saveSettings() {
         },
       },
     }, session.apiContext.value);
+    setDefaultLocale(String(form.workspace.default_ui_language || 'zh-CN') as Locale);
     notice.value = t('settings.saved');
     await loadSettings();
   } catch (exc) {
