@@ -14,31 +14,42 @@
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <MetricGrid :items="metrics" />
 
-    <div class="uno-grid uno-gap-3">
-      <div
-        v-for="item in rows"
-        :key="item.ticker"
-        class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white uno-p-4"
-      >
-        <div class="uno-flex uno-items-center uno-justify-between">
-          <div>
-            <div class="uno-font-800 uno-text-[#14363a]">{{ item.ticker }}</div>
-            <div class="uno-text-sm uno-text-[#5f7376]">{{ item.latest_date || t('portfolio.noSavedRun') }}</div>
-          </div>
-          <div class="uno-flex uno-items-center uno-gap-2">
-            <Tag :value="item.latest_signal || item.latest_status || t('common.saved')" />
-            <Button
-              v-if="canWrite"
-              :data-testid="`watchlist-delete-${item.ticker}`"
-              icon="pi pi-trash"
-              severity="danger"
-              text
-              @click="removeTicker(item.ticker)"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
+    <DataTable :value="rows" size="small" class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white">
+      <Column field="ticker" :header="t('common.ticker')" />
+      <Column field="run_count" :header="t('portfolio.runCount')" />
+      <Column field="latest_run_id" :header="t('portfolio.latestRunId')" />
+      <Column :header="t('common.signal')">
+        <template #body="{ data }">
+          <Tag :value="data.latest_signal || t('common.na')" :severity="signalSeverity(data.latest_signal)" />
+        </template>
+      </Column>
+      <Column :header="t('common.status')">
+        <template #body="{ data }">
+          <Tag :value="data.latest_status || t('common.na')" :severity="signalSeverity(data.latest_status)" />
+        </template>
+      </Column>
+      <Column field="latest_date" :header="t('common.date')">
+        <template #body="{ data }">
+          {{ data.latest_date || t('portfolio.noSavedRun') }}
+        </template>
+      </Column>
+      <Column :header="t('common.created')">
+        <template #body="{ data }">
+          {{ formatDateTime(data.created_at) }}
+        </template>
+      </Column>
+      <Column v-if="canWrite" :header="t('common.actions')">
+        <template #body="{ data }">
+          <Button
+            :data-testid="`watchlist-delete-${data.ticker}`"
+            icon="pi pi-trash"
+            severity="danger"
+            text
+            @click="removeTicker(data.ticker)"
+          />
+        </template>
+      </Column>
+    </DataTable>
 
     <WatchlistCreateDialog v-model:visible="dialogOpen" @saved="loadRows" />
   </section>
@@ -46,6 +57,8 @@
 
 <script setup lang="ts">
 import Button from 'primevue/button';
+import Column from 'primevue/column';
+import DataTable from 'primevue/datatable';
 import Message from 'primevue/message';
 import Tag from 'primevue/tag';
 import { computed, onMounted, ref } from 'vue';
@@ -57,7 +70,7 @@ import WatchlistCreateDialog from '../components/portfolio/WatchlistCreateDialog
 import { useI18n } from '../i18n';
 import { apiDelete, apiGet } from '../services/api';
 import { useSession } from '../stores/session';
-import type { JsonRecord } from '../utils/format';
+import { formatDateTime, signalSeverity, type JsonRecord } from '../utils/format';
 
 const session = useSession();
 const canWrite = computed(() => session.canWrite.value);
