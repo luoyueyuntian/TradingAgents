@@ -126,7 +126,7 @@ describe('session store', () => {
     session.setApiToken('operator-token');
 
     await session.loadCurrentUser();
-    await session.login('alice', 'StrongPass123!');
+    await session.login('tenant-a', 'alice', 'StrongPass123!');
     await session.logout();
     await session.changePassword('OldPass123!', 'NewPass456!');
     await session.requestPasswordReset('alice@example.com');
@@ -134,6 +134,7 @@ describe('session store', () => {
 
     expect(apiGetMock).toHaveBeenCalledWith('/api/auth/me', {});
     expect(apiPostMock).toHaveBeenNthCalledWith(1, '/api/auth/login', {
+      tenant_id: 'tenant-a',
       identifier: 'alice',
       password: 'StrongPass123!',
     }, {});
@@ -222,9 +223,10 @@ describe('session store', () => {
     const { useSession } = await loadSessionModule();
 
     const session = useSession();
-    await session.login(' alice ', 'StrongPass123!');
+    await session.login(' tenant-a ', ' alice ', 'StrongPass123!');
 
     expect(apiPostMock).toHaveBeenCalledWith('/api/auth/login', {
+      tenant_id: 'tenant-a',
       identifier: 'alice',
       password: 'StrongPass123!',
     }, {});

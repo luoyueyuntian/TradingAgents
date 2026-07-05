@@ -201,11 +201,12 @@ export function useSession() {
     });
   }
 
-  async function login(identifier: string, password: string): Promise<AuthSessionResponse> {
+  async function login(tenantId: string, identifier: string, password: string): Promise<AuthSessionResponse> {
     state.error = '';
     return withLoading(async () => {
       try {
         const payload = await apiPost<AuthSessionResponse>('/api/auth/login', {
+          tenant_id: tenantId.trim(),
           identifier: identifier.trim(),
           password,
         }, authApiContext);
