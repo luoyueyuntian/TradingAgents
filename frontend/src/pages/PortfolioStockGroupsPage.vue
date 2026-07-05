@@ -2,8 +2,8 @@
   <section>
     <PageHeader
       :eyebrow="t('portfolio.eyebrow')"
-      :title="t('portfolio.stockGroups')"
-      :description="t('nav.portfolioDesc')"
+      :title="t('portfolio.stockGroupsTitle')"
+      :description="t('portfolio.stockGroupsDescription')"
     >
       <template #actions>
         <Button icon="pi pi-plus" :label="t('common.add')" :disabled="!canWrite" @click="openCreate" />

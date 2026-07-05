@@ -2,8 +2,8 @@
   <section>
     <PageHeader
       :eyebrow="t('portfolio.eyebrow')"
-      :title="t('portfolio.positions')"
-      :description="t('nav.portfolioDesc')"
+      :title="t('portfolio.positionsTitle')"
+      :description="t('portfolio.positionsDescription')"
     >
       <template #actions>
         <Button icon="pi pi-plus" :label="t('common.addPosition')" :disabled="!canWrite" @click="openCreate" />
@@ -72,7 +72,7 @@ const activePosition = ref<JsonRecord | null>(null);
 const positions = computed(() => asArray<JsonRecord>(payload.value?.positions));
 const metrics = computed(() => [
   { label: t('portfolio.positions'), value: positions.value.length },
-  { label: t('dashboard.metricPortfolio'), value: Number(payload.value?.summary?.total_cost_basis || 0) },
+  { label: t('portfolio.totalCostBasis'), value: Number(payload.value?.summary?.total_cost_basis || 0) },
 ]);
 
 async function loadRows() {

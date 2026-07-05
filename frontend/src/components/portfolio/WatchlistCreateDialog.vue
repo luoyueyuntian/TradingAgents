@@ -1,7 +1,7 @@
 <template>
   <PortfolioDialog
     :visible="visible"
-    :title="t('common.watchlist')"
+    :title="t('portfolio.addWatchlistItem')"
     :save-label="t('common.add')"
     :cancel-label="t('common.cancel')"
     :loading="saving"

@@ -1,7 +1,7 @@
 <template>
   <PortfolioDialog
     :visible="visible"
-    :title="mode === 'edit' ? t('common.save') : t('common.addPosition')"
+    :title="mode === 'edit' ? t('portfolio.editPosition') : t('portfolio.addPositionTitle')"
     :save-label="mode === 'edit' ? t('common.save') : t('common.add')"
     :cancel-label="t('common.cancel')"
     :loading="saving"
