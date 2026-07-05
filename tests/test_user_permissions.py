@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi.testclient import TestClient
 
 import web.auth_routes as auth_routes
@@ -114,6 +116,7 @@ def test_analyst_can_post_runs_but_cannot_put_settings(monkeypatch, tmp_path):
         run_id = "run-1"
         status = "queued"
         ticker = "NVDA"
+        company_name = None
         date = "2026-07-02"
 
     monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
@@ -241,6 +244,23 @@ def test_disabled_tenant_blocks_existing_session_requests(monkeypatch, tmp_path)
     assert response.json()["detail"] == "Tenant is disabled"
 
 
+def test_expired_tenant_blocks_existing_session_requests(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    store.create_tenant("tenant-expired", display_name="Tenant Expired")
+    _create_user(store, role="viewer", tenant_id="tenant-expired")
+    _login(client)
+    store.update_tenant(
+        "tenant-expired",
+        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+    )
+    monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [])
+
+    response = client.get("/api/runs")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant has expired"
+
+
 def test_token_authenticated_write_request_rejects_disabled_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     store.create_tenant("tenant-disabled", display_name="Tenant Disabled")
@@ -251,6 +271,7 @@ def test_token_authenticated_write_request_rejects_disabled_tenant(monkeypatch, 
         run_id = "run-1"
         status = "queued"
         ticker = "NVDA"
+        company_name = None
         date = "2026-07-02"
 
     monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
@@ -265,28 +286,32 @@ def test_token_authenticated_write_request_rejects_disabled_tenant(monkeypatch, 
     assert response.json()["detail"] == "Tenant is disabled"
 
 
-def test_token_authenticated_write_request_rejects_archived_tenant(monkeypatch, tmp_path):
+def test_token_authenticated_write_request_rejects_expired_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
-    store.create_tenant("tenant-archived", display_name="Tenant Archived")
-    store.update_tenant("tenant-archived", archived=True)
+    store.create_tenant("tenant-expired", display_name="Tenant Expired")
+    store.update_tenant(
+        "tenant-expired",
+        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+    )
     monkeypatch.setenv("TRADINGAGENTS_WEB_API_TOKEN", "secret-token")
 
     class _Run:
         run_id = "run-1"
         status = "queued"
         ticker = "NVDA"
+        company_name = None
         date = "2026-07-02"
 
     monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
 
     response = client.post(
-        "/api/runs?tenant_id=tenant-archived",
+        "/api/runs?tenant_id=tenant-expired",
         headers={"Authorization": "Bearer secret-token"},
         json=_analysis_payload(),
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Tenant is archived"
+    assert response.json()["detail"] == "Tenant has expired"
 
 
 def test_legacy_write_request_rejects_disabled_tenant(monkeypatch, tmp_path):
@@ -298,6 +323,7 @@ def test_legacy_write_request_rejects_disabled_tenant(monkeypatch, tmp_path):
         run_id = "run-1"
         status = "queued"
         ticker = "NVDA"
+        company_name = None
         date = "2026-07-02"
 
     monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
@@ -311,26 +337,30 @@ def test_legacy_write_request_rejects_disabled_tenant(monkeypatch, tmp_path):
     assert response.json()["detail"] == "Tenant is disabled"
 
 
-def test_legacy_write_request_rejects_archived_tenant(monkeypatch, tmp_path):
+def test_legacy_write_request_rejects_expired_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
-    store.create_tenant("tenant-archived", display_name="Tenant Archived")
-    store.update_tenant("tenant-archived", archived=True)
+    store.create_tenant("tenant-expired", display_name="Tenant Expired")
+    store.update_tenant(
+        "tenant-expired",
+        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+    )
 
     class _Run:
         run_id = "run-1"
         status = "queued"
         ticker = "NVDA"
+        company_name = None
         date = "2026-07-02"
 
     monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
 
     response = client.post(
-        "/api/runs?tenant_id=tenant-archived",
+        "/api/runs?tenant_id=tenant-expired",
         json=_analysis_payload(),
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Tenant is archived"
+    assert response.json()["detail"] == "Tenant has expired"
 
 
 def test_authenticated_me_request_populates_auth_state(monkeypatch, tmp_path):

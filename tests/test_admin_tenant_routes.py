@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -51,6 +53,10 @@ def _login(client: TestClient, identifier: str = "alice", password: str = "Stron
     return response
 
 
+def _now_ms() -> int:
+    return int(datetime.now(timezone.utc).timestamp() * 1000)
+
+
 def test_list_tenants_returns_counts_for_admin(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_tenant(store, tenant_id="tenant-a", display_name="Tenant A")
@@ -93,7 +99,8 @@ def test_list_tenants_returns_counts_for_admin(monkeypatch, tmp_path):
                 "tenant_id": "tenant-a",
                 "display_name": "Tenant A",
                 "disabled": False,
-                "archived": False,
+                "expires_at": None,
+                "status": "active",
                 "user_count": 2,
                 "active_admin_count": 1,
                 "created_at": store.get_tenant("tenant-a").created_at,
@@ -104,7 +111,8 @@ def test_list_tenants_returns_counts_for_admin(monkeypatch, tmp_path):
                 "tenant_id": "tenant-b",
                 "display_name": "Tenant B",
                 "disabled": False,
-                "archived": False,
+                "expires_at": None,
+                "status": "active",
                 "user_count": 2,
                 "active_admin_count": 1,
                 "created_at": store.get_tenant("tenant-b").created_at,
@@ -114,22 +122,17 @@ def test_list_tenants_returns_counts_for_admin(monkeypatch, tmp_path):
     }
 
 
-def test_create_tenant_creates_initial_admin(monkeypatch, tmp_path):
+def test_create_tenant_generates_tenant_id_without_bootstrap_admin(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store)
     _login(client)
+    expires_at = _now_ms() + 86_400_000
 
     response = client.post(
         "/api/admin/tenants",
         json={
-            "tenant_id": "  tenant-c  ",
             "display_name": "  Tenant C  ",
-            "admin": {
-                "username": "  CAdmin  ",
-                "email": "  CADMIN@example.com  ",
-                "display_name": "  Customer Admin  ",
-                "password": "AnotherStrong123!",
-            },
+            "expires_at": expires_at,
         },
     )
 
@@ -137,151 +140,41 @@ def test_create_tenant_creates_initial_admin(monkeypatch, tmp_path):
     payload = response.json()["tenant"]
     assert payload["tenant_id"] == "tenant-c"
     assert payload["display_name"] == "Tenant C"
-    assert payload["user_count"] == 1
-    assert payload["active_admin_count"] == 1
+    assert payload["expires_at"] == expires_at
+    assert payload["status"] == "active"
+    assert payload["user_count"] == 0
+    assert payload["active_admin_count"] == 0
     created_tenant = store.get_tenant("tenant-c")
     assert created_tenant is not None
-    created_admin = store.get_user_by_identifier("cadmin")
-    assert created_admin is not None
-    assert created_admin.email == "cadmin@example.com"
-    assert created_admin.display_name == "Customer Admin"
-    assert created_admin.role == "admin"
-    assert created_admin.tenant_id == "tenant-c"
-    assert created_admin.must_change_password is True
+    assert created_tenant.expires_at == expires_at
+    assert store.list_users("tenant-c") == []
 
 
-def test_create_tenant_rolls_back_when_initial_admin_insert_fails(monkeypatch, tmp_path):
+def test_create_tenant_generates_unique_slug_for_reused_display_name(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store)
     _login(client)
 
-    original_duplicate_check = UserStore._raise_for_duplicate_user_field
-    calls = {"count": 0}
-
-    def _fail_during_admin_insert(self, conn, field_name, value, excluding_user_id=None):
-        calls["count"] += 1
-        if calls["count"] == 2:
-            raise ValueError("email already exists")
-        return original_duplicate_check(self, conn, field_name, value, excluding_user_id=excluding_user_id)
-
-    monkeypatch.setattr(UserStore, "_raise_for_duplicate_user_field", _fail_during_admin_insert)
-
-    response = client.post(
+    first = client.post(
         "/api/admin/tenants",
         json={
-            "tenant_id": "tenant-rollback",
-            "display_name": "Tenant Rollback",
-            "admin": {
-                "username": "rollback-admin",
-                "email": "rollback-admin@example.com",
-                "display_name": "Rollback Admin",
-                "password": "AnotherStrong123!",
-            },
+            "display_name": "Acme Capital",
+        },
+    )
+    second = client.post(
+        "/api/admin/tenants",
+        json={
+            "display_name": "Acme Capital",
         },
     )
 
-    assert response.status_code == 409
-    assert response.json()["detail"] == "email already exists"
-    assert store.get_tenant("tenant-rollback") is None
-    assert store.get_user_by_identifier("rollback-admin") is None
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["tenant"]["tenant_id"] == "acme-capital"
+    assert second.json()["tenant"]["tenant_id"] == "acme-capital-2"
 
 
-def test_create_tenant_rejects_duplicate_tenant_id(monkeypatch, tmp_path):
-    client, store = _auth_client(monkeypatch, tmp_path)
-    _create_user(store)
-    _create_tenant(store, tenant_id="tenant-c", display_name="Existing Tenant C")
-    _login(client)
-
-    response = client.post(
-        "/api/admin/tenants",
-        json={
-            "tenant_id": "tenant-c",
-            "display_name": "Tenant C",
-            "admin": {
-                "username": "new-admin",
-                "email": "new-admin@example.com",
-                "display_name": "New Admin",
-                "password": "AnotherStrong123!",
-            },
-        },
-    )
-
-    assert response.status_code == 409
-    assert response.json()["detail"] == "tenant_id already exists"
-
-
-@pytest.mark.parametrize(
-    ("admin_payload", "expected_detail"),
-    [
-        (
-            {
-                "username": "alice",
-                "email": "new-admin@example.com",
-                "display_name": "New Admin",
-                "password": "AnotherStrong123!",
-            },
-            "username already exists",
-        ),
-        (
-            {
-                "username": "new-admin",
-                "email": "alice@example.com",
-                "display_name": "New Admin",
-                "password": "AnotherStrong123!",
-            },
-            "email already exists",
-        ),
-    ],
-)
-def test_create_tenant_rejects_duplicate_bootstrap_admin_identity(
-    monkeypatch,
-    tmp_path,
-    admin_payload: dict[str, str],
-    expected_detail: str,
-):
-    client, store = _auth_client(monkeypatch, tmp_path)
-    _create_user(store)
-    _login(client)
-
-    response = client.post(
-        "/api/admin/tenants",
-        json={
-            "tenant_id": "tenant-c",
-            "display_name": "Tenant C",
-            "admin": admin_payload,
-        },
-    )
-
-    assert response.status_code == 409
-    assert response.json()["detail"] == expected_detail
-    assert store.get_tenant("tenant-c") is None
-
-
-def test_create_tenant_rejects_weak_bootstrap_admin_password(monkeypatch, tmp_path):
-    client, store = _auth_client(monkeypatch, tmp_path)
-    _create_user(store)
-    _login(client)
-
-    response = client.post(
-        "/api/admin/tenants",
-        json={
-            "tenant_id": "tenant-c",
-            "display_name": "Tenant C",
-            "admin": {
-                "username": "new-admin",
-                "email": "new-admin@example.com",
-                "display_name": "New Admin",
-                "password": "short",
-            },
-        },
-    )
-
-    assert response.status_code == 400
-    assert "at least 10 characters" in response.json()["detail"]
-    assert store.get_tenant("tenant-c") is None
-
-
-def test_disable_and_archive_tenant(monkeypatch, tmp_path):
+def test_update_tenant_supports_display_name_disabled_and_expires_at(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store)
     _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
@@ -294,6 +187,7 @@ def test_disable_and_archive_tenant(monkeypatch, tmp_path):
         tenant_id="tenant-b",
     )
     _login(client)
+    expires_at = _now_ms() + 86_400_000
 
     detail = client.get("/api/admin/tenants/tenant-b")
     assert detail.status_code == 200
@@ -306,7 +200,7 @@ def test_disable_and_archive_tenant(monkeypatch, tmp_path):
         json={
             "display_name": "  Tenant Bee  ",
             "disabled": True,
-            "archived": True,
+            "expires_at": expires_at,
         },
     )
 
@@ -314,58 +208,97 @@ def test_disable_and_archive_tenant(monkeypatch, tmp_path):
     payload = update.json()["tenant"]
     assert payload["display_name"] == "Tenant Bee"
     assert payload["disabled"] is True
-    assert payload["archived"] is True
+    assert payload["expires_at"] == expires_at
+    assert payload["status"] == "disabled"
 
     refreshed = store.get_tenant("tenant-b")
     assert refreshed is not None
     assert refreshed.display_name == "Tenant Bee"
     assert refreshed.disabled is True
-    assert refreshed.archived is True
+    assert refreshed.expires_at == expires_at
 
     listed = client.get("/api/admin/tenants")
     assert listed.status_code == 200
-    assert [tenant["tenant_id"] for tenant in listed.json()["tenants"]] == ["tenant-a"]
+    assert [tenant["tenant_id"] for tenant in listed.json()["tenants"]] == ["tenant-a", "tenant-b"]
 
 
-def test_list_tenants_can_include_archived_records(monkeypatch, tmp_path):
+def test_list_tenants_filters_by_name_status_and_created_range(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store)
-    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
-    _create_user(
-        store,
-        username="admin-b",
-        email="admin-b@example.com",
-        display_name="Admin B",
-        role="admin",
-        tenant_id="tenant-b",
-    )
-    store.update_tenant("tenant-b", archived=True)
+    _create_tenant(store, tenant_id="tenant-alpha", display_name="Alpha Trading")
+    _create_tenant(store, tenant_id="tenant-beta", display_name="Beta Research")
+    _create_tenant(store, tenant_id="tenant-gamma", display_name="Gamma Capital")
+    store.update_tenant("tenant-beta", disabled=True)
+    store.update_tenant("tenant-gamma", expires_at=_now_ms() - 60_000)
+    alpha_created_at = int(datetime(2026, 7, 3, tzinfo=timezone.utc).timestamp() * 1000)
+    beta_created_at = int(datetime(2026, 7, 9, tzinfo=timezone.utc).timestamp() * 1000)
+    gamma_created_at = int(datetime(2026, 7, 12, tzinfo=timezone.utc).timestamp() * 1000)
+
+    with store._connect() as conn:  # noqa: SLF001
+        conn.execute(
+            "UPDATE tenants SET created_at = ?, updated_at = ? WHERE tenant_id = ?",
+            (alpha_created_at, alpha_created_at, "tenant-alpha"),
+        )
+        conn.execute(
+            "UPDATE tenants SET created_at = ?, updated_at = ? WHERE tenant_id = ?",
+            (beta_created_at, beta_created_at, "tenant-beta"),
+        )
+        conn.execute(
+            "UPDATE tenants SET created_at = ?, updated_at = ? WHERE tenant_id = ?",
+            (gamma_created_at, gamma_created_at, "tenant-gamma"),
+        )
     _login(client)
 
-    default_response = client.get("/api/admin/tenants")
-    assert default_response.status_code == 200
-    assert [tenant["tenant_id"] for tenant in default_response.json()["tenants"]] == ["tenant-a"]
+    by_name = client.get("/api/admin/tenants?name=gamma")
+    disabled = client.get("/api/admin/tenants?status=disabled")
+    expired = client.get("/api/admin/tenants?status=expired")
+    created_range = client.get("/api/admin/tenants?created_from=2026-07-08&created_to=2026-07-11")
 
-    archived_response = client.get("/api/admin/tenants?include_archived=true")
-    assert archived_response.status_code == 200
-    archived_payload = archived_response.json()["tenants"]
-    assert [tenant["tenant_id"] for tenant in archived_payload] == ["tenant-a", "tenant-b"]
-    assert archived_payload[1]["archived"] is True
+    assert by_name.status_code == 200
+    assert [tenant["tenant_id"] for tenant in by_name.json()["tenants"]] == ["tenant-gamma"]
+    assert disabled.status_code == 200
+    assert [tenant["tenant_id"] for tenant in disabled.json()["tenants"]] == ["tenant-beta"]
+    assert expired.status_code == 200
+    assert [tenant["tenant_id"] for tenant in expired.json()["tenants"]] == ["tenant-gamma"]
+    assert created_range.status_code == 200
+    assert [tenant["tenant_id"] for tenant in created_range.json()["tenants"]] == ["tenant-beta"]
 
 
-@pytest.mark.parametrize(
-    ("update_payload", "expected_detail"),
-    [
-        ({"disabled": True}, "Cannot disable or archive the last tenant with a login-capable admin"),
-        ({"archived": True}, "Cannot disable or archive the last tenant with a login-capable admin"),
-    ],
-)
-def test_tenant_update_prevents_last_login_capable_admin_tenant_lockout(
-    monkeypatch,
-    tmp_path,
-    update_payload: dict[str, bool],
-    expected_detail: str,
-):
+def test_batch_disable_skips_disabled_and_expired_tenants(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store, role="admin", must_change_password=False, tenant_id="tenant-a")
+    _create_user(
+        store,
+        username="tenant-c-admin",
+        email="tenant-c-admin@example.com",
+        display_name="Tenant C Admin",
+        role="admin",
+        tenant_id="tenant-c",
+        must_change_password=False,
+    )
+    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
+    store.update_tenant("tenant-b", disabled=True)
+    _create_tenant(store, tenant_id="tenant-d", display_name="Tenant D")
+    store.update_tenant("tenant-d", expires_at=_now_ms() - 60_000)
+    _login(client)
+
+    response = client.post(
+        "/api/admin/tenants/batch-disable",
+        json={"tenant_ids": ["tenant-a", "tenant-b", "tenant-d"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "updated_count": 1,
+        "skipped_count": 2,
+        "skipped_tenant_ids": ["tenant-b", "tenant-d"],
+    }
+    assert store.get_tenant("tenant-a").disabled is True
+    assert store.get_tenant("tenant-b").disabled is True
+    assert store.get_tenant("tenant-d").disabled is False
+
+
+def test_tenant_update_prevents_last_login_capable_admin_tenant_lockout(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", must_change_password=False)
     _create_user(
@@ -380,24 +313,16 @@ def test_tenant_update_prevents_last_login_capable_admin_tenant_lockout(
     store.update_tenant("tenant-a", disabled=True)
     _login(client, identifier="tenant-b-admin")
 
-    remaining_login_capable_tenants = [
-        tenant.tenant_id
-        for tenant in store.list_tenants(include_archived=True)
-        if not tenant.disabled and not tenant.archived and store.active_admin_count(tenant.tenant_id) > 0
-    ]
-    assert remaining_login_capable_tenants == ["tenant-b"]
-
-    response = client.patch("/api/admin/tenants/tenant-b", json=update_payload)
+    response = client.patch("/api/admin/tenants/tenant-b", json={"disabled": True})
 
     assert response.status_code == 400
-    assert response.json()["detail"] == expected_detail
+    assert response.json()["detail"] == "Cannot disable or expire the last tenant with a login-capable admin"
     refreshed = store.get_tenant("tenant-b")
     assert refreshed is not None
     assert refreshed.disabled is False
-    assert refreshed.archived is False
 
 
-@pytest.mark.parametrize("field_name", ["display_name", "disabled", "archived"])
+@pytest.mark.parametrize("field_name", ["display_name", "disabled"])
 def test_tenant_update_rejects_explicit_null_fields(monkeypatch, tmp_path, field_name: str):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", must_change_password=False)
@@ -413,44 +338,23 @@ def test_tenant_update_rejects_explicit_null_fields(monkeypatch, tmp_path, field
     assert refreshed is not None
     assert refreshed.display_name == original.display_name
     assert refreshed.disabled is False
-    assert refreshed.archived is False
 
 
-@pytest.mark.parametrize("update_payload", [{"disabled": True}, {"display_name": "Tenant Bee"}])
-def test_archived_tenant_update_rejects_non_unarchive_writes(monkeypatch, tmp_path, update_payload: dict[str, object]):
+def test_tenant_update_allows_clearing_expires_at(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", must_change_password=False)
-    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
-    store.update_tenant("tenant-b", archived=True)
+    store.update_tenant("tenant-a", expires_at=_now_ms() + 86_400_000)
     _login(client)
 
-    response = client.patch("/api/admin/tenants/tenant-b", json=update_payload)
-
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Archived tenants are read-only"
-    refreshed = store.get_tenant("tenant-b")
-    assert refreshed is not None
-    assert refreshed.display_name == "Tenant B"
-    assert refreshed.disabled is False
-    assert refreshed.archived is True
-
-
-def test_archived_tenant_update_allows_explicit_unarchive(monkeypatch, tmp_path):
-    client, store = _auth_client(monkeypatch, tmp_path)
-    _create_user(store, role="admin", must_change_password=False)
-    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
-    store.update_tenant("tenant-b", archived=True)
-    _login(client)
-
-    response = client.patch("/api/admin/tenants/tenant-b", json={"archived": False})
+    response = client.patch("/api/admin/tenants/tenant-a", json={"expires_at": None})
 
     assert response.status_code == 200
     payload = response.json()["tenant"]
-    assert payload["tenant_id"] == "tenant-b"
-    assert payload["archived"] is False
-    refreshed = store.get_tenant("tenant-b")
+    assert payload["expires_at"] is None
+    assert payload["status"] == "active"
+    refreshed = store.get_tenant("tenant-a")
     assert refreshed is not None
-    assert refreshed.archived is False
+    assert refreshed.expires_at is None
 
 
 def test_tenant_scoped_user_list_returns_only_target_tenant_users(monkeypatch, tmp_path):
@@ -525,19 +429,19 @@ def test_tenant_scoped_user_create_writes_to_target_tenant(monkeypatch, tmp_path
     assert created.must_change_password is True
 
 
-def test_tenant_scoped_user_create_rejects_archived_tenant(monkeypatch, tmp_path):
+def test_tenant_scoped_user_create_rejects_disabled_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", must_change_password=False)
     _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
-    store.update_tenant("tenant-b", archived=True)
+    store.update_tenant("tenant-b", disabled=True)
     _login(client)
 
     response = client.post(
         "/api/admin/tenants/tenant-b/users",
         json={
-            "username": "archived-user",
-            "email": "archived-user@example.com",
-            "display_name": "Archived User",
+            "username": "disabled-user",
+            "email": "disabled-user@example.com",
+            "display_name": "Disabled User",
             "role": "viewer",
             "password": "AnotherStrong123!",
             "expires_at": "",
@@ -545,8 +449,8 @@ def test_tenant_scoped_user_create_rejects_archived_tenant(monkeypatch, tmp_path
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Archived tenants are read-only"
-    assert store.get_user_by_identifier("archived-user") is None
+    assert response.json()["detail"] == "Disabled tenants are read-only"
+    assert store.get_user_by_identifier("disabled-user") is None
 
 
 def test_tenant_scoped_user_delete_protects_last_active_admin(monkeypatch, tmp_path):
@@ -569,43 +473,10 @@ def test_tenant_scoped_user_delete_protects_last_active_admin(monkeypatch, tmp_p
     assert response.json()["detail"] == "Cannot remove the last active admin from tenant"
 
 
-def test_tenant_scoped_user_delete_allows_last_admin_cleanup_for_disabled_tenant(monkeypatch, tmp_path):
+def test_tenant_scoped_user_update_rejects_expired_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", must_change_password=False)
-    _create_user(
-        store,
-        username="tenant-c-admin",
-        email="tenant-c-admin@example.com",
-        display_name="Tenant C Admin",
-        role="admin",
-        tenant_id="tenant-c",
-        must_change_password=False,
-    )
-    sole_tenant_b_admin = _create_user(
-        store,
-        username="tenant-b-admin",
-        email="tenant-b-admin@example.com",
-        display_name="Tenant B Admin",
-        role="admin",
-        tenant_id="tenant-b",
-        must_change_password=False,
-    )
-    store.update_tenant("tenant-b", disabled=True)
-    _login(client)
-
-    response = client.delete(f"/api/admin/tenants/tenant-b/users/{sole_tenant_b_admin.id}")
-
-    assert response.status_code == 200
-    assert response.json()["user"]["disabled"] is True
-    refreshed = store.get_user(sole_tenant_b_admin.id)
-    assert refreshed is not None
-    assert refreshed.disabled is True
-
-
-def test_tenant_scoped_user_update_rejects_archived_tenant(monkeypatch, tmp_path):
-    client, store = _auth_client(monkeypatch, tmp_path)
-    _create_user(store, role="admin", must_change_password=False)
-    archived_user = _create_user(
+    expired_user = _create_user(
         store,
         username="tenant-b-viewer",
         email="tenant-b-viewer@example.com",
@@ -614,25 +485,25 @@ def test_tenant_scoped_user_update_rejects_archived_tenant(monkeypatch, tmp_path
         tenant_id="tenant-b",
         must_change_password=False,
     )
-    store.update_tenant("tenant-b", archived=True)
+    store.update_tenant("tenant-b", expires_at=_now_ms() - 60_000)
     _login(client)
 
     response = client.patch(
-        f"/api/admin/tenants/tenant-b/users/{archived_user.id}",
+        f"/api/admin/tenants/tenant-b/users/{expired_user.id}",
         json={"role": "analyst"},
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Archived tenants are read-only"
-    refreshed = store.get_user(archived_user.id)
+    assert response.json()["detail"] == "Expired tenants are read-only"
+    refreshed = store.get_user(expired_user.id)
     assert refreshed is not None
     assert refreshed.role == "viewer"
 
 
-def test_tenant_scoped_user_delete_rejects_archived_tenant(monkeypatch, tmp_path):
+def test_tenant_scoped_user_delete_rejects_expired_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store, role="admin", must_change_password=False)
-    archived_user = _create_user(
+    expired_user = _create_user(
         store,
         username="tenant-b-viewer",
         email="tenant-b-viewer@example.com",
@@ -641,14 +512,14 @@ def test_tenant_scoped_user_delete_rejects_archived_tenant(monkeypatch, tmp_path
         tenant_id="tenant-b",
         must_change_password=False,
     )
-    store.update_tenant("tenant-b", archived=True)
+    store.update_tenant("tenant-b", expires_at=_now_ms() - 60_000)
     _login(client)
 
-    response = client.delete(f"/api/admin/tenants/tenant-b/users/{archived_user.id}")
+    response = client.delete(f"/api/admin/tenants/tenant-b/users/{expired_user.id}")
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Archived tenants are read-only"
-    assert store.get_user(archived_user.id) is not None
+    assert response.json()["detail"] == "Expired tenants are read-only"
+    assert store.get_user(expired_user.id) is not None
 
 
 def test_tenant_scoped_user_update_and_delete_reject_out_of_tenant_user_ids(monkeypatch, tmp_path):

@@ -8,11 +8,9 @@ const { formatDateTime } = vi.hoisted(() => ({
   formatDateTime: vi.fn((value: unknown) => `LOCAL:${String(value)}`),
 }));
 
-const { apiGet, apiPost, apiPatch, apiDelete } = vi.hoisted(() => ({
+const { apiGet, apiPatch } = vi.hoisted(() => ({
   apiGet: vi.fn(),
-  apiPost: vi.fn(),
   apiPatch: vi.fn(),
-  apiDelete: vi.fn(),
 }));
 
 const route = reactive({
@@ -26,9 +24,7 @@ const adminUserDirectoryLoadUsers = vi.hoisted(() => vi.fn());
 
 vi.mock('../services/api', () => ({
   apiGet,
-  apiPost,
   apiPatch,
-  apiDelete,
 }));
 
 vi.mock('vue-router', () => ({
@@ -58,13 +54,13 @@ vi.mock('../components/AdminUserDirectory.vue', () => ({
 }));
 
 const ButtonStub = {
-  props: ['label', 'disabled', 'loading', 'type', 'icon', 'severity', 'outlined', 'text', 'dataTestid'],
+  props: ['label', 'disabled', 'loading', 'type'],
   emits: ['click'],
   template: `
     <button
+      v-bind="$attrs"
       :type="type || 'button'"
       :disabled="disabled"
-      :data-testid="dataTestid"
       @click="$emit('click', $event)"
     >
       {{ label }}<slot />
@@ -91,9 +87,7 @@ describe('TenantDetailPage', () => {
   beforeEach(() => {
     route.params.tenantId = 'tenant-a';
     apiGet.mockReset();
-    apiPost.mockReset();
     apiPatch.mockReset();
-    apiDelete.mockReset();
     adminUserDirectoryProps.mockReset();
     adminUserDirectoryLoadUsers.mockReset();
     formatDateTime.mockClear();
@@ -111,11 +105,12 @@ describe('TenantDetailPage', () => {
         tenant_id: 'tenant-a',
         display_name: 'Tenant A',
         disabled: false,
-        archived: false,
+        expires_at: 1_783_612_800_000,
+        status: 'active',
         user_count: 2,
         active_admin_count: 1,
-        created_at: '2026-07-04T08:00:00Z',
-        updated_at: '2026-07-04T09:00:00Z',
+        created_at: 1_783_353_600_000,
+        updated_at: 1_783_357_200_000,
       },
     });
 
@@ -125,18 +120,15 @@ describe('TenantDetailPage', () => {
 
     expect(apiGet).toHaveBeenCalledWith('/api/admin/tenants/tenant-a');
     expect(wrapper.text()).toContain('Tenant A');
+    expect(wrapper.text()).toContain('LOCAL:1783612800000');
     expect(wrapper.find('[data-testid="admin-user-directory-stub"]').exists()).toBe(true);
     expect(adminUserDirectoryProps).toHaveBeenCalledWith(
       expect.objectContaining({
         listPath: '/api/admin/tenants/tenant-a/users',
         createPath: '/api/admin/tenants/tenant-a/users',
-        updatePath: expect.any(Function),
-        deletePath: expect.any(Function),
         readOnly: false,
       }),
     );
-    expect(wrapper.text()).toContain('LOCAL:2026-07-04T08:00:00Z');
-    expect(wrapper.text()).toContain('LOCAL:2026-07-04T09:00:00Z');
   });
 
   it('reloads tenant metadata and tenant-scoped users when the tenantId route param changes', async () => {
@@ -147,24 +139,26 @@ describe('TenantDetailPage', () => {
           tenant_id: 'tenant-a',
           display_name: 'Tenant A',
           disabled: false,
-          archived: false,
+          expires_at: null,
+          status: 'active',
           user_count: 2,
           active_admin_count: 1,
-          created_at: '2026-07-04T08:00:00Z',
-          updated_at: '2026-07-04T09:00:00Z',
+          created_at: 1_783_353_600_000,
+          updated_at: 1_783_357_200_000,
         },
       })
-      .mockResolvedValue({
+      .mockResolvedValueOnce({
         tenant: {
           id: 'tenant-row-2',
           tenant_id: 'tenant-b',
           display_name: 'Tenant B',
           disabled: false,
-          archived: false,
+          expires_at: null,
+          status: 'active',
           user_count: 3,
           active_admin_count: 1,
-          created_at: '2026-07-04T10:00:00Z',
-          updated_at: '2026-07-04T11:00:00Z',
+          created_at: 1_783_353_600_000,
+          updated_at: 1_783_357_200_000,
         },
       });
 
@@ -186,60 +180,19 @@ describe('TenantDetailPage', () => {
     expect(wrapper.text()).toContain('Tenant B');
   });
 
-  it('refreshes both tenant metadata and the tenant-scoped user list from the page action', async () => {
-    apiGet
-      .mockResolvedValueOnce({
-        tenant: {
-          id: 'tenant-row-1',
-          tenant_id: 'tenant-a',
-          display_name: 'Tenant A',
-          disabled: false,
-          archived: false,
-          user_count: 2,
-          active_admin_count: 1,
-          created_at: '2026-07-04T08:00:00Z',
-          updated_at: '2026-07-04T09:00:00Z',
-        },
-      })
-      .mockResolvedValueOnce({
-        tenant: {
-          id: 'tenant-row-1',
-          tenant_id: 'tenant-a',
-          display_name: 'Tenant A Reloaded',
-          disabled: false,
-          archived: false,
-          user_count: 2,
-          active_admin_count: 1,
-          created_at: '2026-07-04T08:00:00Z',
-          updated_at: '2026-07-04T09:30:00Z',
-        },
-      });
-
-    const wrapper = mountPage();
-    mountedWrapper = wrapper;
-    await flushPromises();
-
-    await wrapper.find('button').trigger('click');
-    await flushPromises();
-
-    expect(apiGet).toHaveBeenNthCalledWith(1, '/api/admin/tenants/tenant-a');
-    expect(apiGet).toHaveBeenNthCalledWith(2, '/api/admin/tenants/tenant-a');
-    expect(adminUserDirectoryLoadUsers).toHaveBeenCalledTimes(1);
-    expect(wrapper.text()).toContain('Tenant A Reloaded');
-  });
-
-  it('patches tenant state toggles against the tenant detail endpoint', async () => {
+  it('patches the disable toggle against the tenant detail endpoint', async () => {
     apiGet.mockResolvedValue({
       tenant: {
         id: 'tenant-row-1',
         tenant_id: 'tenant-a',
         display_name: 'Tenant A',
         disabled: false,
-        archived: false,
+        expires_at: null,
+        status: 'active',
         user_count: 2,
         active_admin_count: 1,
-        created_at: '2026-07-04T08:00:00Z',
-        updated_at: '2026-07-04T09:00:00Z',
+        created_at: 1_783_353_600_000,
+        updated_at: 1_783_357_200_000,
       },
     });
     apiPatch.mockResolvedValue({
@@ -248,11 +201,12 @@ describe('TenantDetailPage', () => {
         tenant_id: 'tenant-a',
         display_name: 'Tenant A',
         disabled: true,
-        archived: false,
+        expires_at: null,
+        status: 'disabled',
         user_count: 2,
         active_admin_count: 1,
-        created_at: '2026-07-04T08:00:00Z',
-        updated_at: '2026-07-04T09:30:00Z',
+        created_at: 1_783_353_600_000,
+        updated_at: 1_783_357_200_000,
       },
     });
 
@@ -266,31 +220,19 @@ describe('TenantDetailPage', () => {
     expect(apiPatch).toHaveBeenCalledWith('/api/admin/tenants/tenant-a', { disabled: true });
   });
 
-  it('sends archived false when unarchiving from the tenant detail page', async () => {
+  it('makes the user directory read-only for expired tenants and removes archive controls', async () => {
     apiGet.mockResolvedValue({
       tenant: {
         id: 'tenant-row-1',
         tenant_id: 'tenant-a',
         display_name: 'Tenant A',
         disabled: false,
-        archived: true,
+        expires_at: 1,
+        status: 'expired',
         user_count: 2,
         active_admin_count: 1,
-        created_at: '2026-07-04T08:00:00Z',
-        updated_at: '2026-07-04T09:00:00Z',
-      },
-    });
-    apiPatch.mockResolvedValue({
-      tenant: {
-        id: 'tenant-row-1',
-        tenant_id: 'tenant-a',
-        display_name: 'Tenant A',
-        disabled: false,
-        archived: false,
-        user_count: 2,
-        active_admin_count: 1,
-        created_at: '2026-07-04T08:00:00Z',
-        updated_at: '2026-07-04T09:30:00Z',
+        created_at: 1_783_353_600_000,
+        updated_at: 1_783_357_200_000,
       },
     });
 
@@ -298,33 +240,7 @@ describe('TenantDetailPage', () => {
     mountedWrapper = wrapper;
     await flushPromises();
 
-    await wrapper.get('[data-testid="archive-tenant"]').trigger('click');
-    await flushPromises();
-
-    expect(apiPatch).toHaveBeenCalledWith('/api/admin/tenants/tenant-a', { archived: false });
-  });
-
-  it('does not offer the disable action while viewing an archived tenant', async () => {
-    apiGet.mockResolvedValue({
-      tenant: {
-        id: 'tenant-row-1',
-        tenant_id: 'tenant-a',
-        display_name: 'Tenant A',
-        disabled: false,
-        archived: true,
-        user_count: 2,
-        active_admin_count: 1,
-        created_at: '2026-07-04T08:00:00Z',
-        updated_at: '2026-07-04T09:00:00Z',
-      },
-    });
-
-    const wrapper = mountPage();
-    mountedWrapper = wrapper;
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="toggle-tenant-disabled"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="archive-tenant"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="archive-tenant"]').exists()).toBe(false);
     expect(adminUserDirectoryProps).toHaveBeenLastCalledWith(
       expect.objectContaining({
         readOnly: true,

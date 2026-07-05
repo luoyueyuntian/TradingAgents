@@ -166,8 +166,11 @@ describe('session store', () => {
     expect(session.state.error).toBe('');
   });
 
-  it('clears the auth session when /api/auth/me reports a disabled tenant', async () => {
-    apiGetMock.mockRejectedValue(Object.assign(new Error('Tenant is disabled'), { status: 403 }));
+  it.each([
+    'Tenant is disabled',
+    'Tenant has expired',
+  ])('clears the auth session when /api/auth/me reports an unavailable tenant: %s', async (detail) => {
+    apiGetMock.mockRejectedValue(Object.assign(new Error(detail), { status: 403 }));
     const { useSession } = await loadSessionModule();
 
     const session = useSession();
@@ -175,7 +178,7 @@ describe('session store', () => {
     session.state.sessionExpiresAt = 1_751_500_800_000;
     session.state.passwordReset = { available: true, reset_id: 'reset-1', detail: 'Reset is available' };
 
-    await expect(session.loadCurrentUser()).rejects.toThrow('Tenant is disabled');
+    await expect(session.loadCurrentUser()).rejects.toThrow(detail);
     expect(session.state.currentUser).toBeNull();
     expect(session.state.sessionExpiresAt).toBe(0);
     expect(session.state.passwordReset).toEqual({ available: false, reset_id: null, detail: null });

@@ -43,6 +43,10 @@
               <dd class="uno-mt-1">{{ formatDateTime(tenant.created_at) }}</dd>
             </div>
             <div>
+              <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('users.expiresAt') }}</dt>
+              <dd class="uno-mt-1">{{ formatDateTime(tenant.expires_at) }}</dd>
+            </div>
+            <div>
               <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('tenants.lastUpdated') }}</dt>
               <dd class="uno-mt-1">{{ formatDateTime(tenant.updated_at) }}</dd>
             </div>
@@ -50,22 +54,12 @@
 
           <div class="uno-grid uno-content-start uno-gap-2">
             <Button
-              v-if="!tenant.archived"
               data-testid="toggle-tenant-disabled"
               icon="pi pi-ban"
               :label="tenant.disabled ? t('tenants.enableTenant') : t('tenants.disableTenant')"
               severity="secondary"
               :loading="saving"
               @click="toggleTenantDisabled"
-            />
-            <Button
-              data-testid="archive-tenant"
-              :icon="tenant.archived ? 'pi pi-history' : 'pi pi-box'"
-              :label="tenant.archived ? t('tenants.unarchiveTenant') : t('tenants.archiveTenant')"
-              :severity="tenant.archived ? 'secondary' : 'danger'"
-              outlined
-              :loading="archiving"
-              @click="toggleTenantArchived"
             />
           </div>
         </div>
@@ -79,7 +73,7 @@
       :create-path="tenantUsersPath"
       :update-path="tenantUserPath"
       :delete-path="tenantUserPath"
-      :read-only="tenant.archived"
+      :read-only="tenant.status !== 'active'"
     />
   </section>
 </template>
@@ -97,12 +91,15 @@ import { useI18n } from '../i18n';
 import { apiGet, apiPatch } from '../services/api';
 import { formatDateTime } from '../utils/format';
 
+type TenantStatus = 'active' | 'disabled' | 'expired';
+
 type AdminTenantResponse = {
   id: string;
   tenant_id: string;
   display_name: string;
   disabled: boolean;
-  archived: boolean;
+  expires_at: number | null;
+  status: TenantStatus;
   user_count: number;
   active_admin_count: number;
   created_at: number;
@@ -114,7 +111,6 @@ const { t } = useI18n();
 const directory = ref<{ loadUsers: () => Promise<void> } | null>(null);
 const loading = ref(false);
 const saving = ref(false);
-const archiving = ref(false);
 const tenant = ref<AdminTenantResponse | null>(null);
 const pageError = ref('');
 const notice = ref('');
@@ -134,11 +130,11 @@ function tenantUserPath(userId: string) {
 }
 
 function tenantStatusLabel(currentTenant: AdminTenantResponse): string {
-  if (currentTenant.archived) {
-    return t('common.archived');
-  }
-  if (currentTenant.disabled) {
+  if (currentTenant.status === 'disabled') {
     return t('users.disabled');
+  }
+  if (currentTenant.status === 'expired') {
+    return t('tenants.expired');
   }
   return t('common.active');
 }
@@ -184,27 +180,6 @@ async function toggleTenantDisabled() {
     pageError.value = exc instanceof Error ? exc.message : t('tenants.updateError');
   } finally {
     saving.value = false;
-  }
-}
-
-async function toggleTenantArchived() {
-  if (!tenant.value) {
-    return;
-  }
-  archiving.value = true;
-  pageError.value = '';
-  notice.value = '';
-  try {
-    const archived = !tenant.value.archived;
-    const payload = await apiPatch<{ tenant: AdminTenantResponse }>(tenantDetailPath.value, { archived });
-    notice.value = archived
-      ? t('tenants.tenantArchived', { tenantId: payload.tenant.tenant_id })
-      : t('tenants.tenantUnarchived', { tenantId: payload.tenant.tenant_id });
-    tenant.value = payload.tenant;
-  } catch (exc) {
-    pageError.value = exc instanceof Error ? exc.message : t('tenants.updateError');
-  } finally {
-    archiving.value = false;
   }
 }
 

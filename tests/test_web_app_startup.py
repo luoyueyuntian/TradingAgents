@@ -91,12 +91,12 @@ def test_web_app_startup_restores_discovered_tenant_runs(monkeypatch, tmp_path):
     ]
 
 
-def test_web_app_startup_skips_archived_and_disabled_tenant_worker_resume(monkeypatch):
+def test_web_app_startup_skips_expired_and_disabled_tenant_worker_resume(monkeypatch):
     import web.app as web_app
 
     class _Tenant:
-        def __init__(self, *, archived: bool = False, disabled: bool = False) -> None:
-            self.archived = archived
+        def __init__(self, *, expires_at: int | None = None, disabled: bool = False) -> None:
+            self.expires_at = expires_at
             self.disabled = disabled
 
     class _Store:
@@ -106,7 +106,7 @@ def test_web_app_startup_skips_archived_and_disabled_tenant_worker_resume(monkey
         def get_tenant(self, tenant_id: str):
             return {
                 "active": _Tenant(),
-                "archived": _Tenant(archived=True),
+                "expired": _Tenant(expires_at=1),
                 "disabled": _Tenant(disabled=True),
             }.get(tenant_id)
 
@@ -117,7 +117,7 @@ def test_web_app_startup_skips_archived_and_disabled_tenant_worker_resume(monkey
     monkeypatch.setattr(
         web_app,
         "list_web_tenant_ids",
-        lambda: ["active", "archived", "disabled"],
+        lambda: ["active", "expired", "disabled"],
         raising=False,
     )
     monkeypatch.setattr(web_app, "get_execution_mode", lambda: "local_thread")
@@ -142,6 +142,6 @@ def test_web_app_startup_skips_archived_and_disabled_tenant_worker_resume(monkey
         ("load", "active"),
         ("worker", "active"),
         ("resume", "active"),
-        ("load", "archived"),
+        ("load", "expired"),
         ("load", "disabled"),
     ]

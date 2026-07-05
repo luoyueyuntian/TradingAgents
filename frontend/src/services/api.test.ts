@@ -60,7 +60,7 @@ describe('api service', () => {
 
   it.each([
     'Tenant is disabled',
-    'Tenant is archived',
+    'Tenant has expired',
   ])('runs auth invalidation handlers for own-session tenant-state 403 responses: %s', async (detail) => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ detail }), {
@@ -85,7 +85,7 @@ describe('api service', () => {
 
   it.each([
     'Tenant is disabled',
-    'Tenant is archived',
+    'Tenant has expired',
   ])('does not run auth invalidation handlers for cross-tenant admin tenant-state 403 responses: %s', async (detail) => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ detail }), {

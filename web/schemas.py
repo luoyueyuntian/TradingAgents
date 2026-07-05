@@ -487,25 +487,24 @@ class TenantAdminCreate(BaseModel):
 
 
 class AdminTenantCreate(BaseModel):
-    tenant_id: str = Field(..., min_length=1)
     display_name: str = Field(..., min_length=1)
-    admin: TenantAdminCreate
-
-    @field_validator("tenant_id", mode="before")
-    @classmethod
-    def _normalize_tenant_id(cls, value: str) -> str:
-        return _normalize_required_text(value, "tenant_id")
+    expires_at: OptionalTimestampMs = None
 
     @field_validator("display_name", mode="before")
     @classmethod
     def _normalize_display_name(cls, value: str) -> str:
         return _normalize_display_name(value)
 
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def _normalize_expires_at(cls, value: str | None) -> str | None:
+        return _normalize_blank_optional_string(value)
+
 
 class AdminTenantUpdate(BaseModel):
     display_name: str | None = None
     disabled: bool | None = None
-    archived: bool | None = None
+    expires_at: OptionalTimestampMs = None
 
     @field_validator("display_name", mode="before")
     @classmethod
@@ -513,8 +512,13 @@ class AdminTenantUpdate(BaseModel):
         normalized = _normalize_blank_optional_string(value)
         return _normalize_display_name(normalized) if normalized is not None else None
 
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def _normalize_expires_at(cls, value: str | None) -> str | None:
+        return _normalize_blank_optional_string(value)
+
     def require_non_null_fields(self) -> None:
-        _require_non_null_patch_fields(self, ("display_name", "disabled", "archived"))
+        _require_non_null_patch_fields(self, ("display_name", "disabled"))
 
 
 class AdminTenantResponse(BaseModel):
@@ -522,11 +526,27 @@ class AdminTenantResponse(BaseModel):
     tenant_id: str
     display_name: str
     disabled: bool
-    archived: bool
+    expires_at: OptionalTimestampMs = None
+    status: str
     user_count: int
     active_admin_count: int
     created_at: TimestampMs
     updated_at: TimestampMs
+
+
+class AdminTenantBatchDisableRequest(BaseModel):
+    tenant_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("tenant_ids", mode="before")
+    @classmethod
+    def _normalize_tenant_ids(cls, value) -> list[str]:
+        return _normalize_string_id_list(value)
+
+
+class AdminTenantBatchDisableResponse(BaseModel):
+    updated_count: int = 0
+    skipped_count: int = 0
+    skipped_tenant_ids: list[str] = Field(default_factory=list)
 
 
 class RunBulkAction(BaseModel):

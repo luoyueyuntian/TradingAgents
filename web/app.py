@@ -40,7 +40,7 @@ from .runner import (
     load_runs_index,
     resume_incomplete_runs,
 )
-from .user_store import UserStore, bootstrap_admin_from_env
+from .user_store import UserStore, bootstrap_admin_from_env, tenant_is_expired
 
 
 def _get_cors_origins() -> list[str]:
@@ -63,7 +63,7 @@ def _should_resume_startup_work(store: UserStore, tenant_id: str | None) -> bool
     tenant = store.get_tenant(tenant_id)
     if tenant is None:
         return True
-    return not tenant.archived and not tenant.disabled
+    return not tenant.disabled and not tenant_is_expired(tenant)
 
 
 app = FastAPI(

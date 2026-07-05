@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import sqlite3
 import uuid
@@ -21,10 +22,12 @@ from web.passwords import hash_password, hash_secret, validate_password_policy
 VALID_ROLES = {"admin", "analyst", "viewer"}
 PASSWORD_RESET_MAX_ATTEMPTS = 5
 LAST_LOGIN_CAPABLE_ADMIN_TENANT_ERROR = (
-    "Cannot disable or archive the last tenant with a login-capable admin"
+    "Cannot disable or expire the last tenant with a login-capable admin"
 )
 LAST_ACTIVE_ADMIN_ERROR = "Cannot remove the last active admin from tenant"
 ARCHIVED_TENANT_READ_ONLY_ERROR = "Archived tenants are read-only"
+DISABLED_TENANT_READ_ONLY_ERROR = "Disabled tenants are read-only"
+EXPIRED_TENANT_READ_ONLY_ERROR = "Expired tenants are read-only"
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,7 @@ class TenantRecord:
     display_name: str
     disabled: bool
     archived: bool
+    expires_at: int | None
     created_at: int
     updated_at: int
 
@@ -112,6 +116,16 @@ def _validate_optional_expires_at(expires_at: int | str | None) -> int | None:
     return normalized
 
 
+def tenant_is_expired_value(expires_at: object) -> bool:
+    if expires_at is None:
+        return False
+    return _is_expired(expires_at)
+
+
+def tenant_is_expired(tenant: TenantRecord) -> bool:
+    return tenant_is_expired_value(tenant.expires_at)
+
+
 def _timestamp_column_type_map(conn: sqlite3.Connection, table_name: str) -> dict[str, str]:
     rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
     return {str(row["name"]): str(row["type"]).upper() for row in rows}
@@ -140,7 +154,7 @@ def _migrate_table_with_integer_timestamps(
     for row in rows:
         values = []
         for column_name in column_names:
-            value = row[column_name]
+            value = row[column_name] if column_name in row.keys() else None
             if column_name in timestamp_columns:
                 value = coerce_timestamp_ms(value)
             values.append(value)
@@ -220,6 +234,7 @@ def _tenant_from_row(row: sqlite3.Row) -> TenantRecord:
         display_name=row["display_name"],
         disabled=bool(row["disabled"]),
         archived=bool(row["archived"]),
+        expires_at=coerce_timestamp_ms(row["expires_at"]) if "expires_at" in row.keys() else None,
         created_at=coerce_timestamp_ms(row["created_at"]) or 0,
         updated_at=coerce_timestamp_ms(row["updated_at"]) or 0,
     )
@@ -291,6 +306,7 @@ class UserStore:
                 display_name TEXT NOT NULL,
                 disabled INTEGER NOT NULL DEFAULT 0,
                 archived INTEGER NOT NULL DEFAULT 0,
+                expires_at INTEGER,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             )
@@ -357,6 +373,14 @@ class UserStore:
         self._migrate_auth_timestamp_columns(conn)
         conn.execute(
             """
+            UPDATE tenants
+            SET disabled = 1,
+                archived = 0
+            WHERE archived != 0
+            """
+        )
+        conn.execute(
+            """
             CREATE UNIQUE INDEX IF NOT EXISTS users_username_ci_unique
             ON users(lower(username))
             """
@@ -380,6 +404,7 @@ class UserStore:
                 display_name TEXT NOT NULL,
                 disabled INTEGER NOT NULL DEFAULT 0,
                 archived INTEGER NOT NULL DEFAULT 0,
+                expires_at INTEGER,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             )
@@ -390,10 +415,11 @@ class UserStore:
                 "display_name",
                 "disabled",
                 "archived",
+                "expires_at",
                 "created_at",
                 "updated_at",
             ],
-            timestamp_columns={"created_at", "updated_at"},
+            timestamp_columns={"expires_at", "created_at", "updated_at"},
         )
 
     def _migrate_users_table(self, conn: sqlite3.Connection) -> None:
@@ -568,38 +594,60 @@ class UserStore:
             row = conn.execute("SELECT COUNT(*) AS count FROM users").fetchone()
         return int(row["count"])
 
-    def create_tenant(self, tenant_id: str, *, display_name: str) -> TenantRecord:
+    def create_tenant(
+        self,
+        tenant_id: str,
+        *,
+        display_name: str,
+        expires_at: int | str | None = None,
+    ) -> TenantRecord:
         self.ensure_schema()
         normalized_tenant_id = _normalize_required_tenant_id(tenant_id)
         normalized_display_name = _require_text(display_name, "display_name")
+        normalized_expires_at = _validate_optional_expires_at(expires_at)
         now = _utc_now()
-        tenant_row_id = uuid.uuid4().hex
         with self._connect() as conn:
             try:
-                conn.execute(
-                    """
-                    INSERT INTO tenants (
-                        id,
-                        tenant_id,
-                        display_name,
-                        disabled,
-                        archived,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES (?, ?, ?, 0, 0, ?, ?)
-                    """,
-                    (
-                        tenant_row_id,
-                        normalized_tenant_id,
-                        normalized_display_name,
-                        now,
-                        now,
-                    ),
+                self._insert_tenant_row(
+                    conn,
+                    tenant_id=normalized_tenant_id,
+                    display_name=normalized_display_name,
+                    expires_at=normalized_expires_at,
+                    now=now,
+                    tenant_row_id=uuid.uuid4().hex,
                 )
             except sqlite3.IntegrityError as exc:
                 raise ValueError("tenant_id already exists") from exc
             return self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
+
+    def create_tenant_with_generated_id(
+        self,
+        *,
+        display_name: str,
+        expires_at: int | str | None = None,
+    ) -> TenantRecord:
+        self.ensure_schema()
+        normalized_display_name = _require_text(display_name, "display_name")
+        normalized_expires_at = _validate_optional_expires_at(expires_at)
+        base = self._slugify_tenant_id(normalized_display_name)
+        suffix = 1
+        now = _utc_now()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            while True:
+                tenant_id = self._build_tenant_id_candidate(base, suffix)
+                try:
+                    self._insert_tenant_row(
+                        conn,
+                        tenant_id=tenant_id,
+                        display_name=normalized_display_name,
+                        expires_at=normalized_expires_at,
+                        now=now,
+                        tenant_row_id=uuid.uuid4().hex,
+                    )
+                    return self._get_tenant_by_tenant_id(conn, tenant_id)
+                except sqlite3.IntegrityError:
+                    suffix += 1
 
     def create_tenant_with_initial_admin(
         self,
@@ -643,10 +691,11 @@ class UserStore:
                         display_name,
                         disabled,
                         archived,
+                        expires_at,
                         created_at,
                         updated_at
                     )
-                    VALUES (?, ?, ?, 0, 0, ?, ?)
+                    VALUES (?, ?, ?, 0, 0, NULL, ?, ?)
                     """,
                     (
                         tenant_row_id,
@@ -741,7 +790,7 @@ class UserStore:
         current: TenantRecord,
         fields: dict[str, Any],
     ) -> dict[str, Any]:
-        allowed_fields = {"display_name", "disabled", "archived"}
+        allowed_fields = {"display_name", "disabled", "expires_at"}
         unknown_fields = sorted(set(fields) - allowed_fields)
         if unknown_fields:
             raise ValueError(f"unsupported tenant field: {unknown_fields[0]}")
@@ -750,17 +799,17 @@ class UserStore:
         for field_name, value in fields.items():
             if field_name == "display_name":
                 updates[field_name] = _require_text(value, field_name)
-            elif field_name in {"disabled", "archived"}:
+            elif field_name == "disabled":
                 updates[field_name] = _validate_bool_flag(value, field_name)
-
-        if current.archived:
-            if updates != {"archived": 0}:
-                raise ValueError(ARCHIVED_TENANT_READ_ONLY_ERROR)
-            return updates
+            elif field_name == "expires_at":
+                updates[field_name] = _validate_optional_expires_at(value)
 
         will_disable_login_capable_tenant = (
             (updates.get("disabled") == 1 and not current.disabled)
-            or (updates.get("archived") == 1 and not current.archived)
+            or (
+                tenant_is_expired_value(updates.get("expires_at"))
+                and not tenant_is_expired(current)
+            )
         )
         if (
             will_disable_login_capable_tenant
@@ -783,18 +832,7 @@ class UserStore:
     def list_tenants(self, *, include_archived: bool = False) -> list[TenantRecord]:
         self.ensure_schema()
         with self._connect() as conn:
-            if include_archived:
-                rows = conn.execute(
-                    "SELECT * FROM tenants ORDER BY tenant_id"
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM tenants
-                    WHERE archived = 0
-                    ORDER BY tenant_id
-                    """
-                ).fetchall()
+            rows = conn.execute("SELECT * FROM tenants ORDER BY tenant_id").fetchall()
         return [_tenant_from_row(row) for row in rows]
 
     def get_tenant_stats(self, tenant_id: str) -> dict[str, int]:
@@ -1070,7 +1108,7 @@ class UserStore:
             return False
         current_tenant_id = current["tenant_id"]
         tenant = self._get_tenant_by_tenant_id(conn, current_tenant_id)
-        if tenant.disabled or tenant.archived:
+        if tenant.disabled or tenant_is_expired(tenant):
             return False
         if self._active_admin_count_in_connection(conn, current_tenant_id) != 1:
             return False
@@ -1106,10 +1144,11 @@ class UserStore:
                 display_name,
                 disabled,
                 archived,
+                expires_at,
                 created_at,
                 updated_at
             )
-            VALUES (?, ?, ?, 0, 0, ?, ?)
+            VALUES (?, ?, ?, 0, 0, NULL, ?, ?)
             ON CONFLICT(tenant_id) DO NOTHING
             """,
             (
@@ -1118,6 +1157,53 @@ class UserStore:
                 tenant_id,
                 resolved_now,
                 resolved_now,
+            ),
+        )
+
+    def _slugify_tenant_id(self, display_name: str) -> str:
+        base = re.sub(r"[^a-z0-9]+", "-", display_name.strip().lower()).strip("-")
+        if not base:
+            base = "tenant"
+        return base[:64].strip("-") or "tenant"
+
+    def _build_tenant_id_candidate(self, base: str, suffix: int) -> str:
+        if suffix <= 1:
+            return normalize_web_tenant_id(base)
+        suffix_text = f"-{suffix}"
+        max_base_length = max(1, 64 - len(suffix_text))
+        return normalize_web_tenant_id(f"{base[:max_base_length].rstrip('-')}{suffix_text}")
+
+    def _insert_tenant_row(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        tenant_id: str,
+        display_name: str,
+        expires_at: int | None,
+        now: int,
+        tenant_row_id: str,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO tenants (
+                id,
+                tenant_id,
+                display_name,
+                disabled,
+                archived,
+                expires_at,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, 0, 0, ?, ?, ?)
+            """,
+            (
+                tenant_row_id,
+                tenant_id,
+                display_name,
+                expires_at,
+                now,
+                now,
             ),
         )
 
@@ -1179,17 +1265,17 @@ class UserStore:
         conn: sqlite3.Connection,
         tenant: TenantRecord,
     ) -> bool:
-        if tenant.disabled or tenant.archived:
+        if tenant.disabled or tenant_is_expired(tenant):
             return False
         if self._active_admin_count_in_connection(conn, tenant.tenant_id) == 0:
             return False
 
         tenant_rows = conn.execute(
-            "SELECT tenant_id, disabled, archived FROM tenants WHERE tenant_id != ? ORDER BY tenant_id",
+            "SELECT tenant_id, disabled, archived, expires_at FROM tenants WHERE tenant_id != ? ORDER BY tenant_id",
             (tenant.tenant_id,),
         ).fetchall()
         for row in tenant_rows:
-            if bool(row["disabled"]) or bool(row["archived"]):
+            if bool(row["disabled"]) or tenant_is_expired_value(row["expires_at"]):
                 continue
             if self._active_admin_count_in_connection(conn, row["tenant_id"]) > 0:
                 return False
@@ -1541,8 +1627,8 @@ def bootstrap_admin_from_env(store: UserStore) -> BootstrapResult:
         store.create_tenant(tenant_id, display_name=tenant_id.strip())
     elif tenant.disabled:
         return BootstrapResult(created=False, reason="tenant_disabled")
-    elif tenant.archived:
-        return BootstrapResult(created=False, reason="tenant_archived")
+    elif tenant_is_expired(tenant):
+        return BootstrapResult(created=False, reason="tenant_expired")
     password_record = hash_password(password)
     user = store.create_user(
         username=username,
