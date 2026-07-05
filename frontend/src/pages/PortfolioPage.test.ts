@@ -3,18 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import PortfolioPage from './PortfolioPage.vue';
 
-const { apiGet, apiPost, apiPatch, apiDelete } = vi.hoisted(() => ({
+const { apiGet } = vi.hoisted(() => ({
   apiGet: vi.fn(),
-  apiPost: vi.fn(),
-  apiPatch: vi.fn(),
-  apiDelete: vi.fn(),
 }));
 
 vi.mock('../services/api', () => ({
   apiGet,
-  apiPost,
-  apiPatch,
-  apiDelete,
 }));
 
 vi.mock('../stores/session', () => ({
@@ -73,8 +67,6 @@ const SelectStub = {
   `,
 };
 
-let stockGroups: Array<{ id: string; name: string; tickers: string[] }> = [];
-
 function mountPage() {
   return mount(PortfolioPage, {
     global: {
@@ -87,6 +79,8 @@ function mountPage() {
         Message: { template: '<div><slot /></div>' },
         MetricGrid: { props: ['items'], template: '<div data-testid="metric-grid-stub">{{ items.length }}</div>' },
         PageHeader: { template: '<div><slot name="actions" /></div>' },
+        PortfolioSubnav: { template: '<nav />' },
+        RouterLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
         Select: SelectStub,
         Tag: { props: ['value'], template: '<span>{{ value }}</span>' },
       },
@@ -97,14 +91,6 @@ function mountPage() {
 describe('PortfolioPage', () => {
   beforeEach(() => {
     apiGet.mockReset();
-    apiPost.mockReset();
-    apiPatch.mockReset();
-    apiDelete.mockReset();
-
-    stockGroups = [
-      { id: 'group-1', name: 'AI Leaders', tickers: ['NVDA', 'MSFT'] },
-      { id: 'group-2', name: 'China Internet', tickers: ['BABA', '0700.HK'] },
-    ];
 
     apiGet.mockImplementation((path: string) => {
       if (path === '/api/watchlist') {
@@ -120,88 +106,27 @@ describe('PortfolioPage', () => {
         return Promise.resolve({ rows: [{ ticker: 'TSLA', latest_status: 'ready', latest_signal: 'hold', run_count: 2 }] });
       }
       if (path === '/api/stock-groups') {
-        return Promise.resolve(stockGroups.map((group) => ({
-          ...group,
-          tickers: [...group.tickers],
-        })));
+        return Promise.resolve([
+          { id: 'group-1', name: 'AI Leaders', tickers: ['NVDA', 'MSFT'] },
+          { id: 'group-2', name: 'China Internet', tickers: ['BABA', '0700.HK'] },
+        ]);
       }
       return Promise.resolve([]);
     });
-
-    apiPost.mockImplementation(async (path: string, body: Record<string, unknown>) => {
-      if (path === '/api/stock-groups') {
-        const group = {
-          id: 'group-3',
-          name: String(body.name),
-          tickers: body.tickers as string[],
-        };
-        stockGroups = [...stockGroups, group];
-        return Promise.resolve(group);
-      }
-      return Promise.resolve({});
-    });
-
-    apiPatch.mockImplementation(async (path: string, body: Record<string, unknown>) => {
-      const groupId = path.split('/').pop();
-      stockGroups = stockGroups.map((group) => (
-        group.id === groupId
-          ? { ...group, name: String(body.name), tickers: body.tickers as string[] }
-          : group
-      ));
-      const group = stockGroups.find((item) => item.id === groupId);
-      return Promise.resolve(group ?? {});
-    });
-
-    apiDelete.mockImplementation(async (path: string) => {
-      const groupId = path.split('/').pop();
-      stockGroups = stockGroups.filter((group) => group.id !== groupId);
-      return Promise.resolve({});
-    });
   });
 
-  it('loads stock groups and supports create, edit, and delete from the portfolio page', async () => {
+  it('loads the portfolio home summary and links to the dedicated asset pages', async () => {
     const wrapper = mountPage();
     await flushPromises();
 
+    expect(apiGet).toHaveBeenCalledWith('/api/watchlist', { tenantId: 'tenant-a', apiToken: 'token-a' });
+    expect(apiGet).toHaveBeenCalledWith('/api/portfolio', { tenantId: 'tenant-a', apiToken: 'token-a' });
+    expect(apiGet).toHaveBeenCalledWith('/api/alerts', { tenantId: 'tenant-a', apiToken: 'token-a' });
     expect(apiGet).toHaveBeenCalledWith('/api/stock-groups', { tenantId: 'tenant-a', apiToken: 'token-a' });
-    expect(wrapper.text()).toContain('Stock Groups');
-    expect(wrapper.text()).toContain('AI Leaders');
-    expect(wrapper.text()).toContain('NVDA, MSFT');
-    expect(wrapper.text()).toContain('China Internet');
-    expect(wrapper.find('[data-testid="stock-group-delete-group-1"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="stock-group-delete-group-2"]').exists()).toBe(true);
-
-    await wrapper.get('[data-testid="stock-group-name"]').setValue('Semis');
-    await wrapper.get('[data-testid="stock-group-tickers"]').setValue('amd, avgo');
-    await wrapper.get('[data-testid="stock-group-save"]').trigger('click');
-    await flushPromises();
-
-    expect(apiPost).toHaveBeenCalledWith(
-      '/api/stock-groups',
-      { name: 'Semis', tickers: ['AMD', 'AVGO'] },
-      { tenantId: 'tenant-a', apiToken: 'token-a' },
-    );
-    expect(wrapper.text()).toContain('Semis');
-    expect(wrapper.text()).toContain('AMD, AVGO');
-
-    await wrapper.get('[data-testid="stock-group-edit-group-1"]').trigger('click');
-    await wrapper.get('[data-testid="stock-group-name"]').setValue('AI Leaders Core');
-    await wrapper.get('[data-testid="stock-group-tickers"]').setValue('nvda, msft, avgo');
-    await wrapper.get('[data-testid="stock-group-save"]').trigger('click');
-    await flushPromises();
-
-    expect(apiPatch).toHaveBeenCalledWith(
-      '/api/stock-groups/group-1',
-      { name: 'AI Leaders Core', tickers: ['NVDA', 'MSFT', 'AVGO'] },
-      { tenantId: 'tenant-a', apiToken: 'token-a' },
-    );
-    expect(wrapper.text()).toContain('AI Leaders Core');
-    expect(wrapper.text()).toContain('NVDA, MSFT, AVGO');
-
-    await wrapper.get('[data-testid="stock-group-delete-group-2"]').trigger('click');
-    await flushPromises();
-
-    expect(apiDelete).toHaveBeenCalledWith('/api/stock-groups/group-2', { tenantId: 'tenant-a', apiToken: 'token-a' });
-    expect(wrapper.text()).not.toContain('China Internet');
+    expect(wrapper.find('[data-to="/portfolio/watchlist"]').exists()).toBe(true);
+    expect(wrapper.find('[data-to="/portfolio/positions"]').exists()).toBe(true);
+    expect(wrapper.find('[data-to="/portfolio/stock-groups"]').exists()).toBe(true);
+    expect(wrapper.find('[data-to="/portfolio/alerts"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid^="stock-group-delete-"]').exists()).toBe(false);
   });
 });
