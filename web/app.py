@@ -142,12 +142,11 @@ async def _resolve_request_auth(request, call_next):
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
         request.state.auth_mode = "token"
         request.state.effective_tenant_id = get_request_tenant_id(request)
-        if request.state.effective_tenant_id is not None:
+        if request.state.effective_tenant_id is not None and _is_write_method(method):
             try:
                 _ensure_tenant_allows_access(
                     UserStore(get_web_auth_db_path()),
                     request.state.effective_tenant_id,
-                    allow_missing=True,
                 )
             except HTTPException as exc:
                 return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
@@ -164,7 +163,6 @@ async def _resolve_request_auth(request, call_next):
                 _ensure_tenant_allows_access(
                     UserStore(get_web_auth_db_path()),
                     request.state.effective_tenant_id,
-                    allow_missing=True,
                 )
             except HTTPException as exc:
                 return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)

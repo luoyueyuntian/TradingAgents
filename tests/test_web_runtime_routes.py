@@ -6,6 +6,16 @@ from fastapi.testclient import TestClient
 
 from web.app import app
 from web import routes as web_routes
+from web.user_store import UserStore
+
+
+def _ensure_tenant_registry(monkeypatch, tmp_path, tenant_id: str) -> UserStore:
+    db_path = tmp_path / "auth.db"
+    monkeypatch.setenv("TRADINGAGENTS_WEB_AUTH_DB", str(db_path))
+    store = UserStore(db_path)
+    if store.get_tenant(tenant_id) is None:
+        store.create_tenant(tenant_id, display_name=tenant_id)
+    return store
 
 
 def test_list_tenants_endpoint_marks_active_tenant(monkeypatch):
@@ -109,8 +119,9 @@ def test_migrate_all_settings_timestamps_endpoint_returns_updated_count(monkeypa
     assert response.json() == {"updated": 2}
 
 
-def test_migrate_tenant_settings_timestamps_endpoint_targets_current_tenant(monkeypatch):
+def test_migrate_tenant_settings_timestamps_endpoint_targets_current_tenant(monkeypatch, tmp_path):
     client = TestClient(app)
+    _ensure_tenant_registry(monkeypatch, tmp_path, "tenant-a")
 
     seen: dict[str, object] = {}
     monkeypatch.setattr(web_routes, "get_auth_scope", lambda tenant_id=None: "tenant")

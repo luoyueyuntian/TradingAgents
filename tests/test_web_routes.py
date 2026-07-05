@@ -14,6 +14,7 @@ from web import automation as web_automation, one_time_tasks as web_one_time_tas
 from web import stock_groups as stock_groups_module
 from web.app import app
 from web.runner import RunState
+from web.user_store import UserStore
 
 
 def _make_run(run_id: str = "run-1") -> RunState:
@@ -27,6 +28,15 @@ def _make_run(run_id: str = "run-1") -> RunState:
         selected_analysts=["market"],
         runtime_context=runtime_context,
     )
+
+
+def _ensure_tenant_registry(monkeypatch, tmp_path, tenant_id: str) -> UserStore:
+    db_path = tmp_path / "auth.db"
+    monkeypatch.setenv("TRADINGAGENTS_WEB_AUTH_DB", str(db_path))
+    store = UserStore(db_path)
+    if store.get_tenant(tenant_id) is None:
+        store.create_tenant(tenant_id, display_name=tenant_id)
+    return store
 
 
 def test_put_settings_exports_to_current_process(monkeypatch):
@@ -81,6 +91,8 @@ def test_put_settings_exports_to_current_process(monkeypatch):
 
 def test_settings_are_scoped_by_request_tenant(monkeypatch, tmp_path):
     client = TestClient(app)
+    _ensure_tenant_registry(monkeypatch, tmp_path, "tenant-a")
+    _ensure_tenant_registry(monkeypatch, tmp_path, "tenant-b")
     monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / f"{tenant_id or 'default'}.json")
 
     tenant_a = client.put(
@@ -130,6 +142,7 @@ def test_settings_response_includes_empty_mimo_api_key(monkeypatch, tmp_path):
 
 def test_settings_security_token_is_masked(monkeypatch, tmp_path):
     client = TestClient(app)
+    _ensure_tenant_registry(monkeypatch, tmp_path, "tenant-a")
     monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant-a.json")
 
     response = client.put(
@@ -144,6 +157,7 @@ def test_settings_security_token_is_masked(monkeypatch, tmp_path):
 
 def test_settings_webhook_token_is_masked(monkeypatch, tmp_path):
     client = TestClient(app)
+    _ensure_tenant_registry(monkeypatch, tmp_path, "tenant-a")
     monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant-a.json")
 
     response = client.put(
@@ -3118,6 +3132,7 @@ def test_share_briefing_link_targets_briefing_view():
 
 def test_public_run_share_create_returns_public_url_and_persists_snapshot(monkeypatch, tmp_path):
     client = TestClient(app)
+    _ensure_tenant_registry(monkeypatch, tmp_path, "tenant-a")
     state = {}
     run = _make_run("share-run")
     run.ticker = "NVDA"
@@ -3157,6 +3172,7 @@ def test_public_run_share_create_returns_public_url_and_persists_snapshot(monkey
 
 def test_public_run_share_create_reuses_existing_share_for_same_run(monkeypatch, tmp_path):
     client = TestClient(app)
+    _ensure_tenant_registry(monkeypatch, tmp_path, "tenant-a")
     state = {
         "public_run_shares": {
             "items": [
@@ -3219,6 +3235,7 @@ def test_public_run_share_create_reuses_existing_share_for_same_run(monkeypatch,
 
 def test_public_run_share_delete_removes_snapshot(monkeypatch, tmp_path):
     client = TestClient(app)
+    _ensure_tenant_registry(monkeypatch, tmp_path, "tenant-a")
     state = {
         "public_run_shares": {
             "items": [
@@ -3545,6 +3562,7 @@ def test_public_run_shares_export_csv_respects_filters(monkeypatch, tmp_path):
 
 def test_public_run_share_update_can_set_and_clear_expiry(monkeypatch, tmp_path):
     client = TestClient(app)
+    _ensure_tenant_registry(monkeypatch, tmp_path, "tenant-a")
     state = {
         "public_run_shares": {
             "items": [
@@ -3596,6 +3614,7 @@ def test_public_run_share_update_can_set_and_clear_expiry(monkeypatch, tmp_path)
 
 def test_public_run_share_update_can_set_title_and_summary(monkeypatch, tmp_path):
     client = TestClient(app)
+    _ensure_tenant_registry(monkeypatch, tmp_path, "tenant-a")
     state = {
         "public_run_shares": {
             "items": [

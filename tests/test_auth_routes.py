@@ -925,6 +925,7 @@ def test_admin_can_update_role_and_expiry_within_tenant(monkeypatch, tmp_path):
         json={
             "role": " ANALYST ",
             "display_name": "  Target Person  ",
+            "email": "  target-updated@example.com  ",
             "expires_at": "2030-01-02T03:04:05+00:00",
         },
     )
@@ -937,6 +938,7 @@ def test_admin_can_update_role_and_expiry_within_tenant(monkeypatch, tmp_path):
     payload = response.json()["user"]
     assert payload["role"] == "analyst"
     assert payload["display_name"] == "Target Person"
+    assert payload["email"] == "target-updated@example.com"
     assert payload["expires_at"] == 1_893_553_445_000
     assert missing.status_code == 404
 
