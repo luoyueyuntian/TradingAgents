@@ -14,31 +14,38 @@
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <MetricGrid :items="metrics" />
 
-    <div class="uno-grid uno-gap-3">
-      <div
-        v-for="group in groups"
-        :key="group.id"
-        class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white uno-p-4"
-      >
-        <div class="uno-flex uno-items-center uno-justify-between">
-          <div>
-            <div class="uno-font-800 uno-text-[#14363a]">{{ group.name }}</div>
-            <div class="uno-text-sm uno-text-[#5f7376]">{{ asArray(group.tickers).join(', ') }}</div>
-          </div>
+    <DataTable :value="groups" size="small" class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white">
+      <Column field="name" :header="t('portfolio.stockGroupName')" />
+      <Column :header="t('portfolio.stockGroupTickers')">
+        <template #body="{ data }">
+          {{ asArray(data.tickers).join(', ') }}
+        </template>
+      </Column>
+      <Column field="created_at" :header="t('common.created')">
+        <template #body="{ data }">
+          {{ formatDateTime(data.created_at) }}
+        </template>
+      </Column>
+      <Column field="updated_at" :header="t('common.updated')">
+        <template #body="{ data }">
+          {{ formatDateTime(data.updated_at) }}
+        </template>
+      </Column>
+      <Column v-if="canWrite" :header="t('common.actions')">
+        <template #body="{ data }">
           <div class="uno-flex uno-gap-2">
-            <Button v-if="canWrite" icon="pi pi-pencil" text severity="secondary" @click="openEdit(group)" />
+            <Button icon="pi pi-pencil" text severity="secondary" @click="openEdit(data)" />
             <Button
-              v-if="canWrite"
-              :data-testid="`stock-group-delete-${group.id}`"
+              :data-testid="`stock-group-delete-${data.id}`"
               icon="pi pi-trash"
               text
               severity="danger"
-              @click="removeGroup(String(group.id))"
+              @click="removeGroup(String(data.id))"
             />
           </div>
-        </div>
-      </div>
-    </div>
+        </template>
+      </Column>
+    </DataTable>
 
     <StockGroupDialog v-model:visible="dialogOpen" :mode="dialogMode" :group="activeGroup" @saved="loadRows" />
   </section>
@@ -46,6 +53,8 @@
 
 <script setup lang="ts">
 import Button from 'primevue/button';
+import Column from 'primevue/column';
+import DataTable from 'primevue/datatable';
 import Message from 'primevue/message';
 import { computed, onMounted, ref } from 'vue';
 
@@ -56,7 +65,7 @@ import StockGroupDialog from '../components/portfolio/StockGroupDialog.vue';
 import { useI18n } from '../i18n';
 import { apiDelete, apiGet } from '../services/api';
 import { useSession } from '../stores/session';
-import { asArray, type JsonRecord } from '../utils/format';
+import { asArray, formatDateTime, type JsonRecord } from '../utils/format';
 
 const session = useSession();
 const canWrite = computed(() => session.canWrite.value);

@@ -14,32 +14,46 @@
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <MetricGrid :items="metrics" />
 
-    <div class="uno-grid uno-gap-3">
-      <div
-        v-for="item in positions"
-        :key="item.id"
-        class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white uno-p-4"
-      >
-        <div class="uno-flex uno-items-center uno-justify-between">
-          <div>
-            <div class="uno-font-800 uno-text-[#14363a]">{{ item.ticker }}</div>
-            <div class="uno-text-sm uno-text-[#5f7376]">{{ item.quantity }} @ {{ item.average_cost }}</div>
-          </div>
+    <DataTable :value="positions" size="small" class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white">
+      <Column field="ticker" :header="t('common.ticker')" />
+      <Column field="quantity" :header="t('portfolio.quantity')" />
+      <Column field="average_cost" :header="t('portfolio.averageCost')" />
+      <Column field="cost_basis" :header="t('portfolio.costBasis')" />
+      <Column :header="t('common.signal')">
+        <template #body="{ data }">
+          <Tag :value="data.latest_signal || t('common.na')" :severity="signalSeverity(data.latest_signal)" />
+        </template>
+      </Column>
+      <Column :header="t('common.status')">
+        <template #body="{ data }">
+          <Tag :value="data.latest_status || t('common.na')" :severity="signalSeverity(data.latest_status)" />
+        </template>
+      </Column>
+      <Column field="latest_date" :header="t('common.date')">
+        <template #body="{ data }">
+          {{ data.latest_date || t('portfolio.noSavedRun') }}
+        </template>
+      </Column>
+      <Column :header="t('common.created')">
+        <template #body="{ data }">
+          {{ formatDateTime(data.created_at) }}
+        </template>
+      </Column>
+      <Column v-if="canWrite" :header="t('common.actions')">
+        <template #body="{ data }">
           <div class="uno-flex uno-items-center uno-gap-2">
-            <Tag :value="item.latest_signal || t('common.na')" />
-            <Button v-if="canWrite" icon="pi pi-pencil" text severity="secondary" @click="openEdit(item)" />
+            <Button icon="pi pi-pencil" text severity="secondary" @click="openEdit(data)" />
             <Button
-              v-if="canWrite"
-              :data-testid="`position-delete-${item.id}`"
+              :data-testid="`position-delete-${data.id}`"
               icon="pi pi-trash"
               text
               severity="danger"
-              @click="removePosition(String(item.id))"
+              @click="removePosition(String(data.id))"
             />
           </div>
-        </div>
-      </div>
-    </div>
+        </template>
+      </Column>
+    </DataTable>
 
     <PositionDialog v-model:visible="dialogOpen" :mode="dialogMode" :position="activePosition" @saved="loadRows" />
   </section>
@@ -47,6 +61,8 @@
 
 <script setup lang="ts">
 import Button from 'primevue/button';
+import Column from 'primevue/column';
+import DataTable from 'primevue/datatable';
 import Message from 'primevue/message';
 import Tag from 'primevue/tag';
 import { computed, onMounted, ref } from 'vue';
@@ -58,7 +74,7 @@ import PositionDialog from '../components/portfolio/PositionDialog.vue';
 import { useI18n } from '../i18n';
 import { apiDelete, apiGet } from '../services/api';
 import { useSession } from '../stores/session';
-import { asArray, type JsonRecord } from '../utils/format';
+import { asArray, formatDateTime, signalSeverity, type JsonRecord } from '../utils/format';
 
 const session = useSession();
 const canWrite = computed(() => session.canWrite.value);
