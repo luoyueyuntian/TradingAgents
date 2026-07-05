@@ -4,6 +4,10 @@ import { reactive } from 'vue';
 
 import TenantDetailPage from './TenantDetailPage.vue';
 
+const { formatDateTime } = vi.hoisted(() => ({
+  formatDateTime: vi.fn((value: unknown) => `LOCAL:${String(value)}`),
+}));
+
 const { apiGet, apiPost, apiPatch, apiDelete } = vi.hoisted(() => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
@@ -30,6 +34,14 @@ vi.mock('../services/api', () => ({
 vi.mock('vue-router', () => ({
   useRoute: () => route,
 }));
+
+vi.mock('../utils/format', async () => {
+  const actual = await vi.importActual<typeof import('../utils/format')>('../utils/format');
+  return {
+    ...actual,
+    formatDateTime,
+  };
+});
 
 vi.mock('../components/AdminUserDirectory.vue', () => ({
   default: {
@@ -84,6 +96,7 @@ describe('TenantDetailPage', () => {
     apiDelete.mockReset();
     adminUserDirectoryProps.mockReset();
     adminUserDirectoryLoadUsers.mockReset();
+    formatDateTime.mockClear();
   });
 
   afterEach(() => {
@@ -122,6 +135,8 @@ describe('TenantDetailPage', () => {
         readOnly: false,
       }),
     );
+    expect(wrapper.text()).toContain('LOCAL:2026-07-04T08:00:00Z');
+    expect(wrapper.text()).toContain('LOCAL:2026-07-04T09:00:00Z');
   });
 
   it('reloads tenant metadata and tenant-scoped users when the tenantId route param changes', async () => {

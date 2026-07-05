@@ -10,7 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from tradingagents.service.web_state import get_web_auth_db_path, list_web_tenant_ids
+from tradingagents.service.web_state import (
+    get_web_auth_db_path,
+    list_web_tenant_ids,
+    migrate_all_web_settings_timestamps_to_ms,
+)
 
 from .admin_tenant_routes import router as admin_tenant_router
 from .admin_user_routes import router as admin_user_router
@@ -170,6 +174,7 @@ async def _load_persisted_runs() -> None:
     """Restore persisted run history when the app boots."""
     store = UserStore(get_web_auth_db_path())
     bootstrap_admin_from_env(store)
+    migrate_all_web_settings_timestamps_to_ms()
     tenant_ids: list[str | None] = [None, *list_web_tenant_ids()]
     local_thread_mode = get_execution_mode() == "local_thread"
     for tenant_id in tenant_ids:

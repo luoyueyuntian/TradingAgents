@@ -8,6 +8,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from tradingagents.service.timestamps import coerce_timestamp_ms, current_timestamp_ms
+
 
 def _connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -20,7 +22,7 @@ def _connect(db_path: Path) -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS runs (
             run_id TEXT PRIMARY KEY,
             payload TEXT NOT NULL,
-            created_at TEXT,
+            created_at INTEGER,
             queue_sequence INTEGER
         )
         """
@@ -30,7 +32,7 @@ def _connect(db_path: Path) -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
             event TEXT NOT NULL,
             data TEXT NOT NULL
         )
@@ -41,7 +43,7 @@ def _connect(db_path: Path) -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS worker_status (
             slot INTEGER PRIMARY KEY CHECK (slot = 1),
             worker_mode TEXT,
-            last_seen TEXT
+            last_seen INTEGER
         )
         """
     )
@@ -49,11 +51,102 @@ def _connect(db_path: Path) -> sqlite3.Connection:
         """
         CREATE TABLE IF NOT EXISTS claims (
             run_id TEXT PRIMARY KEY,
-            claimed_at TEXT NOT NULL
+            claimed_at INTEGER NOT NULL
         )
         """
     )
+    _migrate_timestamp_columns(conn)
     return conn
+
+
+def _migrate_timestamp_columns(conn: sqlite3.Connection) -> None:
+    _migrate_table(
+        conn,
+        table_name="runs",
+        create_sql="""
+        CREATE TABLE runs (
+            run_id TEXT PRIMARY KEY,
+            payload TEXT NOT NULL,
+            created_at INTEGER,
+            queue_sequence INTEGER
+        )
+        """,
+        column_names=["run_id", "payload", "created_at", "queue_sequence"],
+        timestamp_columns={"created_at"},
+    )
+    _migrate_table(
+        conn,
+        table_name="events",
+        create_sql="""
+        CREATE TABLE events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            event TEXT NOT NULL,
+            data TEXT NOT NULL
+        )
+        """,
+        column_names=["id", "run_id", "timestamp", "event", "data"],
+        timestamp_columns={"timestamp"},
+    )
+    _migrate_table(
+        conn,
+        table_name="worker_status",
+        create_sql="""
+        CREATE TABLE worker_status (
+            slot INTEGER PRIMARY KEY CHECK (slot = 1),
+            worker_mode TEXT,
+            last_seen INTEGER
+        )
+        """,
+        column_names=["slot", "worker_mode", "last_seen"],
+        timestamp_columns={"last_seen"},
+    )
+    _migrate_table(
+        conn,
+        table_name="claims",
+        create_sql="""
+        CREATE TABLE claims (
+            run_id TEXT PRIMARY KEY,
+            claimed_at INTEGER NOT NULL
+        )
+        """,
+        column_names=["run_id", "claimed_at"],
+        timestamp_columns={"claimed_at"},
+    )
+
+
+def _migrate_table(
+    conn: sqlite3.Connection,
+    *,
+    table_name: str,
+    create_sql: str,
+    column_names: list[str],
+    timestamp_columns: set[str],
+) -> None:
+    info = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    column_types = {str(row[1]): str(row[2]).upper() for row in info}
+    if column_types and all(column_types.get(column_name) == "INTEGER" for column_name in timestamp_columns):
+        return
+
+    legacy_name = f"{table_name}__legacy_timestamps"
+    conn.execute(f"DROP TABLE IF EXISTS {legacy_name}")
+    rows = conn.execute(f"SELECT * FROM {table_name}").fetchall()
+    conn.execute(f"ALTER TABLE {table_name} RENAME TO {legacy_name}")
+    conn.execute(create_sql)
+
+    placeholders = ", ".join("?" for _ in column_names)
+    insert_sql = f"INSERT INTO {table_name} ({', '.join(column_names)}) VALUES ({placeholders})"
+    for row in rows:
+        values = []
+        for index, column_name in enumerate(column_names):
+            value = row[index]
+            if column_name in timestamp_columns:
+                value = coerce_timestamp_ms(value)
+            values.append(value)
+        conn.execute(insert_sql, tuple(values))
+
+    conn.execute(f"DROP TABLE {legacy_name}")
 
 
 def upsert_run(db_path: Path, payload: dict[str, Any]) -> None:
@@ -100,7 +193,7 @@ def append_event(
     event: dict[str, Any],
 ) -> dict[str, Any]:
     record = {
-        "timestamp": datetime.datetime.now().isoformat(),
+        "timestamp": current_timestamp_ms(datetime.datetime.now()),
         "event": event.get("event", "message"),
         "data": event.get("data", {}),
     }
@@ -134,7 +227,7 @@ def load_events(db_path: Path, run_id: str) -> list[dict[str, Any]]:
 
 
 def write_worker_heartbeat(db_path: Path, worker_mode: str) -> None:
-    now = datetime.datetime.now().isoformat()
+    now = current_timestamp_ms(datetime.datetime.now())
     with _connect(db_path) as conn:
         conn.execute(
             """
@@ -159,7 +252,7 @@ def read_worker_heartbeat(db_path: Path) -> dict[str, object]:
 
 
 def acquire_claim(db_path: Path, run_id: str) -> bool:
-    now = datetime.datetime.now().isoformat()
+    now = current_timestamp_ms(datetime.datetime.now())
     try:
         with _connect(db_path) as conn:
             conn.execute(

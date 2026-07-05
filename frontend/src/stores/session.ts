@@ -27,13 +27,13 @@ type AuthUser = {
   display_name: string;
   role: AuthUserRole;
   tenant_id: string;
-  expires_at: string | null;
+  expires_at: number | null;
   must_change_password: boolean;
 };
 
 type AuthSessionResponse = {
   user: AuthUser;
-  session_expires_at: string;
+  session_expires_at: number;
   password_reset: PasswordResetAvailability;
 };
 
@@ -46,7 +46,7 @@ type SessionState = {
   apiToken: string;
   currentMemberId: string;
   currentUser: AuthUser | null;
-  sessionExpiresAt: string;
+  sessionExpiresAt: number;
   passwordReset: PasswordResetAvailability;
   loading: boolean;
   error: string;
@@ -83,7 +83,7 @@ const state = reactive<SessionState>({
   apiToken: readStorage(API_TOKEN_STORAGE_KEY),
   currentMemberId: readStorage(CURRENT_MEMBER_STORAGE_KEY),
   currentUser: null,
-  sessionExpiresAt: '',
+  sessionExpiresAt: 0,
   passwordReset: defaultPasswordReset(),
   loading: false,
   error: '',
@@ -124,7 +124,7 @@ function applyAuthSession(payload: AuthSessionResponse) {
 
 function clearAuthSession() {
   state.currentUser = null;
-  state.sessionExpiresAt = '';
+  state.sessionExpiresAt = 0;
   state.passwordReset = defaultPasswordReset();
   state.error = '';
   clearCurrentMemberId();

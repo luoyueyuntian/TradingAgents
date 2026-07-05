@@ -14,6 +14,7 @@ export type StockCatalogOption = {
 export type AnalysisStockForm = {
   stock_market: string;
   ticker: string;
+  company_name: string;
   date: string;
   analysts: string[];
   llm_provider: string;
@@ -104,6 +105,7 @@ export function buildAnalysisRequestPayload(form: AnalysisStockForm) {
 
   return {
     ticker: form.ticker.trim().toUpperCase(),
+    company_name: form.company_name.trim() || null,
     date: form.date,
     analysts: form.analysts,
     llm_provider: form.llm_provider,

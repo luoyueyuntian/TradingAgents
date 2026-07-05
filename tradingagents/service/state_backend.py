@@ -27,6 +27,7 @@ from tradingagents.service.sqlite_state import (
     upsert_run as sqlite_upsert_run,
     write_worker_heartbeat as sqlite_write_worker_heartbeat,
 )
+from tradingagents.service.timestamps import coerce_timestamp_ms, current_timestamp_ms
 from tradingagents.service.web_state import (
     get_web_sqlite_path,
     get_web_state_backend,
@@ -132,7 +133,7 @@ class StateBackendAdapter:
 
     def save_runs(self, runs: list, *, index_path: Path | None = None) -> None:
         if self.kind == "sqlite":
-            for run in sorted(runs, key=lambda item: item.created_at or "", reverse=True):
+            for run in sorted(runs, key=lambda item: item.created_at or 0, reverse=True):
                 sqlite_upsert_run(self.location, serialize_run_state(run))
             return
 
@@ -148,7 +149,7 @@ class StateBackendAdapter:
                 by_id[run.run_id] = serialize_run_state(run)
             merged = sorted(
                 by_id.values(),
-                key=lambda item: item.get("created_at", ""),
+                key=lambda item: coerce_timestamp_ms(item.get("created_at")) or 0,
                 reverse=True,
             )
             _write_payload_atomic(target, merged)
@@ -159,7 +160,7 @@ class StateBackendAdapter:
 
         log_path = event_log_path or default_event_log_path(run_id, base_dir=self._events_dir(base_dir))
         record = {
-            "timestamp": datetime.datetime.now().isoformat(),
+            "timestamp": current_timestamp_ms(datetime.datetime.now()),
             "event": event.get("event", "message"),
             "data": event.get("data", {}),
         }
@@ -203,7 +204,7 @@ class StateBackendAdapter:
             json.dumps(
                 {
                     "worker_mode": worker_mode,
-                    "last_seen": datetime.datetime.now().isoformat(),
+                    "last_seen": current_timestamp_ms(datetime.datetime.now()),
                 },
                 ensure_ascii=False,
             ),
@@ -274,12 +275,14 @@ def _normalize_worker_status_payload(payload: dict[str, object], *, stale_after_
     worker_mode = payload.get("worker_mode")
     if not last_seen_raw:
         return {"worker_running": False, "worker_mode": worker_mode, "last_seen": None}
-    last_seen = datetime.datetime.fromisoformat(str(last_seen_raw))
-    age = (datetime.datetime.now() - last_seen).total_seconds()
+    last_seen = coerce_timestamp_ms(last_seen_raw)
+    if last_seen is None:
+        return {"worker_running": False, "worker_mode": worker_mode, "last_seen": None}
+    age = (current_timestamp_ms(datetime.datetime.now()) - last_seen) / 1000
     return {
         "worker_running": age <= stale_after_seconds,
         "worker_mode": worker_mode,
-        "last_seen": last_seen_raw,
+        "last_seen": last_seen,
     }
 
 

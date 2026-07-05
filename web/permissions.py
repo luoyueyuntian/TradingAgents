@@ -10,6 +10,7 @@ ROLE_ORDER = {
 
 _ADMIN_PREFIXES = (
     "/api/settings",
+    "/api/system/settings",
     "/api/system/tenants",
     "/api/system/checkpoints",
     "/api/system/memory",

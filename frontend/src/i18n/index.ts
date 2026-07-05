@@ -7,6 +7,7 @@ export type { Locale, MessageKey };
 type MessageParams = Record<string, string | number>;
 
 const STORAGE_KEY = 'tradingagents.locale';
+const DEFAULT_STORAGE_KEY = 'tradingagents.defaultLocale';
 
 export const locales: Array<{ label: string; value: Locale }> = [
   { label: 'English', value: 'en' },
@@ -17,16 +18,16 @@ function isLocale(value: string | null): value is Locale {
   return value === 'en' || value === 'zh-CN';
 }
 
-function readInitialLocale(): Locale {
+function readStoredLocale(key: string): Locale | null {
   if (typeof window === 'undefined') {
-    return 'en';
+    return null;
   }
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (isLocale(stored)) {
-    return stored;
-  }
-  const browserLanguage = window.navigator.language.toLowerCase();
-  return browserLanguage.startsWith('zh') ? 'zh-CN' : 'en';
+  const stored = window.localStorage.getItem(key);
+  return isLocale(stored) ? stored : null;
+}
+
+function readInitialLocale(): Locale {
+  return readStoredLocale(STORAGE_KEY) || readStoredLocale(DEFAULT_STORAGE_KEY) || 'zh-CN';
 }
 
 const currentLocale = ref<Locale>(readInitialLocale());
@@ -35,6 +36,15 @@ export function setLocale(locale: Locale) {
   currentLocale.value = locale;
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(STORAGE_KEY, locale);
+  }
+}
+
+export function setDefaultLocale(locale: Locale) {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(DEFAULT_STORAGE_KEY, locale);
+  }
+  if (!readStoredLocale(STORAGE_KEY)) {
+    currentLocale.value = locale;
   }
 }
 

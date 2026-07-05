@@ -141,6 +141,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 
 import { useI18n } from '../i18n';
 import { apiDelete, apiGet, apiPatch, apiPost } from '../services/api';
+import { formatDateTimeInputValue } from '../utils/format';
 
 type AdminUserRole = 'viewer' | 'analyst' | 'admin';
 
@@ -151,7 +152,7 @@ type AdminUserResponse = {
   display_name: string;
   role: AdminUserRole;
   tenant_id: string;
-  expires_at: string | null;
+  expires_at: number | null;
   must_change_password: boolean;
   disabled: boolean;
 };
@@ -199,25 +200,17 @@ const roleOptions = computed(() => [
 
 const readOnly = computed(() => props.readOnly ?? false);
 
-function toLocalDateTime(value: string | null): string {
-  if (!value) {
-    return '';
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-  const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60_000));
-  return localDate.toISOString().slice(0, 16);
+function toLocalDateTime(value: number | null): string {
+  return formatDateTimeInputValue(value);
 }
 
-function toApiDateTime(value: string): string | null {
+function toApiDateTime(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) {
     return null;
   }
   const date = new Date(trimmed);
-  return Number.isNaN(date.getTime()) ? trimmed : date.toISOString();
+  return Number.isNaN(date.getTime()) ? null : date.getTime();
 }
 
 function decorateUser(user: AdminUserResponse): ManagedUser {

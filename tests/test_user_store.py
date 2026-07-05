@@ -194,6 +194,8 @@ def test_ensure_schema_creates_tenants_table(tmp_path):
     assert tenant_info["display_name"][3] == 1
     assert tenant_info["disabled"][4] == "0"
     assert tenant_info["archived"][4] == "0"
+    assert tenant_info["created_at"][2] == "INTEGER"
+    assert tenant_info["updated_at"][2] == "INTEGER"
 
 
 def test_ensure_schema_backfills_tenants_from_existing_user_rows(tmp_path):
@@ -259,6 +261,29 @@ def test_ensure_schema_backfills_tenants_from_existing_user_rows(tmp_path):
         ("tenant-a", "tenant-a", 0, 0),
         ("tenant-b", "tenant-b", 0, 0),
     ]
+
+
+def test_create_tenant_and_user_store_millisecond_timestamps(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+
+    tenant = store.create_tenant("tenant-a", display_name="Tenant A")
+    user = store.create_user(
+        username="alice",
+        email="alice@example.com",
+        display_name="Alice",
+        role="analyst",
+        tenant_id="tenant-a",
+        password_hash="hash-1",
+        password_salt="salt-1",
+        must_change_password=False,
+    )
+
+    assert isinstance(tenant.created_at, int)
+    assert isinstance(tenant.updated_at, int)
+    assert tenant.created_at > 1_700_000_000_000
+    assert isinstance(user.created_at, int)
+    assert isinstance(user.updated_at, int)
+    assert user.created_at > 1_700_000_000_000
 
 
 def test_create_user_persists_record_and_looks_up_identifier_case_insensitively(tmp_path):

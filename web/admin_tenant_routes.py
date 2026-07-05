@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, status
 
+from tradingagents.service.timestamps import current_timestamp_ms
 from tradingagents.service.web_state import get_web_auth_db_path
 
 from .admin_user_routes import (
@@ -122,7 +123,7 @@ def create_tenant(payload: AdminTenantCreate, request: Request) -> dict[str, Adm
             admin_display_name=payload.admin.display_name,
             password_hash=password_record.encoded_hash,
             password_salt=password_record.salt,
-            password_updated_at=datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            password_updated_at=current_timestamp_ms(datetime.now(timezone.utc)),
             must_change_password=True,
         )
     except ValueError as exc:
