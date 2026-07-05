@@ -35,7 +35,7 @@ def test_create_and_list_automation_rules_compute_next_run(monkeypatch):
     listed = web_automation.list_automation_rules(now=datetime.datetime(2026, 1, 15, 8, 0, 0))
 
     assert created.name == "Morning Sweep"
-    assert listed[0].next_run_at == "2026-01-15T09:15:00"
+    assert listed[0].next_run_at == int(datetime.datetime(2026, 1, 15, 9, 15, 0).timestamp() * 1000)
     assert state["automations"]["items"][0]["name"] == "Morning Sweep"
 
 
@@ -93,7 +93,7 @@ def test_process_due_automation_rules_queues_watchlist_once_per_slot(monkeypatch
     assert second == 0
     assert [req.ticker for req in created] == ["NVDA", "MSFT"]
     assert state["automations"]["items"][0]["last_queued_count"] == 2
-    assert state["automations"]["items"][0]["last_triggered_at"] == "2026-01-15T09:30:00"
+    assert state["automations"]["items"][0]["last_triggered_at"] == int(datetime.datetime(2026, 1, 15, 9, 30, 0).timestamp() * 1000)
 
 
 def test_run_automation_rule_now_returns_created_runs_for_manual_tickers(monkeypatch):
