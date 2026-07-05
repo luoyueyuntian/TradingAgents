@@ -1009,6 +1009,31 @@ def test_active_admin_count_is_scoped_and_excludes_disabled_or_expired_users(tmp
     assert store.get_user(tenant_admin.id) is not None
 
 
+def test_deleted_admin_no_longer_counts_toward_last_admin_guard(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    first_admin = _create_user(
+        store,
+        username="first-admin",
+        email="first-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+    second_admin = _create_user(
+        store,
+        username="second-admin",
+        email="second-admin@example.com",
+        role="admin",
+        tenant_id="tenant-a",
+    )
+
+    deleted = store.delete_user(first_admin.id)
+
+    assert deleted.deleted_at is not None
+    assert store.active_admin_count("tenant-a") == 1
+    with pytest.raises(ValueError, match="Cannot remove the last active admin from tenant"):
+        store.delete_user(second_admin.id)
+
+
 @pytest.mark.parametrize(
     ("updates", "expected_message"),
     [

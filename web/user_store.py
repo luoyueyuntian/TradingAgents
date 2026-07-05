@@ -1423,6 +1423,7 @@ class UserStore:
                 SELECT * FROM users
                 WHERE role = 'admin'
                   AND disabled = 0
+                  AND deleted_at IS NULL
                 """
             ).fetchall()
         else:
@@ -1431,6 +1432,7 @@ class UserStore:
                 SELECT * FROM users
                 WHERE role = 'admin'
                   AND disabled = 0
+                  AND deleted_at IS NULL
                   AND tenant_id = ?
                 """,
                 (tenant_id,),

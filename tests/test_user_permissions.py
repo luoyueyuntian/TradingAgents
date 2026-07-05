@@ -291,6 +291,29 @@ def test_token_authenticated_write_request_rejects_disabled_tenant(monkeypatch, 
     assert response.json()["detail"] == "Tenant is disabled"
 
 
+def test_token_authenticated_write_request_rejects_missing_tenant(monkeypatch, tmp_path):
+    client, _store = _auth_client(monkeypatch, tmp_path)
+    monkeypatch.setenv("TRADINGAGENTS_WEB_API_TOKEN", "secret-token")
+
+    class _Run:
+        run_id = "run-1"
+        status = "queued"
+        ticker = "NVDA"
+        company_name = None
+        date = "2026-07-02"
+
+    monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
+
+    response = client.post(
+        "/api/runs?tenant_id=tenant-missing",
+        headers={"Authorization": "Bearer secret-token"},
+        json=_analysis_payload(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant not found"
+
+
 def test_token_authenticated_write_request_rejects_expired_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     store.create_tenant("tenant-expired", display_name="Tenant Expired")
@@ -340,6 +363,27 @@ def test_legacy_write_request_rejects_disabled_tenant(monkeypatch, tmp_path):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Tenant is disabled"
+
+
+def test_legacy_write_request_rejects_missing_tenant(monkeypatch, tmp_path):
+    client, _store = _auth_client(monkeypatch, tmp_path)
+
+    class _Run:
+        run_id = "run-1"
+        status = "queued"
+        ticker = "NVDA"
+        company_name = None
+        date = "2026-07-02"
+
+    monkeypatch.setattr(web_routes, "create_run", lambda req, loop, tenant_id=None: _Run())
+
+    response = client.post(
+        "/api/runs?tenant_id=tenant-missing",
+        json=_analysis_payload(),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Tenant not found"
 
 
 def test_legacy_write_request_rejects_expired_tenant(monkeypatch, tmp_path):

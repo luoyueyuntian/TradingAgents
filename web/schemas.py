@@ -456,6 +456,7 @@ class AdminManagedUserCreate(BaseModel):
 
 class AdminUserUpdate(BaseModel):
     display_name: str | None = None
+    email: str | None = None
     role: str | None = None
     expires_at: OptionalTimestampMs = None
     disabled: bool | None = None
@@ -466,6 +467,12 @@ class AdminUserUpdate(BaseModel):
     def _normalize_display_name(cls, value: str | None) -> str | None:
         normalized = _normalize_blank_optional_string(value)
         return _normalize_display_name(normalized) if normalized is not None else None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _normalize_email(cls, value: str | None) -> str | None:
+        normalized = _normalize_blank_optional_string(value)
+        return _normalize_email(normalized) if normalized is not None else None
 
     @field_validator("role", mode="before")
     @classmethod
@@ -479,7 +486,7 @@ class AdminUserUpdate(BaseModel):
         return _normalize_blank_optional_string(value)
 
     def require_non_null_fields(self) -> None:
-        _require_non_null_patch_fields(self, ("display_name", "role", "disabled"))
+        _require_non_null_patch_fields(self, ("display_name", "email", "role", "disabled"))
 
 
 class AdminUserResponse(BaseModel):
