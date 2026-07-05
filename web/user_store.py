@@ -96,8 +96,11 @@ def _format_timestamp(value: datetime) -> int:
     return current_timestamp_ms(value)
 
 
-def _is_expired(expires_at: int) -> bool:
-    return expires_at <= _utc_now()
+def _is_expired(expires_at: object) -> bool:
+    normalized = coerce_timestamp_ms(expires_at)
+    if normalized is None:
+        return True
+    return normalized <= _utc_now()
 
 
 def _validate_optional_expires_at(expires_at: int | str | None) -> int | None:
@@ -678,7 +681,7 @@ class UserStore:
                         tenant_id,
                         password_hash,
                         password_salt,
-                        normalized_password_updated_at,
+                        password_updated_at,
                         must_change_password,
                         expires_at,
                         disabled,
@@ -697,7 +700,7 @@ class UserStore:
                         normalized_tenant_id,
                         normalized_password_hash,
                         normalized_password_salt,
-                        password_updated_at,
+                        normalized_password_updated_at,
                         int(must_change_password),
                         normalized_expires_at,
                         int(disabled),
@@ -862,7 +865,7 @@ class UserStore:
                         tenant_id,
                         password_hash,
                         password_salt,
-                        normalized_password_updated_at,
+                        password_updated_at,
                         must_change_password,
                         expires_at,
                         disabled,
@@ -881,7 +884,7 @@ class UserStore:
                         normalized_tenant_id,
                         normalized_password_hash,
                         normalized_password_salt,
-                        password_updated_at,
+                        normalized_password_updated_at,
                         int(must_change_password),
                         normalized_expires_at,
                         int(disabled),
@@ -1334,7 +1337,7 @@ class UserStore:
                 "SELECT * FROM sessions WHERE id_hash = ?",
                 (id_hash,),
             ).fetchone()
-            if row is None or (coerce_timestamp_ms(row["expires_at"]) or 0) <= _format_timestamp(now):
+            if row is None or _is_expired(row["expires_at"]):
                 return None
             user = conn.execute(
                 "SELECT * FROM users WHERE id = ?",
