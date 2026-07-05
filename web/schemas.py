@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Annotated, Any
 
@@ -45,6 +46,60 @@ def _normalize_role(value: str) -> str:
     if normalized not in {"admin", "analyst", "viewer"}:
         raise ValueError("role must be one of admin, analyst, or viewer")
     return normalized
+
+
+def _normalize_market(value: str) -> str:
+    normalized = _normalize_required_text(value, "market").lower()
+    if normalized not in {"cn_a", "hk", "us"}:
+        raise ValueError("market must be one of cn_a, hk, us")
+    return normalized
+
+
+def _normalize_ticker_list(value) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("tickers must be a list")
+    tickers: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        normalized = item.strip().upper()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        tickers.append(normalized)
+    return tickers
+
+
+def _normalize_string_id_list(value) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("run_ids must be a list")
+    ids: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        normalized = item.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        ids.append(normalized)
+    return ids
+
+
+def _validate_exact_datetime_format(value: str, field_name: str, pattern: str, fmt: str, display_fmt: str) -> str:
+    trimmed = _normalize_required_text(value, field_name)
+    if not re.fullmatch(pattern, trimmed):
+        raise ValueError(f"{field_name} must be in {display_fmt} format")
+    try:
+        datetime.strptime(trimmed, fmt)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be in {display_fmt} format") from exc
+    return trimmed
 
 
 def _normalize_blank_optional_string(value: str | None) -> str | None:
@@ -581,6 +636,249 @@ class AutomationAnalysisConfig(BaseModel):
             bad = ", ".join(invalid)
             raise ValueError(f"analysts must be chosen from: {allowed}. Invalid: {bad}")
         return normalized
+
+
+class StockGroupCreate(BaseModel):
+    """Payload for creating or updating one static stock group."""
+
+    name: str = Field(..., min_length=1)
+    tickers: list[str] = Field(default_factory=list, min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        return _normalize_required_text(value, "name")
+
+    @field_validator("tickers", mode="before")
+    @classmethod
+    def _normalize_tickers(cls, value) -> list[str]:
+        tickers = _normalize_ticker_list(value)
+        if not tickers:
+            raise ValueError("tickers must not be empty")
+        return tickers
+
+
+class StockGroupUpdate(StockGroupCreate):
+    """Payload for updating one static stock group."""
+
+
+class StockGroup(BaseModel):
+    """Saved static stock group."""
+
+    id: str
+    name: str
+    tickers: list[str]
+    created_at: str
+    updated_at: str
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        return _normalize_required_text(value, "name")
+
+    @field_validator("tickers", mode="before")
+    @classmethod
+    def _normalize_tickers(cls, value) -> list[str]:
+        tickers = _normalize_ticker_list(value)
+        if not tickers:
+            raise ValueError("tickers must not be empty")
+        return tickers
+
+
+class ManualStockSelection(BaseModel):
+    """One manually selected stock in a one-time task payload."""
+
+    market: str
+    symbol: str
+    name: str | None = None
+    exchange: str | None = None
+
+    @field_validator("market")
+    @classmethod
+    def _normalize_market(cls, value: str) -> str:
+        return _normalize_market(value)
+
+    @field_validator("symbol")
+    @classmethod
+    def _normalize_symbol(cls, value: str) -> str:
+        return _normalize_required_text(value, "symbol").upper()
+
+    @field_validator("name", "exchange", mode="before")
+    @classmethod
+    def _normalize_optional_text(cls, value: str | None) -> str | None:
+        return _normalize_blank_optional_string(value)
+
+
+class OneTimeTaskGroupSnapshot(BaseModel):
+    """Snapshot of a static stock group embedded in a one-time task."""
+
+    id: str
+    name: str
+    tickers: list[str] = Field(default_factory=list)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        return _normalize_required_text(value, "name")
+
+    @field_validator("tickers", mode="before")
+    @classmethod
+    def _normalize_tickers(cls, value) -> list[str]:
+        return _normalize_ticker_list(value)
+
+
+class OneTimeTaskSelectionSnapshot(BaseModel):
+    """Saved selection snapshot for one one-time task."""
+
+    manual_stocks: list[ManualStockSelection] = Field(default_factory=list)
+    group_snapshots: list[OneTimeTaskGroupSnapshot] = Field(default_factory=list)
+    include_watchlist: bool = False
+    watchlist_snapshot: list[str] = Field(default_factory=list)
+    resolved_tickers: list[str]
+
+    @field_validator("watchlist_snapshot", mode="before")
+    @classmethod
+    def _normalize_watchlist_snapshot(cls, value) -> list[str]:
+        return _normalize_ticker_list(value)
+
+    @field_validator("resolved_tickers", mode="before")
+    @classmethod
+    def _normalize_resolved_tickers(cls, value) -> list[str]:
+        tickers = _normalize_ticker_list(value)
+        if not tickers:
+            raise ValueError("resolved_tickers must not be empty")
+        return tickers
+
+
+class OneTimeTaskCreate(BaseModel):
+    """Payload for creating one one-time analysis task."""
+
+    name: str = Field(..., min_length=1)
+    scheduled_for: str = Field(..., min_length=1)
+    analysis_date: str = Field(..., min_length=1)
+    manual_stocks: list[ManualStockSelection] = Field(default_factory=list)
+    group_ids: list[str] = Field(default_factory=list)
+    include_watchlist: bool = False
+    analysis_config: AutomationAnalysisConfig
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        return _normalize_required_text(value, "name")
+
+    @field_validator("scheduled_for")
+    @classmethod
+    def _validate_scheduled_for(cls, value: str) -> str:
+        return _validate_exact_datetime_format(
+            value,
+            "scheduled_for",
+            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}",
+            "%Y-%m-%d %H:%M",
+            "YYYY-MM-DD HH:MM",
+        )
+
+    @field_validator("analysis_date")
+    @classmethod
+    def _validate_analysis_date(cls, value: str) -> str:
+        return _validate_exact_datetime_format(
+            value,
+            "analysis_date",
+            r"\d{4}-\d{2}-\d{2}",
+            "%Y-%m-%d",
+            "YYYY-MM-DD",
+        )
+
+    @field_validator("group_ids", mode="before")
+    @classmethod
+    def _normalize_group_ids(cls, value) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("group_ids must be a list")
+        group_ids: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            normalized = item.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            group_ids.append(normalized)
+        return group_ids
+
+
+class OneTimeTaskUpdate(OneTimeTaskCreate):
+    """Payload for updating one one-time analysis task."""
+
+
+class OneTimeTask(BaseModel):
+    """Saved one-time analysis task."""
+
+    id: str
+    name: str
+    status: str
+    scheduled_for: str
+    analysis_date: str
+    selection_snapshot: OneTimeTaskSelectionSnapshot
+    analysis_config: AutomationAnalysisConfig
+    created_at: str
+    updated_at: str
+    triggered_at: str | None = None
+    completed_at: str | None = None
+    last_error: str | None = None
+    last_queued_count: int = 0
+    run_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        return _normalize_required_text(value, "name")
+
+    @field_validator("status")
+    @classmethod
+    def _normalize_status(cls, value: str) -> str:
+        normalized = _normalize_required_text(value, "status").lower()
+        allowed = {"scheduled", "queued", "running", "completed", "missed", "cancelled"}
+        if normalized not in allowed:
+            raise ValueError("status must be one of scheduled, queued, running, completed, missed, cancelled")
+        return normalized
+
+    @field_validator("scheduled_for")
+    @classmethod
+    def _validate_scheduled_for(cls, value: str) -> str:
+        return _validate_exact_datetime_format(
+            value,
+            "scheduled_for",
+            r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}",
+            "%Y-%m-%d %H:%M",
+            "YYYY-MM-DD HH:MM",
+        )
+
+    @field_validator("analysis_date")
+    @classmethod
+    def _validate_analysis_date(cls, value: str) -> str:
+        return _validate_exact_datetime_format(
+            value,
+            "analysis_date",
+            r"\d{4}-\d{2}-\d{2}",
+            "%Y-%m-%d",
+            "YYYY-MM-DD",
+        )
+
+    @field_validator("run_ids", mode="before")
+    @classmethod
+    def _normalize_run_ids(cls, value) -> list[str]:
+        return _normalize_string_id_list(value)
+
+
+class OneTimeTaskPage(BaseModel):
+    """Paginated list of one-time analysis tasks."""
+
+    items: list[OneTimeTask] = Field(default_factory=list)
+    page: int = 1
+    page_size: int = 20
+    total_count: int = 0
 
 
 class AutomationRule(BaseModel):

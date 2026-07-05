@@ -75,6 +75,28 @@ def test_login_sets_session_cookie(monkeypatch, tmp_path):
     assert response.cookies.get("tradingagents_session")
 
 
+def test_login_ignores_malformed_existing_session_cookie(monkeypatch, tmp_path):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    user = _create_user(store)
+    raw_session_id, session = store.create_session(user.id)
+
+    with store._connect() as conn:  # noqa: SLF001
+        conn.execute(
+            "UPDATE sessions SET expires_at = ? WHERE id_hash = ?",
+            (0, session.id_hash),
+        )
+
+    client.cookies.set("tradingagents_session", raw_session_id)
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "alice@example.com", "password": "StrongPass123!"},
+    )
+
+    assert response.status_code == 200
+    assert response.cookies.get("tradingagents_session")
+
+
 def test_login_marks_session_cookie_secure_for_forwarded_https(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store)
