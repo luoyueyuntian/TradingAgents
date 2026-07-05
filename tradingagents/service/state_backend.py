@@ -73,7 +73,10 @@ class StateBackendAdapter:
                     break
             if not replaced:
                 payload.append(entry)
-            payload.sort(key=lambda item: item.get("created_at", ""), reverse=True)
+            payload.sort(
+                key=lambda item: coerce_timestamp_ms(item.get("created_at")) or 0,
+                reverse=True,
+            )
             _write_payload_atomic(target, payload)
 
     def delete_run(self, run_id: str, *, index_path: Path | None = None) -> None:
@@ -133,7 +136,11 @@ class StateBackendAdapter:
 
     def save_runs(self, runs: list, *, index_path: Path | None = None) -> None:
         if self.kind == "sqlite":
-            for run in sorted(runs, key=lambda item: item.created_at or 0, reverse=True):
+            for run in sorted(
+                runs,
+                key=lambda item: coerce_timestamp_ms(item.created_at) or 0,
+                reverse=True,
+            ):
                 sqlite_upsert_run(self.location, serialize_run_state(run))
             return
 

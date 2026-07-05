@@ -24,7 +24,7 @@ from tradingagents.service.execution_lock import PROCESS_EXECUTION_LOCK
 from tradingagents.service.models import TERMINAL_RUN_STATUSES, RunCancelledError, RunState
 from tradingagents.service.runtime_context import RuntimeContext, build_runtime_context
 from tradingagents.service.state_backend import StateBackendAdapter, get_state_backend_adapter
-from tradingagents.service.timestamps import current_timestamp_ms
+from tradingagents.service.timestamps import coerce_timestamp_ms, current_timestamp_ms
 from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import export_api_keys_to_env, load_settings
 
@@ -47,6 +47,10 @@ _RUN_CONFIG_LOG_KEYS = (
     "openai_reasoning_effort",
     "anthropic_effort",
 )
+
+
+def _timestamp_sort_value(value: object | None) -> int:
+    return coerce_timestamp_ms(value) or 0
 
 
 class _TerminalOutputRecorder:
@@ -387,7 +391,7 @@ class RunService:
         with self._runs_lock:
             return sorted(
                 self._runs.values(),
-                key=lambda run: run.created_at or 0,
+                key=lambda run: _timestamp_sort_value(run.created_at),
                 reverse=True,
             )
 
@@ -396,7 +400,7 @@ class RunService:
         with self._runs_lock:
             queued_runs = sorted(
                 (run for run in self._runs.values() if run.status == "queued"),
-                key=lambda run: (run.queue_sequence or 10**12, run.created_at or 0),
+                key=lambda run: (run.queue_sequence or 10**12, _timestamp_sort_value(run.created_at)),
             )
         for index, run in enumerate(queued_runs, start=1):
             if run.run_id == run_id:
@@ -459,7 +463,7 @@ class RunService:
                 if run.status in TERMINAL_RUN_STATUSES
             ]
             terminal_runs.sort(
-                key=lambda item: item[1].completed_at or item[1].created_at or 0
+                key=lambda item: _timestamp_sort_value(item[1].completed_at or item[1].created_at)
             )
 
             while len(terminal_runs) > limit:
