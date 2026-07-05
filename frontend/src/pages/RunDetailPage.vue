@@ -587,10 +587,10 @@ async function refreshRunningRun() {
     await loadRunDetail({ silent: true });
   } finally {
     autoRefreshInFlight = false;
-  }
-  if (shouldAutoRefreshRun(selectedRun.value?.status)) {
-    ensureAutoRefresh();
-  } else {
+    if (shouldAutoRefreshRun(selectedRun.value?.status)) {
+      ensureAutoRefresh();
+      return;
+    }
     stopAutoRefresh();
   }
 }
