@@ -421,6 +421,39 @@ class AdminUserCreate(BaseModel):
         return _normalize_blank_optional_string(value)
 
 
+class AdminManagedUserCreate(BaseModel):
+    username: str = Field(..., min_length=1)
+    email: str = Field(..., min_length=1)
+    display_name: str = Field(..., min_length=1)
+    role: str = Field(..., min_length=1)
+    expires_at: OptionalTimestampMs = None
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def _normalize_username(cls, value: str) -> str:
+        return _normalize_username(value)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _normalize_email(cls, value: str) -> str:
+        return _normalize_email(value)
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def _normalize_display_name(cls, value: str) -> str:
+        return _normalize_display_name(value)
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def _normalize_role(cls, value: str) -> str:
+        return _normalize_role(value)
+
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def _normalize_expires_at(cls, value: str | None) -> str | None:
+        return _normalize_blank_optional_string(value)
+
+
 class AdminUserUpdate(BaseModel):
     display_name: str | None = None
     role: str | None = None
@@ -462,6 +495,25 @@ class AdminUserResponse(BaseModel):
     created_at: TimestampMs
     updated_at: TimestampMs
     last_login_at: OptionalTimestampMs = None
+
+
+class AdminUserCredentialResult(BaseModel):
+    user: AdminUserResponse
+    temporary_password: str
+
+
+class AdminUserBulkDeleteRequest(BaseModel):
+    user_ids: list[str] = Field(..., min_length=1)
+
+
+class AdminUserBulkDeleteFailure(BaseModel):
+    user_id: str
+    detail: str
+
+
+class AdminUserBulkDeleteResult(BaseModel):
+    deleted_ids: list[str]
+    failed: list[AdminUserBulkDeleteFailure]
 
 
 class TenantAdminCreate(BaseModel):

@@ -277,6 +277,10 @@ def _user_row_is_login_capable_admin(row: sqlite3.Row) -> bool:
     return row["role"] == "admin" and _user_row_is_active(row)
 
 
+def user_is_expired(user: UserRecord) -> bool:
+    return user.expires_at is not None and _is_expired(user.expires_at)
+
+
 class UserStore:
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
@@ -1022,7 +1026,16 @@ class UserStore:
                     return _user_from_row(row)
         return None
 
-    def list_users(self, tenant_id: str | None = None) -> list[UserRecord]:
+    def list_users(
+        self,
+        tenant_id: str | None = None,
+        *,
+        name: str | None = None,
+        email: str | None = None,
+        role: str | None = None,
+        status: str = "all",
+        deleted_scope: str = "active",
+    ) -> list[UserRecord]:
         self.ensure_schema()
         normalized_tenant_id = _normalize_optional_tenant_id(tenant_id)
         with self._connect() as conn:
@@ -1033,7 +1046,49 @@ class UserStore:
                     "SELECT * FROM users WHERE tenant_id = ? ORDER BY rowid",
                     (normalized_tenant_id,),
                 ).fetchall()
-        return [_user_from_row(row) for row in rows]
+        users = [_user_from_row(row) for row in rows]
+
+        normalized_deleted_scope = deleted_scope.strip().lower() if deleted_scope else "active"
+        if normalized_deleted_scope == "active":
+            users = [user for user in users if user.deleted_at is None]
+        elif normalized_deleted_scope == "deleted":
+            users = [user for user in users if user.deleted_at is not None]
+        elif normalized_deleted_scope != "all":
+            raise ValueError("deleted_scope must be one of active, deleted, or all")
+
+        if name is not None and name.strip():
+            normalized_name = name.strip().casefold()
+            users = [
+                user for user in users
+                if normalized_name in user.username.casefold()
+                or normalized_name in user.display_name.casefold()
+            ]
+
+        if email is not None and email.strip():
+            normalized_email = email.strip().casefold()
+            users = [user for user in users if user.email.casefold() == normalized_email]
+
+        if role is not None and role.strip():
+            normalized_role = _validate_role(role)
+            users = [user for user in users if user.role == normalized_role]
+
+        normalized_status = status.strip().lower() if status else "all"
+        if normalized_status == "active":
+            users = [
+                user for user in users
+                if user.deleted_at is None and not user.disabled and not user_is_expired(user)
+            ]
+        elif normalized_status == "disabled":
+            users = [user for user in users if user.deleted_at is None and user.disabled]
+        elif normalized_status == "expired":
+            users = [
+                user for user in users
+                if user.deleted_at is None and not user.disabled and user_is_expired(user)
+            ]
+        elif normalized_status != "all":
+            raise ValueError("status must be one of all, active, disabled, or expired")
+
+        return users
 
     def update_user(self, user_id: str, **fields: Any) -> UserRecord:
         self.ensure_schema()
