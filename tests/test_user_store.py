@@ -39,6 +39,7 @@ EXPECTED_SCHEMA = {
         "must_change_password",
         "expires_at",
         "disabled",
+        "deleted_at",
         "created_at",
         "updated_at",
         "last_login_at",
@@ -314,6 +315,73 @@ def test_create_user_persists_record_and_looks_up_identifier_case_insensitively(
     assert store.get_user_by_identifier("ALICE@EXAMPLE.COM") == user
 
 
+def test_create_user_allows_same_username_and_email_in_different_tenants(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+
+    tenant_a_user = _create_user(
+        store,
+        username="shared",
+        email="shared@example.com",
+        display_name="Shared A",
+        tenant_id="tenant-a",
+    )
+    tenant_b_user = _create_user(
+        store,
+        username="shared",
+        email="shared@example.com",
+        display_name="Shared B",
+        tenant_id="tenant-b",
+    )
+
+    assert tenant_a_user.tenant_id == "tenant-a"
+    assert tenant_b_user.tenant_id == "tenant-b"
+
+
+def test_soft_deleted_user_still_blocks_reuse_in_same_tenant(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    user = _create_user(
+        store,
+        username="reused",
+        email="reused@example.com",
+        display_name="Reusable",
+        tenant_id="tenant-a",
+    )
+
+    store.delete_user(user.id)
+
+    with pytest.raises(ValueError, match="username already exists"):
+        _create_user(
+            store,
+            username="reused",
+            email="different@example.com",
+            display_name="Duplicate",
+            tenant_id="tenant-a",
+        )
+
+
+def test_get_user_by_identifier_requires_tenant_scope(tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    _create_user(
+        store,
+        username="shared",
+        email="shared@example.com",
+        display_name="Shared A",
+        tenant_id="tenant-a",
+    )
+    tenant_b_user = _create_user(
+        store,
+        username="shared",
+        email="shared@example.com",
+        display_name="Shared B",
+        tenant_id="tenant-b",
+    )
+
+    resolved = store.get_user_by_identifier("tenant-b", "shared@example.com")
+
+    assert resolved is not None
+    assert resolved.id == tenant_b_user.id
+
+
 def test_create_user_rejects_duplicate_username_and_email_case_insensitively(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     _create_user(store, username="Alice", email="alice@example.com")
@@ -467,7 +535,8 @@ def test_delete_user_soft_deletes_user_and_removes_only_their_sessions(
         deleted = store.delete_user(alice.id)
 
     assert deleted.id == alice.id
-    assert deleted.disabled is True
+    assert deleted.disabled is False
+    assert deleted.deleted_at == int(deleted_at.timestamp() * 1000)
     assert deleted.updated_at == int(deleted_at.timestamp() * 1000)
     assert store.get_user(alice.id) == deleted
     assert store.get_user(bob.id) == bob
@@ -1046,10 +1115,12 @@ def test_delete_user_allows_last_admin_cleanup_when_tenant_is_unavailable(tmp_pa
 
     deleted = store.delete_user(sole_admin.id)
 
-    assert deleted.disabled is True
+    assert deleted.disabled is False
+    assert deleted.deleted_at is not None
     refreshed = store.get_user(sole_admin.id)
     assert refreshed is not None
-    assert refreshed.disabled is True
+    assert refreshed.disabled is False
+    assert refreshed.deleted_at is not None
 
 
 def test_tenant_lifecycle_create_update_and_list(tmp_path):
