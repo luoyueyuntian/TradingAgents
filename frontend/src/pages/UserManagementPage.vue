@@ -15,12 +15,14 @@
       </template>
     </PageHeader>
 
-    <AdminUserDirectory
+    <UserCrudManager
       ref="directory"
       list-path="/api/admin/users"
       create-path="/api/admin/users"
+      bulk-delete-path="/api/admin/users/bulk-delete"
       :update-path="userPath"
       :delete-path="userPath"
+      :reset-password-path="resetPasswordPath"
     />
   </section>
 </template>
@@ -30,7 +32,7 @@ import Button from 'primevue/button';
 import { ref } from 'vue';
 
 import PageHeader from '../components/PageHeader.vue';
-import AdminUserDirectory from '../components/AdminUserDirectory.vue';
+import UserCrudManager from '../components/UserCrudManager.vue';
 import { useI18n } from '../i18n';
 
 const { t } = useI18n();
@@ -38,6 +40,10 @@ const directory = ref<{ loadUsers: () => Promise<void> } | null>(null);
 
 function userPath(userId: string) {
   return `/api/admin/users/${encodeURIComponent(userId)}`;
+}
+
+function resetPasswordPath(userId: string) {
+  return `/api/admin/users/${encodeURIComponent(userId)}/reset-password`;
 }
 
 function refreshUsers() {
