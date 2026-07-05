@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import UserManagementPage from './UserManagementPage.vue';
 
-const adminUserDirectoryProps = vi.hoisted(() => vi.fn());
+const userCrudManagerProps = vi.hoisted(() => vi.fn());
 
 const session = {
   apiContext: { value: { tenantId: 'tenant-a' } },
@@ -28,12 +28,12 @@ vi.mock('../stores/session', () => ({
   useSession: () => session,
 }));
 
-vi.mock('../components/AdminUserDirectory.vue', () => ({
+vi.mock('../components/UserCrudManager.vue', () => ({
   default: {
-    props: ['listPath', 'createPath', 'updatePath', 'deletePath'],
-    template: '<div data-testid="admin-user-directory-stub" />',
+    props: ['listPath', 'createPath', 'bulkDeletePath', 'updatePath', 'deletePath', 'resetPasswordPath'],
+    template: '<div data-testid="user-crud-manager-stub" />',
     setup(props: Record<string, unknown>) {
-      adminUserDirectoryProps(props);
+      userCrudManagerProps(props);
       return {};
     },
   },
@@ -61,26 +61,30 @@ function mountPage() {
 
 describe('UserManagementPage', () => {
   beforeEach(() => {
-    adminUserDirectoryProps.mockReset();
+    userCrudManagerProps.mockReset();
   });
 
-  it('passes current-tenant admin user endpoints into the shared directory', async () => {
+  it('passes current-tenant user endpoints into the CRUD manager', async () => {
     const wrapper = mountPage();
 
-    expect(wrapper.find('[data-testid="admin-user-directory-stub"]').exists()).toBe(true);
-    expect(adminUserDirectoryProps).toHaveBeenCalledWith(
+    expect(wrapper.find('[data-testid="user-crud-manager-stub"]').exists()).toBe(true);
+    expect(userCrudManagerProps).toHaveBeenCalledWith(
       expect.objectContaining({
         listPath: '/api/admin/users',
         createPath: '/api/admin/users',
+        bulkDeletePath: '/api/admin/users/bulk-delete',
         updatePath: expect.any(Function),
         deletePath: expect.any(Function),
+        resetPasswordPath: expect.any(Function),
       }),
     );
-    const props = adminUserDirectoryProps.mock.calls[0]?.[0] as {
+    const props = userCrudManagerProps.mock.calls[0]?.[0] as {
       updatePath: (userId: string) => string;
       deletePath: (userId: string) => string;
+      resetPasswordPath: (userId: string) => string;
     };
     expect(props.updatePath('user-7')).toBe('/api/admin/users/user-7');
     expect(props.deletePath('user-7')).toBe('/api/admin/users/user-7');
+    expect(props.resetPasswordPath('user-7')).toBe('/api/admin/users/user-7/reset-password');
   });
 });
