@@ -17,7 +17,13 @@
 
     <template v-if="mode === 'edit'">
       <PortfolioStockPicker v-model:selectedStock="selectedStock" v-model:stockMarket="stockMarket" :disabled="saving" />
-      <Button :label="t('portfolio.addTickerToGroup')" severity="secondary" :disabled="!selectedStock" @click="addSelectedTicker" />
+      <Button
+        :label="t('portfolio.addTickerToGroup')"
+        severity="secondary"
+        :disabled="!selectedStock"
+        data-testid="stock-group-add-ticker"
+        @click="addSelectedTicker"
+      />
 
       <div class="uno-flex uno-flex-wrap uno-gap-2">
         <span
@@ -25,7 +31,7 @@
           :key="ticker"
           class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
         >
-          {{ ticker }}
+          {{ companyNames[ticker] || ticker }}
           <button type="button" class="uno-bg-transparent uno-p-0" @click="removeTicker(ticker)">x</button>
         </span>
       </div>
@@ -61,6 +67,7 @@ const session = useSession();
 const { t } = useI18n();
 const name = ref('');
 const tickers = ref<string[]>([]);
+const companyNames = ref<Record<string, string>>({});
 const stockMarket = ref('us');
 const selectedStock = ref<Required<StockCatalogOption> | null>(null);
 const saving = ref(false);
@@ -71,6 +78,9 @@ watch(
   (value) => {
     name.value = String(value?.name || '');
     tickers.value = Array.isArray(value?.tickers) ? [...(value?.tickers as string[])] : [];
+    companyNames.value = value?.company_names && typeof value.company_names === 'object'
+      ? { ...(value.company_names as Record<string, string>) }
+      : {};
   },
   { immediate: true },
 );
@@ -81,11 +91,18 @@ function addSelectedTicker() {
     return;
   }
   tickers.value = [...tickers.value, symbol];
+  companyNames.value = {
+    ...companyNames.value,
+    [symbol]: selectedStock.value?.name || symbol,
+  };
   selectedStock.value = null;
 }
 
 function removeTicker(ticker: string) {
   tickers.value = tickers.value.filter((item) => item !== ticker);
+  const nextNames = { ...companyNames.value };
+  delete nextNames[ticker];
+  companyNames.value = nextNames;
 }
 
 async function save() {
