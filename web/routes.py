@@ -88,6 +88,7 @@ from .runner import (
     cancel_run,
     create_run,
     delete_run,
+    find_latest_active_run_for_ticker,
     get_execution_mode,
     get_queue_position,
     get_run,
@@ -1504,26 +1505,25 @@ def _build_run_summary(run, tenant_id: str | None = None) -> RunSummary:
     )
 
 
-def _ticker_runs(ticker: str, tenant_id: str | None, runs: list | None = None) -> list:
+def _ticker_runs(
+    ticker: str,
+    tenant_id: str | None,
+    runs: list | None = None,
+    asset_type: str | None = None,
+) -> list:
     normalized = _normalize_ticker_symbol(ticker)
+    normalized_asset_type = str(asset_type or "").strip().lower()
     candidate_runs = runs if runs is not None else list_runs(tenant_id)
     matched_runs = [
         run for run in candidate_runs
         if str(getattr(run, "ticker", "") or "").strip().upper() == normalized
+        and (
+            not normalized_asset_type
+            or str(getattr(run, "asset_type", "") or "").strip().lower() == normalized_asset_type
+        )
     ]
     matched_runs.sort(key=lambda run: _timestamp_sort_value(run.created_at), reverse=True)
     return matched_runs
-
-
-def _find_latest_active_run_for_ticker(ticker: str, tenant_id: str | None, runs: list | None = None):
-    matched_runs = _ticker_runs(ticker, tenant_id, runs)
-    return next(
-        (
-            run for run in matched_runs
-            if str(getattr(run, "status", "") or "").strip().lower() in {"queued", "running"}
-        ),
-        None,
-    )
 
 
 def _build_ticker_run_history_page(
@@ -1532,11 +1532,12 @@ def _build_ticker_run_history_page(
     *,
     page: int,
     page_size: int,
+    asset_type: str | None = None,
 ) -> TickerRunHistoryPage:
     normalized = _normalize_ticker_symbol(ticker)
-    matched_runs = _ticker_runs(normalized, tenant_id)
+    matched_runs = _ticker_runs(normalized, tenant_id, asset_type=asset_type)
     latest = matched_runs[0] if matched_runs else None
-    active = _find_latest_active_run_for_ticker(normalized, tenant_id, matched_runs)
+    active = find_latest_active_run_for_ticker(normalized, tenant_id, asset_type)
     company_name = next(
         (
             str(getattr(run, "company_name", "") or "").strip()
@@ -3533,7 +3534,7 @@ async def create_analysis_run(req: AnalysisRequest, request: Request):
     """Create and start a new analysis run."""
     loop = asyncio.get_running_loop()
     tenant_id = _request_tenant_id(request)
-    active_run = _find_latest_active_run_for_ticker(req.ticker, tenant_id)
+    active_run = find_latest_active_run_for_ticker(req.ticker, tenant_id, req.asset_type)
     if active_run is not None:
         raise HTTPException(
             status_code=409,
@@ -3569,10 +3570,22 @@ async def create_batch_analysis_runs(payload: BatchAnalysisRequest, request: Req
     loop = asyncio.get_running_loop()
     responses: list[AnalysisResponse] = []
     for ticker in tickers:
+        asset_type = _infer_asset_type(ticker)
+        active_run = find_latest_active_run_for_ticker(ticker, tenant_id, asset_type)
+        if active_run is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "ticker_active_run_exists",
+                    "message": f"{active_run.ticker} already has an active analysis run.",
+                    "active_run_id": active_run.run_id,
+                    "active_run_status": active_run.status,
+                },
+            )
         req = AnalysisRequest(
             ticker=ticker,
             date=payload.date,
-            asset_type=_infer_asset_type(ticker),
+            asset_type=asset_type,
             analysts=payload.analysts,
             llm_provider=payload.llm_provider,
             deep_think_model=payload.deep_think_model,
@@ -3638,12 +3651,13 @@ async def get_runs(
 async def get_ticker_history(
     request: Request,
     ticker: str,
+    asset_type: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=100),
 ):
     """Return paginated run history for one ticker, newest first."""
     tenant_id = _request_tenant_id(request)
-    return _build_ticker_run_history_page(ticker, tenant_id, page=page, page_size=page_size)
+    return _build_ticker_run_history_page(ticker, tenant_id, page=page, page_size=page_size, asset_type=asset_type)
 
 
 @router.get("/api/runs/company-groups", response_model=RunCompanyGroupPage)

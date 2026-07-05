@@ -104,6 +104,29 @@ def test_build_run_request_config_preserves_non_form_settings():
 
 
 @pytest.mark.unit
+def test_find_latest_active_run_for_ticker_filters_by_asset_type(monkeypatch):
+    stock_run = _make_run_state(run_id="stock-run", status="running")
+    stock_run.ticker = "AAPL"
+    stock_run.asset_type = "stock"
+    stock_run.created_at = "2026-07-05T09:00:00"
+
+    crypto_run = _make_run_state(run_id="crypto-run", status="running")
+    crypto_run.ticker = "AAPL"
+    crypto_run.asset_type = "crypto"
+    crypto_run.created_at = "2026-07-05T10:00:00"
+
+    class FakeService:
+        def list_runs(self):
+            return [stock_run, crypto_run]
+
+    monkeypatch.setattr(web_runner, "refresh_from_storage_if_needed", lambda tenant_id=None: None)
+    monkeypatch.setattr(web_runner, "get_service", lambda tenant_id=None: FakeService())
+
+    assert web_runner.find_latest_active_run_for_ticker("AAPL", asset_type="stock") is stock_run
+    assert web_runner.find_latest_active_run_for_ticker("AAPL", asset_type="crypto") is crypto_run
+
+
+@pytest.mark.unit
 def test_build_run_request_config_applies_settings_payload():
     req = AnalysisRequest(
         ticker="AAPL",

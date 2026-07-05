@@ -6,6 +6,7 @@ export type ApiContext = {
 
 export type ApiRequestError = Error & {
   status: number;
+  detail?: unknown;
 };
 
 type ApiAuthInvalidationHandler = () => void;
@@ -68,6 +69,13 @@ export async function createApiError(response: Response): Promise<ApiRequestErro
     const payload = await response.json();
     if (payload && typeof payload.detail === 'string') {
       return withApiStatus(new Error(payload.detail), response);
+    }
+    if (payload && payload.detail && typeof payload.detail === 'object' && !Array.isArray(payload.detail)) {
+      const detail = payload.detail as Record<string, unknown>;
+      const message = typeof detail.message === 'string' && detail.message
+        ? detail.message
+        : response.statusText || `Request failed with ${response.status}`;
+      return Object.assign(withApiStatus(new Error(message), response), { detail });
     }
     if (payload && Array.isArray(payload.detail)) {
       return withApiStatus(new Error(payload.detail.map((item: ApiErrorDetail | string) => {

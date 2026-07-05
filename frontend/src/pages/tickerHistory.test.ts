@@ -7,8 +7,8 @@ import {
 
 describe('ticker history helpers', () => {
   it('builds the ticker history path with uppercase ticker and paging params', () => {
-    expect(buildTickerHistoryPath({ ticker: 'aapl', page: 2, pageSize: 10 }))
-      .toBe('/api/runs/ticker-history?ticker=AAPL&page=2&page_size=10');
+    expect(buildTickerHistoryPath({ ticker: 'aapl', assetType: 'stock', page: 2, pageSize: 10 }))
+      .toBe('/api/runs/ticker-history?ticker=AAPL&asset_type=stock&page=2&page_size=10');
   });
 
   it('treats today yesterday and the day before yesterday as recent local days', () => {

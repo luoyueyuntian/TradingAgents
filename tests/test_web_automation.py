@@ -152,3 +152,66 @@ def test_run_automation_rule_now_returns_created_runs_for_manual_tickers(monkeyp
     assert response.created_count == 2
     assert response.tickers == ["NVDA", "BTC-USD"]
     assert [req.asset_type for req in created] == ["stock", "crypto"]
+
+
+def test_run_automation_rule_now_skips_tickers_with_active_runs(monkeypatch):
+    state = {
+        "automations": {
+            "items": [
+                {
+                    "id": "auto-1",
+                    "name": "Manual Basket",
+                    "enabled": True,
+                    "source": "manual",
+                    "tickers": ["NVDA", "MSFT"],
+                    "cadence": "weekly",
+                    "weekday": "fri",
+                    "time_of_day": "10:00",
+                    "created_at": "2026-01-15T08:00:00",
+                    "updated_at": "2026-01-15T08:00:00",
+                    "analysis_config": {
+                        "analysts": ["market", "news"],
+                        "llm_provider": "openai",
+                        "quick_think_model": "gpt-5.4-mini",
+                        "deep_think_model": "gpt-5.5",
+                        "research_depth": 3,
+                        "output_language": "English",
+                    },
+                }
+            ]
+        },
+    }
+    created = []
+
+    class FakeService:
+        def load_tenant_settings(self):
+            return {}
+
+        def create_run(self, req, *, start_worker=True, settings=None):
+            created.append(req)
+            return SimpleNamespace(
+                run_id=f"{req.ticker.lower()}-{len(created)}",
+                status="queued",
+                ticker=req.ticker,
+                date=req.date,
+            )
+
+    monkeypatch.setattr(web_automation, "load_settings", lambda path=None: state)
+    monkeypatch.setattr(web_automation, "save_settings", lambda settings, path=None: state.update(settings))
+    monkeypatch.setattr(web_automation, "get_service", lambda tenant_id=None: FakeService())
+    monkeypatch.setattr(
+        web_automation,
+        "find_latest_active_run_for_ticker",
+        lambda ticker, tenant_id=None, asset_type=None: SimpleNamespace(run_id="run-active") if ticker == "NVDA" else None,
+    )
+
+    response = web_automation.run_automation_rule_now(
+        "auto-1",
+        now=datetime.datetime(2026, 1, 16, 10, 5, 0),
+        start_worker=False,
+    )
+
+    assert response is not None
+    assert response.created_count == 1
+    assert response.tickers == ["NVDA", "MSFT"]
+    assert [req.ticker for req in created] == ["MSFT"]
