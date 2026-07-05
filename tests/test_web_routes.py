@@ -7,6 +7,7 @@ import json
 from fastapi.testclient import TestClient
 
 from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.service.timestamps import coerce_timestamp_ms
 from tradingagents.service.stock_catalog import StockCatalogItem
 from tradingagents.service.runtime_context import build_runtime_context
 from web import automation as web_automation, one_time_tasks as web_one_time_tasks, routes as web_routes
@@ -3210,8 +3211,8 @@ def test_public_run_share_create_reuses_existing_share_for_same_run(monkeypatch,
     assert len(state["public_run_shares"]["items"]) == 1
     assert state["public_run_shares"]["items"][0]["final_report"] == "# Trading Analysis Report\n\nUpdated share."
     assert state["public_run_shares"]["items"][0]["view_count"] == 3
-    assert state["public_run_shares"]["items"][0]["last_viewed_at"] == "2026-01-15T11:00:00"
-    assert state["public_run_shares"]["items"][0]["expires_at"] == "2026-01-20T10:00:00"
+    assert state["public_run_shares"]["items"][0]["last_viewed_at"] == coerce_timestamp_ms("2026-01-15T11:00:00")
+    assert state["public_run_shares"]["items"][0]["expires_at"] == coerce_timestamp_ms("2026-01-20T10:00:00")
     assert state["public_run_shares"]["items"][0]["share_title"] == "NVDA Snapshot"
     assert state["public_run_shares"]["items"][0]["share_summary"] == "External summary"
 
@@ -3405,8 +3406,8 @@ def test_list_public_run_shares_returns_tenant_scoped_summaries(monkeypatch, tmp
     assert payload[0]["ticker"] == "NVDA"
     assert payload[0]["run_id"] == "run-a"
     assert payload[0]["view_count"] == 4
-    assert payload[0]["last_viewed_at"] == "2026-01-15T11:30:00"
-    assert payload[0]["expires_at"] == "2026-01-20T10:00:00"
+    assert payload[0]["last_viewed_at"] == coerce_timestamp_ms("2026-01-15T11:30:00")
+    assert payload[0]["expires_at"] == coerce_timestamp_ms("2026-01-20T10:00:00")
     assert payload[0]["share_title"] == "NVDA Snapshot"
     assert payload[0]["share_summary"] == "External summary"
 

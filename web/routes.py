@@ -513,6 +513,13 @@ def _timestamp_sort_value(value: object) -> int:
     return _timestamp_value(value) or 0
 
 
+def _timestamp_display_value(value: object) -> str | None:
+    resolved = timestamp_ms_to_datetime(value)
+    if resolved is None:
+        return None
+    return resolved.isoformat(timespec="seconds")
+
+
 def _load_settings_for_update(settings_path) -> dict:
     """Load a detached settings snapshot before mutating and saving it."""
     settings = load_settings(path=settings_path)
@@ -804,7 +811,11 @@ def _build_csv_download_response(
     writer.writeheader()
     for row in rows:
         writer.writerow({
-            key: "" if row.get(key) is None else row.get(key)
+            key: (
+                ""
+                if row.get(key) is None
+                else (_timestamp_display_value(row.get(key)) if key.endswith("_at") else row.get(key))
+            )
             for key in fieldnames
         })
     timestamp = timestamp_ms_to_filename_text(_now_ts())
@@ -3128,7 +3139,7 @@ def _build_workspace_search_response(
                     kind="note",
                     entity_id=note.id,
                     title=note.ticker or note.run_id or "Workspace Note",
-                    subtitle=note.created_at,
+                    subtitle=_timestamp_display_value(note.created_at) or "",
                     excerpt=note.content,
                     ticker=note.ticker,
                     run_id=note.run_id,

@@ -61,9 +61,16 @@ def _ensure_user_can_login(user: UserRecord) -> None:
         raise HTTPException(status_code=403, detail="User account has expired")
 
 
-def _ensure_tenant_allows_access(store: UserStore, tenant_id: str) -> None:
+def _ensure_tenant_allows_access(
+    store: UserStore,
+    tenant_id: str,
+    *,
+    allow_missing: bool = False,
+) -> None:
     tenant = store.get_tenant(tenant_id)
     if tenant is None:
+        if allow_missing:
+            return
         raise HTTPException(status_code=403, detail="Tenant not found")
     if tenant.disabled:
         raise HTTPException(status_code=403, detail="Tenant is disabled")
