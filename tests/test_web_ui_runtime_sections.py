@@ -128,7 +128,7 @@ def test_vue_i18n_sources_include_english_and_chinese_copy():
 def test_page_components_keep_existing_backend_api_boundaries():
     page_expectations = {
         "DashboardPage.vue": ["/api/dashboard", "/api/briefing/daily", "/api/notifications"],
-        "AnalyzePage.vue": ["/api/providers", "/api/runs", "/events", "/cancel"],
+        "AnalyzePage.vue": ["/api/providers", "/api/runs", "/cancel", "/api/stocks", "buildStockSearchPath"],
         "RunsPage.vue": ["/api/runs/company-groups"],
         "RunDetailPage.vue": ["/api/runs", "/artifacts", "/retry", "/terminal-output"],
         "PortfolioPage.vue": ["/api/watchlist", "/api/portfolio", "/api/alerts", "/api/screener", "/api/stock-groups"],
