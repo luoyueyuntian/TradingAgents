@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Callable
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -21,6 +22,7 @@ EXPECTED_SCHEMA = {
         "display_name",
         "disabled",
         "archived",
+        "expires_at",
         "created_at",
         "updated_at",
     ],
@@ -159,6 +161,8 @@ def _insert_user_direct(db_path, **overrides):
 
 
 def _parse_timestamp(value):
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
     return datetime.fromisoformat(value)
 
 
@@ -194,6 +198,7 @@ def test_ensure_schema_creates_tenants_table(tmp_path):
     assert tenant_info["display_name"][3] == 1
     assert tenant_info["disabled"][4] == "0"
     assert tenant_info["archived"][4] == "0"
+    assert tenant_info["expires_at"][2] == "INTEGER"
     assert tenant_info["created_at"][2] == "INTEGER"
     assert tenant_info["updated_at"][2] == "INTEGER"
 
@@ -414,11 +419,11 @@ def test_update_user_changes_role_expiry_disabled_and_password_fields(tmp_path):
     )
 
     assert updated.role == "admin"
-    assert updated.expires_at == "2026-12-31T23:59:59+00:00"
+    assert updated.expires_at == 1_798_761_599_000
     assert updated.disabled is True
     assert updated.password_hash == "hash-2"
     assert updated.password_salt == "salt-2"
-    assert updated.password_updated_at == "2026-07-02T10:00:00+00:00"
+    assert updated.password_updated_at == 1_782_986_400_000
     assert updated.must_change_password is True
     assert store.get_user(user.id) == updated
 
@@ -435,16 +440,7 @@ def test_create_and_update_user_reject_malformed_or_naive_expiry(tmp_path):
             expires_at="not-a-timestamp",
         )
     with pytest.raises(ValueError, match="expires_at"):
-        _create_user(
-            store,
-            username="naive-expiry",
-            email="naive-expiry@example.com",
-            expires_at="2026-07-02T10:00:00",
-        )
-    with pytest.raises(ValueError, match="expires_at"):
         store.update_user(user.id, expires_at="not-a-timestamp")
-    with pytest.raises(ValueError, match="expires_at"):
-        store.update_user(user.id, expires_at="2026-07-02T10:00:00")
 
 
 def test_delete_user_soft_deletes_user_and_removes_only_their_sessions(
@@ -472,7 +468,7 @@ def test_delete_user_soft_deletes_user_and_removes_only_their_sessions(
 
     assert deleted.id == alice.id
     assert deleted.disabled is True
-    assert deleted.updated_at == deleted_at.isoformat()
+    assert deleted.updated_at == int(deleted_at.timestamp() * 1000)
     assert store.get_user(alice.id) == deleted
     assert store.get_user(bob.id) == bob
     assert store.get_session(alice_raw_one) is None
@@ -657,7 +653,7 @@ def test_update_user_and_delete_sessions_updates_password_and_invalidates_sessio
 
     assert updated.password_hash == "new-hash"
     assert updated.password_salt == "new-salt"
-    assert updated.password_updated_at == "2026-07-02T10:00:00+00:00"
+    assert updated.password_updated_at == 1_782_986_400_000
     assert updated.must_change_password is True
     assert store.get_session(raw_session_id) is None
 
@@ -690,8 +686,8 @@ def test_touch_session_updates_last_seen_and_optionally_extends_expiry(
     assert touched.id_hash != raw_session_id
     assert touched.user_id == session.user_id
     assert touched.created_at == session.created_at
-    assert touched.last_seen_at == touched_at.isoformat()
-    assert touched.expires_at == "2026-07-02T10:05:30+00:00"
+    assert touched.last_seen_at == int(touched_at.timestamp() * 1000)
+    assert touched.expires_at == int(datetime(2026, 7, 2, 10, 5, 30, tzinfo=timezone.utc).timestamp() * 1000)
     assert _parse_timestamp(touched.last_seen_at) > _parse_timestamp(session.last_seen_at)
     assert _parse_timestamp(touched.expires_at) > _parse_timestamp(session.expires_at)
 
@@ -990,7 +986,13 @@ def test_delete_user_transactionally_protects_last_active_admin(tmp_path):
     assert refreshed.disabled is False
 
 
-@pytest.mark.parametrize("tenant_updates", [{"disabled": True}, {"archived": True}])
+@pytest.mark.parametrize(
+    "tenant_updates",
+    [
+        {"disabled": True},
+        {"expires_at": "2000-01-01T00:00:00+00:00"},
+    ],
+)
 def test_update_user_allows_last_admin_cleanup_when_tenant_is_unavailable(tmp_path, tenant_updates):
     store = UserStore(tmp_path / "auth.db")
     _create_user(
@@ -1017,7 +1019,13 @@ def test_update_user_allows_last_admin_cleanup_when_tenant_is_unavailable(tmp_pa
     assert refreshed.role == "viewer"
 
 
-@pytest.mark.parametrize("tenant_updates", [{"disabled": True}, {"archived": True}])
+@pytest.mark.parametrize(
+    "tenant_updates",
+    [
+        {"disabled": True},
+        {"expires_at": "2000-01-01T00:00:00+00:00"},
+    ],
+)
 def test_delete_user_allows_last_admin_cleanup_when_tenant_is_unavailable(tmp_path, tenant_updates):
     store = UserStore(tmp_path / "auth.db")
     _create_user(
@@ -1044,7 +1052,7 @@ def test_delete_user_allows_last_admin_cleanup_when_tenant_is_unavailable(tmp_pa
     assert refreshed.disabled is True
 
 
-def test_archive_tenant_lifecycle_create_update_and_list(tmp_path):
+def test_tenant_lifecycle_create_update_and_list(tmp_path):
     store = UserStore(tmp_path / "auth.db")
 
     created = store.create_tenant(" tenant-a ", display_name=" Tenant A ")
@@ -1053,6 +1061,7 @@ def test_archive_tenant_lifecycle_create_update_and_list(tmp_path):
     assert created.display_name == "Tenant A"
     assert created.disabled is False
     assert created.archived is False
+    assert created.expires_at is None
     assert store.get_tenant("tenant-a") == created
     assert store.list_tenants() == [created]
 
@@ -1060,15 +1069,15 @@ def test_archive_tenant_lifecycle_create_update_and_list(tmp_path):
         "tenant-a",
         display_name="Tenant Alpha",
         disabled=True,
-        archived=True,
+        expires_at="2030-01-01T00:00:00+00:00",
     )
 
     assert updated.tenant_id == "tenant-a"
     assert updated.display_name == "Tenant Alpha"
     assert updated.disabled is True
-    assert updated.archived is True
+    assert updated.expires_at == 1_893_456_000_000
     assert store.get_tenant(" tenant-a ") == updated
-    assert store.list_tenants() == []
+    assert store.list_tenants() == [updated]
     assert store.list_tenants(include_archived=True) == [updated]
 
     with pytest.raises(ValueError, match="display_name"):
@@ -1079,7 +1088,7 @@ def test_archive_tenant_lifecycle_create_update_and_list(tmp_path):
         store.create_tenant("../escape", display_name="Nope")
     with pytest.raises(ValueError, match="disabled"):
         store.update_tenant("tenant-a", disabled=2)
-    with pytest.raises(ValueError, match="archived"):
+    with pytest.raises(ValueError, match="unsupported tenant field: archived"):
         store.update_tenant("tenant-a", archived=-1)
     with pytest.raises(ValueError, match="no fields to update"):
         store.update_tenant("tenant-a")
@@ -1087,15 +1096,52 @@ def test_archive_tenant_lifecycle_create_update_and_list(tmp_path):
         store.update_tenant("missing-tenant", display_name="Missing")
 
 
-def test_list_tenants_sorts_by_tenant_id_and_hides_archived_by_default(tmp_path):
+def test_create_tenant_with_generated_id_retries_after_integrity_conflict(monkeypatch, tmp_path):
+    store = UserStore(tmp_path / "auth.db")
+    original_insert = UserStore._insert_tenant_row
+    calls: list[str] = []
+
+    def _flaky_insert(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        tenant_id: str,
+        display_name: str,
+        expires_at: int | None,
+        now: int,
+        tenant_row_id: str,
+    ):
+        calls.append(tenant_id)
+        if tenant_id == "acme-capital" and calls.count("acme-capital") == 1:
+            raise sqlite3.IntegrityError("simulated duplicate")
+        return original_insert(
+            self,
+            conn,
+            tenant_id=tenant_id,
+            display_name=display_name,
+            expires_at=expires_at,
+            now=now,
+            tenant_row_id=tenant_row_id,
+        )
+
+    monkeypatch.setattr(UserStore, "_insert_tenant_row", _flaky_insert)
+
+    created = store.create_tenant_with_generated_id(display_name="Acme Capital")
+
+    assert created.tenant_id == "acme-capital-2"
+    assert calls == ["acme-capital", "acme-capital-2"]
+
+
+def test_list_tenants_sorts_by_tenant_id(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     store.create_tenant("tenant-b", display_name="Tenant B")
     store.create_tenant("tenant-a", display_name="Tenant A")
     store.create_tenant("tenant-c", display_name="Tenant C")
-    store.update_tenant("tenant-b", archived=True)
+    store.update_tenant("tenant-b", disabled=True)
 
     assert [tenant.tenant_id for tenant in store.list_tenants()] == [
         "tenant-a",
+        "tenant-b",
         "tenant-c",
     ]
     assert [tenant.tenant_id for tenant in store.list_tenants(include_archived=True)] == [
@@ -1105,25 +1151,12 @@ def test_list_tenants_sorts_by_tenant_id_and_hides_archived_by_default(tmp_path)
     ]
 
 
-def test_update_tenant_transactionally_rejects_non_unarchive_writes_for_archived_tenant(tmp_path):
+def test_update_tenant_rejects_archived_field_updates(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     store.create_tenant("tenant-a", display_name="Tenant A")
-    store.update_tenant("tenant-a", archived=True)
 
-    with pytest.raises(ValueError, match="Archived tenants are read-only"):
-        store.update_tenant("tenant-a", disabled=True)
-
-    with pytest.raises(ValueError, match="Archived tenants are read-only"):
-        store.update_tenant("tenant-a", display_name="Tenant Alpha")
-
-    archived = store.get_tenant("tenant-a")
-    assert archived is not None
-    assert archived.display_name == "Tenant A"
-    assert archived.disabled is False
-    assert archived.archived is True
-
-    unarchived = store.update_tenant("tenant-a", archived=False)
-    assert unarchived.archived is False
+    with pytest.raises(ValueError, match="unsupported tenant field: archived"):
+        store.update_tenant("tenant-a", archived=True)
 
 
 def test_update_tenant_transactionally_protects_last_login_capable_admin_tenant(tmp_path):
@@ -1146,8 +1179,8 @@ def test_update_tenant_transactionally_protects_last_login_capable_admin_tenant(
     )
     store.update_tenant("tenant-a", disabled=True)
 
-    with pytest.raises(ValueError, match="Cannot disable or archive the last tenant with a login-capable admin"):
-        store.update_tenant("tenant-b", archived=True)
+    with pytest.raises(ValueError, match="Cannot disable or expire the last tenant with a login-capable admin"):
+        store.update_tenant("tenant-b", disabled=True)
 
     tenant_b = store.get_tenant("tenant-b")
     assert tenant_b is not None
@@ -1337,7 +1370,7 @@ def test_bootstrap_admin_from_env_validates_password_policy(monkeypatch, tmp_pat
     ("tenant_update", "expected_reason"),
     [
         ({"disabled": True}, "tenant_disabled"),
-        ({"archived": True}, "tenant_archived"),
+        ({"expires_at": "2000-01-01T00:00:00+00:00"}, "tenant_expired"),
     ],
 )
 def test_bootstrap_admin_from_env_rejects_unavailable_existing_tenants(

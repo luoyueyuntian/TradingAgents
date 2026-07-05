@@ -35,7 +35,7 @@ function withApiStatus(error: Error, response: Response): ApiRequestError {
 }
 
 function isTenantUnavailableError(error: ApiRequestError): boolean {
-  return error.status === 403 && /tenant is (disabled|archived)/i.test(error.message);
+  return error.status === 403 && /tenant (is disabled|has expired)/i.test(error.message);
 }
 
 function isCrossTenantAdminRequest(path: string): boolean {

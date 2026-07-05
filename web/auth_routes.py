@@ -36,7 +36,7 @@ from .schemas import (
     PasswordResetConfirm,
     PasswordResetRequest,
 )
-from .user_store import PASSWORD_RESET_MAX_ATTEMPTS, UserRecord, UserStore
+from .user_store import PASSWORD_RESET_MAX_ATTEMPTS, UserRecord, UserStore, tenant_is_expired
 
 SESSION_COOKIE_NAME = "tradingagents_session"
 SESSION_TTL_SECONDS = 43_200
@@ -67,8 +67,8 @@ def _ensure_tenant_allows_access(store: UserStore, tenant_id: str) -> None:
         raise HTTPException(status_code=403, detail="Tenant not found")
     if tenant.disabled:
         raise HTTPException(status_code=403, detail="Tenant is disabled")
-    if tenant.archived:
-        raise HTTPException(status_code=403, detail="Tenant is archived")
+    if tenant_is_expired(tenant):
+        raise HTTPException(status_code=403, detail="Tenant has expired")
 
 
 def _password_reset_available() -> bool:

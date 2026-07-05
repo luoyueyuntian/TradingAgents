@@ -156,7 +156,7 @@ function isTenantUnavailableSessionError(error: unknown): error is ApiRequestErr
   if (requestError.status !== 403) {
     return false;
   }
-  return /tenant is (disabled|archived)/i.test(error.message);
+  return /tenant (is disabled|has expired)/i.test(error.message);
 }
 
 async function withLoading<T>(operation: () => Promise<T>): Promise<T> {

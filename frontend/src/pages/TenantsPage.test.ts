@@ -3,8 +3,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import TenantsPage from './TenantsPage.vue';
 
-const { formatDateTime } = vi.hoisted(() => ({
+const { formatDateTime, formatDateTimeInputValue } = vi.hoisted(() => ({
   formatDateTime: vi.fn((value: unknown) => `LOCAL:${String(value)}`),
+  formatDateTimeInputValue: vi.fn((value: unknown) => {
+    if (!value) {
+      return '';
+    }
+    const date = new Date(Number(value));
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }),
 }));
 
 const { apiGet, apiPost, apiPatch } = vi.hoisted(() => ({
@@ -30,14 +42,16 @@ vi.mock('../utils/format', async () => {
   return {
     ...actual,
     formatDateTime,
+    formatDateTimeInputValue,
   };
 });
 
 const ButtonStub = {
-  props: ['label', 'disabled', 'loading', 'type', 'icon', 'severity', 'outlined', 'text'],
+  props: ['label', 'disabled', 'loading', 'type'],
   emits: ['click'],
   template: `
     <button
+      v-bind="$attrs"
       :type="type || 'button'"
       :disabled="disabled"
       @click="$emit('click', $event)"
@@ -52,6 +66,7 @@ const InputTextStub = {
   emits: ['update:modelValue'],
   template: `
     <input
+      v-bind="$attrs"
       :type="type || 'text'"
       :value="modelValue"
       :placeholder="placeholder"
@@ -67,6 +82,7 @@ function mountPage() {
       stubs: {
         Button: ButtonStub,
         Card: { template: '<div><slot name="title" /><slot name="content" /></div>' },
+        Dialog: { props: ['visible'], template: '<div v-if="visible"><slot /></div>' },
         InputText: InputTextStub,
         Message: { template: '<div><slot /></div>' },
         PageHeader: { template: '<div><slot name="actions" /></div>' },
@@ -82,6 +98,7 @@ describe('TenantsPage', () => {
     apiPatch.mockReset();
     push.mockReset();
     formatDateTime.mockClear();
+    formatDateTimeInputValue.mockClear();
   });
 
   it('loads the tenant list on mount', async () => {
@@ -92,11 +109,12 @@ describe('TenantsPage', () => {
           tenant_id: 'tenant-a',
           display_name: 'Tenant A',
           disabled: false,
-          archived: false,
+          expires_at: null,
+          status: 'active',
           user_count: 4,
           active_admin_count: 2,
-          created_at: '2026-07-04T08:00:00Z',
-          updated_at: '2026-07-04T09:00:00Z',
+          created_at: 1_783_353_600_000,
+          updated_at: 1_783_357_200_000,
         },
       ],
     });
@@ -107,71 +125,30 @@ describe('TenantsPage', () => {
     expect(apiGet).toHaveBeenCalledWith('/api/admin/tenants');
     expect(wrapper.text()).toContain('Tenant A');
     expect(wrapper.text()).toContain('tenant-a');
-    expect(wrapper.text()).toContain('LOCAL:2026-07-04T08:00:00Z');
+    expect(wrapper.text()).toContain('LOCAL:1783353600000');
   });
 
-  it('only shows archived tenants after enabling the archived filter', async () => {
-    apiGet.mockImplementation((path: string) => {
-      if (path === '/api/admin/tenants?include_archived=true') {
-        return Promise.resolve({
-          tenants: [
-            {
-              id: 'tenant-row-1',
-              tenant_id: 'tenant-a',
-              display_name: 'Tenant A',
-              disabled: false,
-              archived: false,
-              user_count: 4,
-              active_admin_count: 2,
-              created_at: '2026-07-04T08:00:00Z',
-              updated_at: '2026-07-04T09:00:00Z',
-            },
-            {
-              id: 'tenant-row-2',
-              tenant_id: 'tenant-b',
-              display_name: 'Tenant B',
-              disabled: false,
-              archived: true,
-              user_count: 1,
-              active_admin_count: 0,
-              created_at: '2026-07-04T10:00:00Z',
-              updated_at: '2026-07-04T11:00:00Z',
-            },
-          ],
-        });
-      }
-      return Promise.resolve({
-        tenants: [
-          {
-            id: 'tenant-row-1',
-            tenant_id: 'tenant-a',
-            display_name: 'Tenant A',
-            disabled: false,
-            archived: false,
-            user_count: 4,
-            active_admin_count: 2,
-            created_at: '2026-07-04T08:00:00Z',
-            updated_at: '2026-07-04T09:00:00Z',
-          },
-        ],
-      });
-    });
+  it('sends filtered search params from the filter bar', async () => {
+    apiGet.mockResolvedValue({ tenants: [] });
 
     const wrapper = mountPage();
     await flushPromises();
 
-    expect(wrapper.text()).toContain('Tenant A');
-    expect(wrapper.text()).not.toContain('Tenant B');
+    await wrapper.get('[data-testid="tenant-filter-name"]').setValue('gamma');
+    await wrapper.get('[data-testid="tenant-filter-status"]').setValue('expired');
+    await wrapper.get('[data-testid="tenant-filter-created-from"]').setValue('2026-07-08');
+    await wrapper.get('[data-testid="tenant-filter-created-to"]').setValue('2026-07-11');
+    await wrapper.get('[data-testid="tenant-filter-submit"]').trigger('click');
 
-    await wrapper.get('[data-testid="show-archived-toggle"]').setValue(true);
-    await flushPromises();
-
-    expect(apiGet).toHaveBeenNthCalledWith(1, '/api/admin/tenants');
-    expect(apiGet).toHaveBeenNthCalledWith(2, '/api/admin/tenants?include_archived=true');
-    expect(wrapper.text()).toContain('Tenant B');
+    const createdFrom = new Date('2026-07-08T00:00').getTime();
+    const createdTo = new Date('2026-07-11T23:59:59.999').getTime();
+    expect(apiGet).toHaveBeenNthCalledWith(
+      2,
+      `/api/admin/tenants?name=gamma&status=expired&created_from=${createdFrom}&created_to=${createdTo}`,
+    );
   });
 
-  it('posts the create-tenant payload with initial admin fields', async () => {
+  it('posts the create-tenant payload and opens the created tenant detail route', async () => {
     apiGet.mockResolvedValue({ tenants: [] });
     apiPost.mockResolvedValue({
       tenant: {
@@ -179,39 +156,31 @@ describe('TenantsPage', () => {
         tenant_id: 'tenant-b',
         display_name: 'Tenant B',
         disabled: false,
-        archived: false,
-        user_count: 1,
-        active_admin_count: 1,
-        created_at: '2026-07-04T10:00:00Z',
-        updated_at: '2026-07-04T10:00:00Z',
+        expires_at: 1_783_612_800_000,
+        status: 'active',
+        user_count: 0,
+        active_admin_count: 0,
+        created_at: 1_783_353_600_000,
+        updated_at: 1_783_353_600_000,
       },
     });
 
     const wrapper = mountPage();
     await flushPromises();
 
-    const inputs = wrapper.findAll('input');
-    await inputs[0]?.setValue('tenant-b');
-    await inputs[1]?.setValue('Tenant B');
-    await inputs[2]?.setValue('bootstrap-admin');
-    await inputs[3]?.setValue('admin@example.com');
-    await inputs[4]?.setValue('Bootstrap Admin');
-    await inputs[5]?.setValue('TempPass123!');
-    await wrapper.get('[data-testid="create-tenant-submit"]').trigger('click');
+    await wrapper.get('[data-testid="open-create-tenant"]').trigger('click');
+    await wrapper.get('[data-testid="tenant-form-display-name"]').setValue('Tenant B');
+    await wrapper.get('[data-testid="tenant-form-expires-at"]').setValue('2026-07-07T00:00');
+    await wrapper.get('[data-testid="tenant-dialog-submit"]').trigger('click');
 
     expect(apiPost).toHaveBeenCalledWith('/api/admin/tenants', {
-      tenant_id: 'tenant-b',
       display_name: 'Tenant B',
-      admin: {
-        username: 'bootstrap-admin',
-        email: 'admin@example.com',
-        display_name: 'Bootstrap Admin',
-        password: 'TempPass123!',
-      },
+      expires_at: new Date('2026-07-07T00:00').getTime(),
     });
+    expect(push).toHaveBeenCalledWith({ name: 'tenant-detail', params: { tenantId: 'tenant-b' } });
   });
 
-  it('opens the tenant detail route for the selected tenant', async () => {
+  it('patches the edit payload from the shared tenant dialog', async () => {
     apiGet.mockResolvedValue({
       tenants: [
         {
@@ -219,24 +188,45 @@ describe('TenantsPage', () => {
           tenant_id: 'tenant-a',
           display_name: 'Tenant A',
           disabled: false,
-          archived: false,
+          expires_at: 1_783_612_800_000,
+          status: 'active',
           user_count: 4,
           active_admin_count: 2,
-          created_at: '2026-07-04T08:00:00Z',
-          updated_at: '2026-07-04T09:00:00Z',
+          created_at: 1_783_353_600_000,
+          updated_at: 1_783_357_200_000,
         },
       ],
     });
+    apiPatch.mockResolvedValue({
+      tenant: {
+        id: 'tenant-row-1',
+        tenant_id: 'tenant-a',
+        display_name: 'Tenant A Updated',
+        disabled: false,
+        expires_at: 1_783_699_200_000,
+        status: 'active',
+        user_count: 4,
+        active_admin_count: 2,
+        created_at: 1_783_353_600_000,
+        updated_at: 1_783_357_200_000,
+      },
+    });
 
     const wrapper = mountPage();
     await flushPromises();
 
-    await wrapper.get('[data-testid="open-tenant-tenant-a"]').trigger('click');
+    await wrapper.get('[data-testid="edit-tenant-tenant-a"]').trigger('click');
+    await wrapper.get('[data-testid="tenant-form-display-name"]').setValue('Tenant A Updated');
+    await wrapper.get('[data-testid="tenant-form-expires-at"]').setValue('2026-07-08T00:00');
+    await wrapper.get('[data-testid="tenant-dialog-submit"]').trigger('click');
 
-    expect(push).toHaveBeenCalledWith({ name: 'tenant-detail', params: { tenantId: 'tenant-a' } });
+    expect(apiPatch).toHaveBeenCalledWith('/api/admin/tenants/tenant-a', {
+      display_name: 'Tenant A Updated',
+      expires_at: new Date('2026-07-08T00:00').getTime(),
+    });
   });
 
-  it('sends patch requests for disable, enable, and archive actions', async () => {
+  it('allows clearing an existing tenant expiry from the edit dialog', async () => {
     apiGet.mockResolvedValue({
       tenants: [
         {
@@ -244,22 +234,12 @@ describe('TenantsPage', () => {
           tenant_id: 'tenant-a',
           display_name: 'Tenant A',
           disabled: false,
-          archived: false,
+          expires_at: 1_783_612_800_000,
+          status: 'active',
           user_count: 4,
           active_admin_count: 2,
-          created_at: '2026-07-04T08:00:00Z',
-          updated_at: '2026-07-04T09:00:00Z',
-        },
-        {
-          id: 'tenant-row-2',
-          tenant_id: 'tenant-b',
-          display_name: 'Tenant B',
-          disabled: true,
-          archived: false,
-          user_count: 3,
-          active_admin_count: 1,
-          created_at: '2026-07-04T08:00:00Z',
-          updated_at: '2026-07-04T09:00:00Z',
+          created_at: 1_783_353_600_000,
+          updated_at: 1_783_357_200_000,
         },
       ],
     });
@@ -268,111 +248,30 @@ describe('TenantsPage', () => {
         id: 'tenant-row-1',
         tenant_id: 'tenant-a',
         display_name: 'Tenant A',
-        disabled: true,
-        archived: false,
+        disabled: false,
+        expires_at: null,
+        status: 'active',
         user_count: 4,
         active_admin_count: 2,
-        created_at: '2026-07-04T08:00:00Z',
-        updated_at: '2026-07-04T09:30:00Z',
+        created_at: 1_783_353_600_000,
+        updated_at: 1_783_357_200_000,
       },
     });
 
     const wrapper = mountPage();
     await flushPromises();
 
-    const toggleButtons = wrapper.findAll('[data-testid^="toggle-tenant-"]');
+    await wrapper.get('[data-testid="edit-tenant-tenant-a"]').trigger('click');
+    await wrapper.get('[data-testid="tenant-form-expires-at"]').setValue('');
+    await wrapper.get('[data-testid="tenant-dialog-submit"]').trigger('click');
 
-    await toggleButtons[0]!.trigger('click');
-    await flushPromises();
-    await wrapper.findAll('[data-testid^="toggle-tenant-"]')[1]!.trigger('click');
-    await flushPromises();
-    await wrapper.get('[data-testid="archive-tenant-tenant-a"]').trigger('click');
-    await flushPromises();
-
-    expect(apiPatch).toHaveBeenNthCalledWith(1, '/api/admin/tenants/tenant-a', { disabled: true });
-    expect(apiPatch).toHaveBeenNthCalledWith(2, '/api/admin/tenants/tenant-b', { disabled: false });
-    expect(apiPatch).toHaveBeenNthCalledWith(3, '/api/admin/tenants/tenant-a', { archived: true });
+    expect(apiPatch).toHaveBeenCalledWith('/api/admin/tenants/tenant-a', {
+      display_name: 'Tenant A',
+      expires_at: null,
+    });
   });
 
-  it('sends archived false when unarchiving from the directory', async () => {
-    apiGet.mockImplementation((path: string) => {
-      if (path === '/api/admin/tenants?include_archived=true') {
-        return Promise.resolve({
-          tenants: [
-            {
-              id: 'tenant-row-2',
-              tenant_id: 'tenant-b',
-              display_name: 'Tenant B',
-              disabled: false,
-              archived: true,
-              user_count: 1,
-              active_admin_count: 0,
-              created_at: '2026-07-04T10:00:00Z',
-              updated_at: '2026-07-04T11:00:00Z',
-            },
-          ],
-        });
-      }
-      return Promise.resolve({ tenants: [] });
-    });
-    apiPatch.mockResolvedValue({
-      tenant: {
-        id: 'tenant-row-2',
-        tenant_id: 'tenant-b',
-        display_name: 'Tenant B',
-        disabled: false,
-        archived: false,
-        user_count: 1,
-        active_admin_count: 1,
-        created_at: '2026-07-04T10:00:00Z',
-        updated_at: '2026-07-04T11:30:00Z',
-      },
-    });
-
-    const wrapper = mountPage();
-    await flushPromises();
-
-    await wrapper.get('[data-testid="show-archived-toggle"]').setValue(true);
-    await flushPromises();
-    await wrapper.get('[data-testid="archive-tenant-tenant-b"]').trigger('click');
-    await flushPromises();
-
-    expect(apiPatch).toHaveBeenCalledWith('/api/admin/tenants/tenant-b', { archived: false });
-  });
-
-  it('does not offer disable or enable actions for archived tenants in the directory', async () => {
-    apiGet.mockImplementation((path: string) => {
-      if (path === '/api/admin/tenants?include_archived=true') {
-        return Promise.resolve({
-          tenants: [
-            {
-              id: 'tenant-row-2',
-              tenant_id: 'tenant-b',
-              display_name: 'Tenant B',
-              disabled: false,
-              archived: true,
-              user_count: 1,
-              active_admin_count: 0,
-              created_at: '2026-07-04T10:00:00Z',
-              updated_at: '2026-07-04T11:00:00Z',
-            },
-          ],
-        });
-      }
-      return Promise.resolve({ tenants: [] });
-    });
-
-    const wrapper = mountPage();
-    await flushPromises();
-
-    await wrapper.get('[data-testid="show-archived-toggle"]').setValue(true);
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="toggle-tenant-tenant-b"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="archive-tenant-tenant-b"]').exists()).toBe(true);
-  });
-
-  it('renders a row-level patch error when a tenant update fails', async () => {
+  it('sends the selected active tenant ids to the batch-disable endpoint', async () => {
     apiGet.mockResolvedValue({
       tenants: [
         {
@@ -380,22 +279,41 @@ describe('TenantsPage', () => {
           tenant_id: 'tenant-a',
           display_name: 'Tenant A',
           disabled: false,
-          archived: false,
+          expires_at: null,
+          status: 'active',
           user_count: 4,
           active_admin_count: 2,
-          created_at: '2026-07-04T08:00:00Z',
-          updated_at: '2026-07-04T09:00:00Z',
+          created_at: 1_783_353_600_000,
+          updated_at: 1_783_357_200_000,
+        },
+        {
+          id: 'tenant-row-2',
+          tenant_id: 'tenant-b',
+          display_name: 'Tenant B',
+          disabled: true,
+          expires_at: null,
+          status: 'disabled',
+          user_count: 1,
+          active_admin_count: 1,
+          created_at: 1_783_353_600_000,
+          updated_at: 1_783_357_200_000,
         },
       ],
     });
-    apiPatch.mockRejectedValue(new Error('cannot disable tenant-a'));
+    apiPost.mockResolvedValue({
+      updated_count: 1,
+      skipped_count: 0,
+      skipped_tenant_ids: [],
+    });
 
     const wrapper = mountPage();
     await flushPromises();
 
-    await wrapper.get('[data-testid="toggle-tenant-tenant-a"]').trigger('click');
-    await flushPromises();
+    await wrapper.get('[data-testid="tenant-select-tenant-a"]').setValue(true);
+    await wrapper.get('[data-testid="batch-disable-tenants"]').trigger('click');
 
-    expect(wrapper.text()).toContain('cannot disable tenant-a');
+    expect(apiPost).toHaveBeenCalledWith('/api/admin/tenants/batch-disable', {
+      tenant_ids: ['tenant-a'],
+    });
   });
 });

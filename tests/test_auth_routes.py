@@ -149,7 +149,10 @@ def test_logout_clears_session_cookie(monkeypatch, tmp_path):
     ("tenant_id", "tenant_update"),
     [
         ("tenant-disabled", {"disabled": True}),
-        ("tenant-archived", {"archived": True}),
+        (
+            "tenant-expired",
+            {"expires_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()},
+        ),
     ],
 )
 def test_logout_still_clears_session_when_tenant_becomes_unavailable(
@@ -259,11 +262,14 @@ def test_login_hides_disabled_tenant_state_for_wrong_password(monkeypatch, tmp_p
     assert response.json()["detail"] == "Invalid credentials"
 
 
-def test_login_hides_archived_tenant_state_for_wrong_password(monkeypatch, tmp_path):
+def test_login_hides_expired_tenant_state_for_wrong_password(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
-    store.create_tenant("tenant-archived", display_name="Tenant Archived")
-    _create_user(store, tenant_id="tenant-archived")
-    store.update_tenant("tenant-archived", archived=True)
+    store.create_tenant("tenant-expired", display_name="Tenant Expired")
+    _create_user(store, tenant_id="tenant-expired")
+    store.update_tenant(
+        "tenant-expired",
+        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+    )
 
     response = client.post(
         "/api/auth/login",
@@ -274,11 +280,14 @@ def test_login_hides_archived_tenant_state_for_wrong_password(monkeypatch, tmp_p
     assert response.json()["detail"] == "Invalid credentials"
 
 
-def test_login_rejects_archived_tenant_with_clear_403(monkeypatch, tmp_path):
+def test_login_rejects_expired_tenant_with_clear_403(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
-    store.create_tenant("tenant-archived", display_name="Tenant Archived")
-    _create_user(store, tenant_id="tenant-archived")
-    store.update_tenant("tenant-archived", archived=True)
+    store.create_tenant("tenant-expired", display_name="Tenant Expired")
+    _create_user(store, tenant_id="tenant-expired")
+    store.update_tenant(
+        "tenant-expired",
+        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+    )
 
     response = client.post(
         "/api/auth/login",
@@ -286,7 +295,7 @@ def test_login_rejects_archived_tenant_with_clear_403(monkeypatch, tmp_path):
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Tenant is archived"
+    assert response.json()["detail"] == "Tenant has expired"
 
 
 def test_me_rejects_missing_or_expired_session(monkeypatch, tmp_path):
@@ -539,7 +548,10 @@ def test_password_reset_request_ignores_username_shadowing_email_value(
     ("tenant_id", "tenant_update"),
     [
         ("tenant-disabled", {"disabled": True}),
-        ("tenant-archived", {"archived": True}),
+        (
+            "tenant-expired",
+            {"expires_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()},
+        ),
     ],
 )
 def test_password_reset_request_skips_unavailable_tenants_without_state_changes(
@@ -651,7 +663,10 @@ def test_password_reset_confirm_does_not_distinguish_fake_and_limited_reset_ids(
     ("tenant_id", "tenant_update"),
     [
         ("tenant-disabled", {"disabled": True}),
-        ("tenant-archived", {"archived": True}),
+        (
+            "tenant-expired",
+            {"expires_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()},
+        ),
     ],
 )
 def test_password_reset_confirm_rejects_unavailable_tenant_without_updating_password(
@@ -843,7 +858,7 @@ def test_admin_can_update_role_and_expiry_within_tenant(monkeypatch, tmp_path):
     payload = response.json()["user"]
     assert payload["role"] == "analyst"
     assert payload["display_name"] == "Target Person"
-    assert payload["expires_at"] == "2030-01-02T03:04:05+00:00"
+    assert payload["expires_at"] == 1_893_553_445_000
     assert missing.status_code == 404
 
 
