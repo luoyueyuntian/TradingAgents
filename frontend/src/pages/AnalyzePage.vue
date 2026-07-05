@@ -236,6 +236,17 @@
         </template>
       </Card>
     </div>
+
+    <RunHistoryConfirmDialog
+      :visible="historyDialogVisible"
+      :mode="historyDialogMode"
+      :history-page="historyDialogPage"
+      :loading="historyDialogLoading"
+      @update:visible="historyDialogVisible = $event"
+      @confirm="handleHistoryDialogConfirm"
+      @page-change="handleHistoryDialogPageChange"
+      @row-open="handleHistoryDialogRowOpen"
+    />
   </section>
 </template>
 
@@ -253,6 +264,7 @@ import { useRouter } from 'vue-router';
 import MetricGrid from '../components/MetricGrid.vue';
 import PageHeader from '../components/PageHeader.vue';
 import ReportMarkdown from '../components/ReportMarkdown.vue';
+import RunHistoryConfirmDialog from '../components/runs/RunHistoryConfirmDialog.vue';
 import { useI18n } from '../i18n';
 import { apiGet, apiPost } from '../services/api';
 import { useSession } from '../stores/session';
@@ -273,6 +285,11 @@ import {
   nextModelValueFromSelection,
   normalizeModelValueForProvider,
 } from './providerModelSelection';
+import {
+  buildTickerHistoryPath,
+  isWithinRecentLocalAnalysisWindow,
+  type TickerRunHistoryPage,
+} from './tickerHistory';
 
 const router = useRouter();
 const session = useSession();
@@ -288,6 +305,21 @@ const submitting = ref(false);
 const stockLoading = ref(false);
 const liveState = ref<LiveRunViewState>(createLiveRunViewState());
 const lastStockQuery = ref('');
+const historyDialogVisible = ref(false);
+const historyDialogMode = ref<'active' | 'recent-history'>('recent-history');
+const historyDialogLoading = ref(false);
+const historyDialogPage = ref<TickerRunHistoryPage>({
+  ticker: '',
+  company_name: null,
+  latest_created_at: null,
+  has_active_run: false,
+  active_run_id: null,
+  active_run_status: null,
+  page: 1,
+  page_size: 10,
+  total_count: 0,
+  items: [],
+});
 const { t } = useI18n();
 
 const today = formatAnalysisDate(new Date());
@@ -531,6 +563,39 @@ function buildRequest() {
   return buildAnalysisRequestPayload(form);
 }
 
+async function createRunFromForm() {
+  currentRun.value = await apiPost<JsonRecord>('/api/runs', buildRequest(), session.apiContext.value);
+  liveState.value = {
+    ...createLiveRunViewState(),
+    status: String(currentRun.value.status || 'queued'),
+    logLines: [t('analysis.runCreated', { runId: String(currentRun.value.run_id) })],
+  };
+  await router.push({
+    name: 'runs',
+    query: {
+      market: form.stock_market,
+      ticker: form.ticker,
+    },
+  });
+}
+
+async function loadTickerHistoryPage(page = 1) {
+  historyDialogLoading.value = true;
+  try {
+    historyDialogPage.value = await apiGet<TickerRunHistoryPage>(
+      buildTickerHistoryPath({ ticker: form.ticker, page, pageSize: 10 }),
+      session.apiContext.value,
+    );
+  } finally {
+    historyDialogLoading.value = false;
+  }
+}
+
+function openHistoryDialog(mode: 'active' | 'recent-history') {
+  historyDialogMode.value = mode;
+  historyDialogVisible.value = true;
+}
+
 async function startRun() {
   error.value = '';
   notice.value = '';
@@ -540,24 +605,69 @@ async function startRun() {
   }
   submitting.value = true;
   try {
-    currentRun.value = await apiPost<JsonRecord>('/api/runs', buildRequest(), session.apiContext.value);
-    liveState.value = {
-      ...createLiveRunViewState(),
-      status: String(currentRun.value.status || 'queued'),
-      logLines: [t('analysis.runCreated', { runId: String(currentRun.value.run_id) })],
-    };
-    await router.push({
-      name: 'runs',
-      query: {
-        market: form.stock_market,
-        ticker: form.ticker,
-      },
-    });
+    await loadTickerHistoryPage(1);
+    if (historyDialogPage.value.has_active_run) {
+      openHistoryDialog('active');
+      return;
+    }
+    const latestCreatedAt = historyDialogPage.value.latest_created_at
+      ?? historyDialogPage.value.items[0]?.created_at
+      ?? null;
+    if (isWithinRecentLocalAnalysisWindow(latestCreatedAt)) {
+      openHistoryDialog('recent-history');
+      return;
+    }
+    await createRunFromForm();
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('analysis.startError');
   } finally {
     submitting.value = false;
   }
+}
+
+async function handleHistoryDialogConfirm() {
+  if (historyDialogMode.value === 'active') {
+    const runId = String(
+      historyDialogPage.value.active_run_id
+      || historyDialogPage.value.items[0]?.run_id
+      || '',
+    ).trim();
+    if (!runId) {
+      historyDialogVisible.value = false;
+      return;
+    }
+    historyDialogVisible.value = false;
+    await router.push({ name: 'run-detail', params: { runId } });
+    return;
+  }
+
+  historyDialogVisible.value = false;
+  submitting.value = true;
+  try {
+    await createRunFromForm();
+  } catch (exc) {
+    error.value = exc instanceof Error ? exc.message : t('analysis.startError');
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function handleHistoryDialogPageChange(page: number) {
+  error.value = '';
+  try {
+    await loadTickerHistoryPage(page);
+  } catch (exc) {
+    error.value = exc instanceof Error ? exc.message : t('analysis.startError');
+  }
+}
+
+async function handleHistoryDialogRowOpen(run: Record<string, unknown>) {
+  const runId = String(run.run_id || '').trim();
+  if (!runId) {
+    return;
+  }
+  historyDialogVisible.value = false;
+  await router.push({ name: 'run-detail', params: { runId } });
 }
 
 async function cancelRun() {

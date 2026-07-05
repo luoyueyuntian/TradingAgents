@@ -300,6 +300,7 @@ class TradingAgentsGraph:
             updates.append({
                 "ticker": ticker,
                 "trade_date": entry["date"],
+                "run_id": entry.get("run_id") or "",
                 "raw_return": raw,
                 "alpha_return": alpha,
                 "holding_days": days,
@@ -397,6 +398,7 @@ class TradingAgentsGraph:
             ticker=company_name,
             trade_date=trade_date,
             final_trade_decision=decision,
+            run_id=str(self.config.get("runtime_run_id") or "").strip() or None,
         )
 
         # Clear checkpoint on successful completion to avoid stale state.
@@ -504,6 +506,7 @@ class TradingAgentsGraph:
                 ticker=company_name,
                 trade_date=trade_date,
                 final_trade_decision=decision,
+                run_id=str(self.config.get("runtime_run_id") or "").strip() or None,
             )
 
             # Clear checkpoint on successful completion to avoid stale state.

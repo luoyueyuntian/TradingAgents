@@ -32,6 +32,8 @@ class TradingMemoryLog:
         ticker: str,
         trade_date: str,
         final_trade_decision: str,
+        *,
+        run_id: str | None = None,
     ) -> None:
         """Append pending entry at end of propagate(). No LLM call."""
         if not self._log_path:
@@ -39,12 +41,17 @@ class TradingMemoryLog:
         # Idempotency guard: fast raw-text scan instead of full parse
         if self._log_path.exists():
             raw = self._log_path.read_text(encoding="utf-8")
-            for line in raw.splitlines():
-                if line.startswith(f"[{trade_date} | {ticker} |") and line.endswith("| pending]"):
+            if run_id:
+                if f"RUN_ID: {run_id}" in raw:
                     return
+            else:
+                for line in raw.splitlines():
+                    if line.startswith(f"[{trade_date} | {ticker} |") and line.endswith("| pending]"):
+                        return
         rating = parse_rating(final_trade_decision)
         tag = f"[{trade_date} | {ticker} | {rating} | pending]"
-        entry = f"{tag}\n\nDECISION:\n{final_trade_decision}{self._SEPARATOR}"
+        run_id_block = f"\nRUN_ID: {run_id}" if run_id else ""
+        entry = f"{tag}{run_id_block}\n\nDECISION:\n{final_trade_decision}{self._SEPARATOR}"
         with open(self._log_path, "a", encoding="utf-8") as f:
             f.write(entry)
 
@@ -104,6 +111,8 @@ class TradingMemoryLog:
         alpha_return: float,
         holding_days: int,
         reflection: str,
+        *,
+        run_id: str | None = None,
     ) -> None:
         """Replace pending tag and append REFLECTION section using atomic write.
 
@@ -131,11 +140,17 @@ class TradingMemoryLog:
 
             lines = stripped.splitlines()
             tag_line = lines[0].strip()
+            block_run_id = ""
+            for line in lines[1:]:
+                if line.startswith("RUN_ID:"):
+                    block_run_id = line.partition(":")[2].strip()
+                    break
 
             if (
                 not updated
                 and tag_line.startswith(pending_prefix)
                 and tag_line.endswith("| pending]")
+                and (run_id is None or block_run_id == run_id)
             ):
                 # Parse rating from the existing pending tag
                 fields = [f.strip() for f in tag_line[1:-1].split("|")]
@@ -173,8 +188,11 @@ class TradingMemoryLog:
         text = self._log_path.read_text(encoding="utf-8")
         blocks = text.split(self._SEPARATOR)
 
-        # Build lookup keyed by (trade_date, ticker) for O(1) dispatch
-        update_map = {(u["trade_date"], u["ticker"]): u for u in updates}
+        # Build lookup keyed by (trade_date, ticker, run_id) for O(1) dispatch.
+        update_map = {
+            (u["trade_date"], u["ticker"], u.get("run_id") or ""): u
+            for u in updates
+        }
 
         new_blocks = []
         for block in blocks:
@@ -185,11 +203,20 @@ class TradingMemoryLog:
 
             lines = stripped.splitlines()
             tag_line = lines[0].strip()
+            block_run_id = ""
+            for line in lines[1:]:
+                if line.startswith("RUN_ID:"):
+                    block_run_id = line.partition(":")[2].strip()
+                    break
 
             matched = False
-            for (trade_date, ticker), upd in list(update_map.items()):
+            for (trade_date, ticker, update_run_id), upd in list(update_map.items()):
                 pending_prefix = f"[{trade_date} | {ticker} |"
-                if tag_line.startswith(pending_prefix) and tag_line.endswith("| pending]"):
+                if (
+                    tag_line.startswith(pending_prefix)
+                    and tag_line.endswith("| pending]")
+                    and (not update_run_id or block_run_id == update_run_id)
+                ):
                     fields = [f.strip() for f in tag_line[1:-1].split("|")]
                     rating = fields[2]
                     raw_pct = f"{upd['raw_return']:+.1%}"
@@ -202,7 +229,7 @@ class TradingMemoryLog:
                     new_blocks.append(
                         f"{new_tag}\n\n{rest.lstrip()}\n\nREFLECTION:\n{upd['reflection']}"
                     )
-                    del update_map[(trade_date, ticker)]
+                    del update_map[(trade_date, ticker, update_run_id)]
                     matched = True
                     break
 
@@ -272,8 +299,13 @@ class TradingMemoryLog:
             "raw": fields[3] if fields[3] != "pending" else None,
             "alpha": fields[4] if len(fields) > 4 else None,
             "holding": fields[5] if len(fields) > 5 else None,
+            "run_id": "",
         }
         body = "\n".join(lines[1:]).strip()
+        for line in lines[1:]:
+            if line.startswith("RUN_ID:"):
+                entry["run_id"] = line.partition(":")[2].strip()
+                break
         decision_match = self._DECISION_RE.search(body)
         reflection_match = self._REFLECTION_RE.search(body)
         entry["decision"] = decision_match.group(1).strip() if decision_match else ""

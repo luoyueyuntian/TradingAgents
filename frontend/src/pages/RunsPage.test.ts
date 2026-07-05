@@ -90,7 +90,7 @@ function mountPage() {
       stubs: {
         Button: ButtonStub,
         Card: { template: '<div><slot name="title" /><slot name="content" /></div>' },
-        Column: { template: '<div><slot /></div>' },
+        Column: { props: ['field', 'header'], template: '<div data-testid="column-field">{{ field }} {{ header }}<slot /></div>' },
         DataTable: DataTableStub,
         InputText: InputTextStub,
         Message: { template: '<div><slot /></div>' },
@@ -134,7 +134,7 @@ describe('RunsPage', () => {
           run_count: 2,
           latest_created_at: '2026-07-04T09:00:00',
           recent_runs: [
-            { run_id: 'run-1', ticker: 'AAPL', date: '2026-07-04', status: 'completed', signal: 'Buy' },
+            { run_id: 'run-1', ticker: 'AAPL', date: '2026-07-04', status: 'completed', signal: 'Buy', llm_provider: 'openai' },
           ],
         },
       ],
@@ -147,6 +147,7 @@ describe('RunsPage', () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="runs-company-group-card"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('llm_provider');
 
     await wrapper.get('[data-testid="run-row"]').trigger('click');
 

@@ -189,6 +189,7 @@ from .schemas import (
     RunReviewHistorySummary,
     RunStatus,
     RunSummary,
+    TickerRunHistoryPage,
     SavedItemBulkAction,
     SavedItemBulkActionResult,
     SavedSearch,
@@ -1500,6 +1501,63 @@ def _build_run_summary(run, tenant_id: str | None = None) -> RunSummary:
         error=run.error,
         annotation=_get_run_annotation(run.run_id, tenant_id),
         review=_get_run_review(run.run_id, tenant_id),
+    )
+
+
+def _ticker_runs(ticker: str, tenant_id: str | None, runs: list | None = None) -> list:
+    normalized = _normalize_ticker_symbol(ticker)
+    candidate_runs = runs if runs is not None else list_runs(tenant_id)
+    matched_runs = [
+        run for run in candidate_runs
+        if str(getattr(run, "ticker", "") or "").strip().upper() == normalized
+    ]
+    matched_runs.sort(key=lambda run: _timestamp_sort_value(run.created_at), reverse=True)
+    return matched_runs
+
+
+def _find_latest_active_run_for_ticker(ticker: str, tenant_id: str | None, runs: list | None = None):
+    matched_runs = _ticker_runs(ticker, tenant_id, runs)
+    return next(
+        (
+            run for run in matched_runs
+            if str(getattr(run, "status", "") or "").strip().lower() in {"queued", "running"}
+        ),
+        None,
+    )
+
+
+def _build_ticker_run_history_page(
+    ticker: str,
+    tenant_id: str | None,
+    *,
+    page: int,
+    page_size: int,
+) -> TickerRunHistoryPage:
+    normalized = _normalize_ticker_symbol(ticker)
+    matched_runs = _ticker_runs(normalized, tenant_id)
+    latest = matched_runs[0] if matched_runs else None
+    active = _find_latest_active_run_for_ticker(normalized, tenant_id, matched_runs)
+    company_name = next(
+        (
+            str(getattr(run, "company_name", "") or "").strip()
+            for run in matched_runs
+            if str(getattr(run, "company_name", "") or "").strip()
+        ),
+        "",
+    )
+    start = (page - 1) * page_size
+    end = start + page_size
+    return TickerRunHistoryPage(
+        ticker=normalized,
+        company_name=company_name or None,
+        latest_created_at=getattr(latest, "created_at", None),
+        has_active_run=active is not None,
+        active_run_id=active.run_id if active is not None else None,
+        active_run_status=active.status if active is not None else None,
+        page=page,
+        page_size=page_size,
+        total_count=len(matched_runs),
+        items=[_build_run_summary(run, tenant_id) for run in matched_runs[start:end]],
     )
 
 
@@ -3475,6 +3533,17 @@ async def create_analysis_run(req: AnalysisRequest, request: Request):
     """Create and start a new analysis run."""
     loop = asyncio.get_running_loop()
     tenant_id = _request_tenant_id(request)
+    active_run = _find_latest_active_run_for_ticker(req.ticker, tenant_id)
+    if active_run is not None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "ticker_active_run_exists",
+                "message": f"{active_run.ticker} already has an active analysis run.",
+                "active_run_id": active_run.run_id,
+                "active_run_status": active_run.status,
+            },
+        )
     try:
         result = create_run(req, loop, tenant_id)
     except ValueError as exc:
@@ -3563,6 +3632,18 @@ async def get_runs(
         _build_run_summary(run, tenant_id)
         for run in runs
     ]
+
+
+@router.get("/api/runs/ticker-history", response_model=TickerRunHistoryPage)
+async def get_ticker_history(
+    request: Request,
+    ticker: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
+):
+    """Return paginated run history for one ticker, newest first."""
+    tenant_id = _request_tenant_id(request)
+    return _build_ticker_run_history_page(ticker, tenant_id, page=page, page_size=page_size)
 
 
 @router.get("/api/runs/company-groups", response_model=RunCompanyGroupPage)

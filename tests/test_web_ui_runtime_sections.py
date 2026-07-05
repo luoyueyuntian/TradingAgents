@@ -132,9 +132,9 @@ def test_vue_i18n_sources_include_english_and_chinese_copy():
 def test_page_components_keep_existing_backend_api_boundaries():
     page_expectations = {
         "DashboardPage.vue": ["/api/dashboard", "/api/briefing/daily", "/api/notifications"],
-        "AnalyzePage.vue": ["/api/providers", "/api/runs", "/cancel", "/api/stocks", "buildStockSearchPath"],
+        "AnalyzePage.vue": ["/api/providers", "/api/runs", "/api/runs/ticker-history", "/cancel", "/api/stocks", "buildStockSearchPath"],
         "RunsPage.vue": ["/api/runs/company-groups"],
-        "RunDetailPage.vue": ["/api/runs", "/artifacts", "/retry", "/terminal-output"],
+        "RunDetailPage.vue": ["/api/runs", "/artifacts", "/retry", "/cancel", "/terminal-output"],
         "PortfolioPage.vue": ["/api/watchlist", "/api/portfolio", "/api/alerts", "/api/screener", "/api/stock-groups", "PortfolioSubnav"],
         "PortfolioWatchlistPage.vue": ["/api/watchlist", "WatchlistCreateDialog", "PortfolioSubnav"],
         "PortfolioPositionsPage.vue": ["/api/portfolio", "PositionDialog", "PortfolioSubnav"],
@@ -150,6 +150,8 @@ def test_page_components_keep_existing_backend_api_boundaries():
         source = _read(FRONTEND_SRC / "pages" / filename)
         if filename == "AutomationsPage.vue":
             source += _read(FRONTEND_SRC / "pages" / "automationPayload.ts")
+        if filename == "AnalyzePage.vue":
+            source += _read(FRONTEND_SRC / "pages" / "tickerHistory.ts")
         if filename == "RunsPage.vue":
             source += _read(FRONTEND_SRC / "pages" / "runCompanyGroups.ts")
         assert "PageHeader" in source

@@ -609,6 +609,7 @@ class RunService:
             status="queued",
             queue_sequence=self._next_queue_sequence,
         )
+        run.config["runtime_run_id"] = new_run_id
         self._ensure_terminal_log(run)
         self._log_run_configuration(run)
         self._log_run_phase(run, f"queued retry from {source.run_id}")
@@ -833,6 +834,7 @@ class RunService:
         run_id = str(uuid.uuid4())
         runtime_context = build_runtime_context(run_id, base_dir=self._runs_root_dir)
         config = self.build_run_request_config(req, runtime_context=runtime_context, settings=effective_settings)
+        config["runtime_run_id"] = run_id
         _ensure_provider_api_key_available(config, effective_settings)
         run = RunState(
             run_id=run_id,
