@@ -1500,9 +1500,20 @@ def _build_ticker_overview(normalized: str, tenant_id: str | None, runs: list | 
     ]
     matched_runs.sort(key=lambda run: _timestamp_sort_value(run.created_at), reverse=True)
     latest = matched_runs[0] if matched_runs else None
+    company_name = next(
+        (
+            str(getattr(run, "company_name", "") or "").strip()
+            for run in matched_runs
+            if str(getattr(run, "company_name", "") or "").strip()
+        ),
+        "",
+    )
+    if not company_name:
+        company_name = _lookup_company_name_from_catalog(normalized) or ""
 
     return TickerOverview(
         ticker=normalized,
+        company_name=company_name or None,
         run_count=len(matched_runs),
         latest_run_id=latest.run_id if latest else None,
         latest_signal=latest.signal if latest else None,
@@ -1511,6 +1522,37 @@ def _build_ticker_overview(normalized: str, tenant_id: str | None, runs: list | 
         latest_created_at=latest.created_at if latest else None,
         recent_runs=[_build_run_summary(run, tenant_id) for run in matched_runs[:5]],
     )
+
+
+def _guess_stock_market_for_ticker(ticker: str) -> str:
+    normalized = ticker.strip().upper()
+    if normalized.endswith(".HK"):
+        return "hk"
+    if normalized.endswith(".SH") or normalized.endswith(".SZ"):
+        return "cn_a"
+    return "us"
+
+
+def _lookup_company_name_from_catalog(ticker: str) -> str | None:
+    normalized = ticker.strip().upper()
+    if not normalized:
+        return None
+    try:
+        matches = search_stock_catalog(
+            _guess_stock_market_for_ticker(normalized),
+            query=normalized,
+            limit=20,
+            refresh_if_stale=False,
+        )
+    except Exception:
+        return None
+
+    for item in matches:
+        if item.symbol.strip().upper() == normalized:
+            name = item.name.strip()
+            if name:
+                return name
+    return None
 
 
 def _run_company_display_name(run) -> str:
@@ -1578,6 +1620,7 @@ def _build_run_company_groups_page(
 def _watchlist_entry_from_overview(overview: TickerOverview, *, created_at: int | None = None) -> WatchlistEntry:
     return WatchlistEntry(
         ticker=overview.ticker,
+        company_name=overview.company_name,
         run_count=overview.run_count,
         created_at=created_at,
         latest_run_id=overview.latest_run_id,
@@ -1731,6 +1774,7 @@ def _build_alert_hit(rule: AlertRule, overview: TickerOverview) -> AlertHit | No
     return AlertHit(
         rule_id=rule.id,
         ticker=rule.ticker,
+        company_name=overview.company_name,
         field=rule.field,
         expected_value=rule.value,
         actual_value=str(actual_value),
@@ -1743,12 +1787,16 @@ def _build_alert_hit(rule: AlertRule, overview: TickerOverview) -> AlertHit | No
 def _build_alert_center_response(tenant_id: str | None, runs: list | None = None) -> AlertCenterResponse:
     resolved_runs = list_runs(tenant_id) if runs is None else runs
     rules = _load_alert_rules(tenant_id)
+    enriched_rules: list[AlertRule] = []
     hits: list[AlertHit] = []
     for rule in rules:
-        hit = _build_alert_hit(rule, _build_ticker_overview(rule.ticker, tenant_id, resolved_runs))
+        overview = _build_ticker_overview(rule.ticker, tenant_id, resolved_runs)
+        enriched_rule = rule.model_copy(update={"company_name": overview.company_name})
+        enriched_rules.append(enriched_rule)
+        hit = _build_alert_hit(enriched_rule, overview)
         if hit is not None:
             hits.append(hit)
-    return AlertCenterResponse(rules=rules, hits=hits)
+    return AlertCenterResponse(rules=enriched_rules, hits=hits)
 
 
 def _build_portfolio_position(position: dict[str, object], tenant_id: str | None, runs: list | None = None) -> PortfolioPosition:
@@ -1758,6 +1806,7 @@ def _build_portfolio_position(position: dict[str, object], tenant_id: str | None
     return PortfolioPosition(
         id=str(position["id"]),
         ticker=str(position["ticker"]),
+        company_name=overview.company_name,
         quantity=quantity,
         average_cost=average_cost,
         cost_basis=round(quantity * average_cost, 6),
@@ -1788,6 +1837,16 @@ def _build_portfolio_response(tenant_id: str | None) -> PortfolioResponse:
         signal_breakdown=signal_breakdown,
     )
     return PortfolioResponse(summary=summary, positions=positions)
+
+
+def _enrich_stock_group(group: StockGroup, tenant_id: str | None, runs: list | None = None) -> StockGroup:
+    resolved_runs = list_runs(tenant_id) if runs is None else runs
+    company_names = {
+        ticker: name
+        for ticker in group.tickers
+        if (name := _build_ticker_overview(ticker, tenant_id, resolved_runs).company_name)
+    }
+    return group.model_copy(update={"company_names": company_names})
 
 
 def _build_daily_briefing_response(tenant_id: str | None) -> DailyBriefingResponse:
@@ -5629,26 +5688,31 @@ async def get_run_timeline(run_id: str, request: Request):
 
 @router.get("/api/stock-groups", response_model=list[StockGroup])
 async def get_stock_groups(request: Request):
-    return list_stock_groups(_request_tenant_id(request))
+    tenant_id = _request_tenant_id(request)
+    runs = list_runs(tenant_id)
+    return [_enrich_stock_group(group, tenant_id, runs) for group in list_stock_groups(tenant_id)]
 
 
 @router.post("/api/stock-groups", response_model=StockGroup, status_code=201)
 async def add_stock_group(payload: StockGroupCreate, request: Request):
+    tenant_id = _request_tenant_id(request)
     try:
-        return create_stock_group(payload, _request_tenant_id(request))
+        created = create_stock_group(payload, tenant_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _enrich_stock_group(created, tenant_id)
 
 
 @router.patch("/api/stock-groups/{group_id}", response_model=StockGroup)
 async def patch_stock_group(group_id: str, payload: StockGroupUpdate, request: Request):
+    tenant_id = _request_tenant_id(request)
     try:
-        updated = update_stock_group(group_id, payload, _request_tenant_id(request))
+        updated = update_stock_group(group_id, payload, tenant_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(status_code=404, detail="Stock group not found")
-    return updated
+    return _enrich_stock_group(updated, tenant_id)
 
 
 @router.delete("/api/stock-groups/{group_id}", response_model=DeleteResult)

@@ -16,6 +16,11 @@
 
     <DataTable :value="rows" size="small" class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white">
       <Column field="ticker" :header="t('common.ticker')" />
+      <Column field="company_name" :header="t('common.companyName')">
+        <template #body="{ data }">
+          {{ data.company_name || t('common.na') }}
+        </template>
+      </Column>
       <Column field="run_count" :header="t('portfolio.runCount')" />
       <Column field="latest_run_id" :header="t('portfolio.latestRunId')" />
       <Column :header="t('common.signal')">

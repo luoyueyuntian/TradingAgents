@@ -24,7 +24,7 @@ describe('PortfolioWatchlistPage', () => {
   beforeEach(() => {
     apiGet.mockReset();
     apiDelete.mockReset();
-    apiGet.mockResolvedValue([{ ticker: 'NVDA', latest_signal: 'Buy', latest_status: 'completed' }]);
+    apiGet.mockResolvedValue([{ ticker: 'NVDA', company_name: 'NVIDIA Corporation', latest_signal: 'Buy', latest_status: 'completed' }]);
   });
 
   it('loads watchlist rows and deletes a ticker', async () => {
@@ -45,6 +45,7 @@ describe('PortfolioWatchlistPage', () => {
     await flushPromises();
     expect(apiGet).toHaveBeenCalledWith('/api/watchlist', { tenantId: 'tenant-a', apiToken: 'token-a' });
     expect(wrapper.text()).toContain('NVDA');
+    expect(wrapper.text()).toContain('NVIDIA Corporation');
 
     await wrapper.get('[data-testid="watchlist-delete-NVDA"]').trigger('click');
     expect(apiDelete).toHaveBeenCalledWith('/api/watchlist/NVDA', { tenantId: 'tenant-a', apiToken: 'token-a' });

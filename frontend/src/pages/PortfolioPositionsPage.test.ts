@@ -26,7 +26,7 @@ describe('PortfolioPositionsPage', () => {
     apiDelete.mockReset();
     apiGet.mockResolvedValue({
       summary: { position_count: 1, total_cost_basis: 1800 },
-      positions: [{ id: 'pos-1', ticker: 'AAPL', quantity: 10, average_cost: 180, latest_signal: 'Hold' }],
+      positions: [{ id: 'pos-1', ticker: 'AAPL', company_name: 'Apple Inc.', quantity: 10, average_cost: 180, latest_signal: 'Hold' }],
     });
   });
 
@@ -48,6 +48,7 @@ describe('PortfolioPositionsPage', () => {
     await flushPromises();
     expect(apiGet).toHaveBeenCalledWith('/api/portfolio', { tenantId: 'tenant-a', apiToken: 'token-a' });
     expect(wrapper.text()).toContain('AAPL');
+    expect(wrapper.text()).toContain('Apple Inc.');
 
     await wrapper.get('[data-testid="position-delete-pos-1"]').trigger('click');
     expect(apiDelete).toHaveBeenCalledWith('/api/portfolio/positions/pos-1', { tenantId: 'tenant-a', apiToken: 'token-a' });

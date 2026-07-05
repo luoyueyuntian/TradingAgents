@@ -24,7 +24,12 @@ describe('PortfolioStockGroupsPage', () => {
   beforeEach(() => {
     apiGet.mockReset();
     apiDelete.mockReset();
-    apiGet.mockResolvedValue([{ id: 'group-1', name: 'AI Leaders', tickers: ['NVDA', 'MSFT'] }]);
+    apiGet.mockResolvedValue([{
+      id: 'group-1',
+      name: 'AI Leaders',
+      tickers: ['NVDA', 'MSFT'],
+      company_names: { NVDA: 'NVIDIA Corporation', MSFT: 'Microsoft Corporation' },
+    }]);
   });
 
   it('loads stock groups and deletes one row', async () => {
@@ -44,6 +49,7 @@ describe('PortfolioStockGroupsPage', () => {
     await flushPromises();
     expect(apiGet).toHaveBeenCalledWith('/api/stock-groups', { tenantId: 'tenant-a', apiToken: 'token-a' });
     expect(wrapper.text()).toContain('AI Leaders');
+    expect(wrapper.text()).toContain('NVIDIA Corporation');
     await wrapper.get('[data-testid="stock-group-delete-group-1"]').trigger('click');
     expect(apiDelete).toHaveBeenCalledWith('/api/stock-groups/group-1', { tenantId: 'tenant-a', apiToken: 'token-a' });
   });
