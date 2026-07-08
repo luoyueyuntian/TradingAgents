@@ -14,6 +14,9 @@ DEFAULT_PROFILE = "default"
 CHINA_A_PROFILE = "cn_a"
 
 CHINA_A_VENDOR_DEFAULTS = {
+    "core_stock_apis": "cn_stock,yfinance",
+    "technical_indicators": "cn_stock,yfinance",
+    "fundamental_data": "cn_fundamentals,yfinance",
     "news_data": "cn_news",
     "macro_data": "cn_macro",
     "prediction_markets": "cn_market_signals",

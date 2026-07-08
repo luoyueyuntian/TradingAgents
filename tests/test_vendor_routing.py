@@ -118,6 +118,16 @@ class VendorRoutingTests(unittest.TestCase):
     def test_china_macro_vendor_registered(self):
         self.assertIn("cn_macro", interface.VENDOR_METHODS["get_macro_indicators"])
 
+    def test_china_stock_vendor_registered(self):
+        self.assertIn("cn_stock", interface.VENDOR_METHODS["get_stock_data"])
+        self.assertIn("cn_stock", interface.VENDOR_METHODS["get_indicators"])
+
+    def test_china_fundamentals_vendor_registered(self):
+        self.assertIn("cn_fundamentals", interface.VENDOR_METHODS["get_fundamentals"])
+        self.assertIn("cn_fundamentals", interface.VENDOR_METHODS["get_balance_sheet"])
+        self.assertIn("cn_fundamentals", interface.VENDOR_METHODS["get_cashflow"])
+        self.assertIn("cn_fundamentals", interface.VENDOR_METHODS["get_income_statement"])
+
     def test_china_news_vendor_registered(self):
         self.assertIn("cn_news", interface.VENDOR_METHODS["get_news"])
         self.assertIn("cn_news", interface.VENDOR_METHODS["get_global_news"])

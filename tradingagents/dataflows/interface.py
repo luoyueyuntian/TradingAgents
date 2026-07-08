@@ -40,6 +40,42 @@ from .yfinance_news import get_global_news_yfinance, get_news_yfinance
 
 logger = logging.getLogger(__name__)
 
+
+def _get_stock_data_china(*args, **kwargs):
+    from .cn_stock import get_stock_data_china
+
+    return get_stock_data_china(*args, **kwargs)
+
+
+def _get_indicators_china(*args, **kwargs):
+    from .cn_stock import get_stock_stats_indicators_window_china
+
+    return get_stock_stats_indicators_window_china(*args, **kwargs)
+
+
+def _get_fundamentals_china(*args, **kwargs):
+    from .cn_fundamentals import get_fundamentals_china
+
+    return get_fundamentals_china(*args, **kwargs)
+
+
+def _get_balance_sheet_china(*args, **kwargs):
+    from .cn_fundamentals import get_balance_sheet_china
+
+    return get_balance_sheet_china(*args, **kwargs)
+
+
+def _get_cashflow_china(*args, **kwargs):
+    from .cn_fundamentals import get_cashflow_china
+
+    return get_cashflow_china(*args, **kwargs)
+
+
+def _get_income_statement_china(*args, **kwargs):
+    from .cn_fundamentals import get_income_statement_china
+
+    return get_income_statement_china(*args, **kwargs)
+
 # Tools organized by category
 TOOLS_CATEGORIES = {
     "core_stock_apis": {
@@ -90,6 +126,8 @@ VENDOR_LIST = [
     "fred",
     "polymarket",
     "alpha_vantage",
+    "cn_stock",
+    "cn_fundamentals",
     "cn_news",
     "cn_macro",
     "cn_market_signals",
@@ -107,28 +145,34 @@ VENDOR_METHODS = {
     # core_stock_apis
     "get_stock_data": {
         "alpha_vantage": get_alpha_vantage_stock,
+        "cn_stock": _get_stock_data_china,
         "yfinance": get_YFin_data_online,
     },
     # technical_indicators
     "get_indicators": {
         "alpha_vantage": get_alpha_vantage_indicator,
+        "cn_stock": _get_indicators_china,
         "yfinance": get_stock_stats_indicators_window,
     },
     # fundamental_data
     "get_fundamentals": {
         "alpha_vantage": get_alpha_vantage_fundamentals,
+        "cn_fundamentals": _get_fundamentals_china,
         "yfinance": get_yfinance_fundamentals,
     },
     "get_balance_sheet": {
         "alpha_vantage": get_alpha_vantage_balance_sheet,
+        "cn_fundamentals": _get_balance_sheet_china,
         "yfinance": get_yfinance_balance_sheet,
     },
     "get_cashflow": {
         "alpha_vantage": get_alpha_vantage_cashflow,
+        "cn_fundamentals": _get_cashflow_china,
         "yfinance": get_yfinance_cashflow,
     },
     "get_income_statement": {
         "alpha_vantage": get_alpha_vantage_income_statement,
+        "cn_fundamentals": _get_income_statement_china,
         "yfinance": get_yfinance_income_statement,
     },
     # news_data
