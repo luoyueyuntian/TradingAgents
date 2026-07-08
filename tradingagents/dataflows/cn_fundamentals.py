@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, ROUND_HALF_EVEN
 from datetime import datetime
 from importlib import import_module
 
@@ -86,6 +87,8 @@ def get_fundamentals_china(ticker: str, curr_date: str | None = None) -> str:
             lines.append(f"Name: {info_map['股票简称']}")
         if info_map.get("行业"):
             lines.append(f"Industry: {info_map['行业']}")
+        if pd.notna(info_map.get("总市值")):
+            lines.append(f"Market Cap: {info_map['总市值']}")
 
     if isinstance(abstract_df, pd.DataFrame) and not abstract_df.empty:
         filtered = _filter_statement_rows(abstract_df, curr_date)
@@ -95,11 +98,24 @@ def get_fundamentals_china(ticker: str, curr_date: str | None = None) -> str:
             "PARENT_NETPROFIT": "Net Income",
             "ROE_WEIGHTED": "Return on Equity",
             "GROSS_PROFIT_RATE": "Gross Margin",
+            "BASIC_EPS": "EPS (Basic)",
+            "TOTAL_ASSETS": "Total Assets",
+            "TOTAL_LIABILITIES": "Total Liabilities",
+            "NET_CASH_FLOWS_OPER_ACT": "Operating Cash Flow",
         }
         for source_col, label in field_map.items():
             value = row.get(source_col)
             if pd.notna(value):
                 lines.append(f"{label}: {value}")
+        total_assets = row.get("TOTAL_ASSETS")
+        total_liabilities = row.get("TOTAL_LIABILITIES")
+        if pd.notna(total_assets) and pd.notna(total_liabilities) and float(total_assets) != 0:
+            ratio = (
+                Decimal(str(total_liabilities))
+                / Decimal(str(total_assets))
+                * Decimal("100")
+            ).quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
+            lines.append(f"Asset Liability Ratio: {ratio}")
 
     if not lines:
         raise NoMarketDataError(ticker, digits, "no fundamental fields returned")
