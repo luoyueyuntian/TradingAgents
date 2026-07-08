@@ -142,9 +142,9 @@ TradingAgents keeps its dependency set minimal. All LLM calls go through HTTP AP
 | **langchain-google-genai** | — | When `llm_provider` is `google`. Provides `ChatGoogleGenerativeAI`. |
 | **langgraph** | — | **Always.** The agent orchestration framework. Builds the `StateGraph` that connects analysts → researchers → trader → risk management → portfolio manager. |
 | **langgraph-checkpoint-sqlite** | — | When `checkpoint_enabled: true`. Saves graph state to SQLite for crash recovery. |
-| **yfinance** | ~9 MB | **Always** (default data vendor). Fetches OHLCV prices, fundamentals, balance sheets, cash flow, income statements, insider transactions, and news for US/global tickers. |
+| **yfinance** | ~9 MB | **Always** (default global-market data vendor and fallback in `cn_a`). Fetches OHLCV prices, fundamentals, balance sheets, cash flow, income statements, insider transactions, and news for US/global tickers, and acts as the fallback when China-market adapters in `cn_a` cannot serve a request. |
 | **pandas** | ~70 MB | **Always.** DataFrame operations across all data vendor implementations (8 files). Used for data cleaning, date filtering, column mapping, and markdown table generation. |
-| **stockstats** | <1 MB | **Always.** Computes technical indicators (RSI, MACD, Bollinger Bands, etc.) on top of OHLCV data from yfinance. |
+| **stockstats** | <1 MB | **Always.** Computes technical indicators (RSI, MACD, Bollinger Bands, etc.) on top of whichever OHLCV vendor served the request. In `cn_a`, that means China-market OHLCV first and `yfinance` only as fallback. |
 | **requests** | <1 MB | When using FRED (macro data), Polymarket (prediction markets), or Alpha Vantage. Direct HTTP calls to these APIs. |
 
 #### Optional Dependencies
@@ -153,7 +153,7 @@ Install with `pip install ".[extra]"`:
 
 | Package | Install extra | When it's used |
 |---|---|---|
-| **akshare** | — | When `market_profile` is `cn_a` (China A-shares). Fetches China macro data (CPI, PPI, PMI), market signals (margin trading, northbound flow), and news from 东方财富/财联社. **Note:** akshare pulls in `py_mini_racer` (61 MB V8 JS engine) because some Chinese financial sites encrypt data with JavaScript. |
+| **akshare** | — | When `market_profile` is `cn_a` (China A-shares). Fetches China-market OHLCV, technical-indicator input data, fundamentals, macro data (CPI, PPI, PMI), market signals (margin trading, northbound flow), and news from China-market sources such as 东方财富/财联社. **Note:** akshare pulls in `py_mini_racer` (61 MB V8 JS engine) because some Chinese financial sites encrypt data with JavaScript. |
 | **langchain-aws** | `pip install ".[bedrock]"` | When `llm_provider` is `bedrock`. Provides `ChatBedrockConverse` for AWS Bedrock Anthropic models. |
 | **fastapi** | `pip install ".[web]"` | Always, for the web UI. Provides the HTTP API framework. |
 | **uvicorn** | `pip install ".[web]"` | Always, for the web UI. ASGI server that runs the FastAPI app. |
@@ -470,6 +470,9 @@ print(decision)
 
 In `cn_a` mode:
 
+- `core_stock_apis` defaults to China-market A-share OHLCV first and falls back to `yfinance` only when the China adapter returns no usable data
+- `technical_indicators` continue to be computed locally, but their underlying OHLCV defaults to the same China-first A-share path
+- `fundamental_data` defaults to China-market fundamentals and financial statements first, then falls back to `yfinance` if the China adapter cannot serve the request
 - `news_data` defaults to China-market company and macro news adapters
 - `macro_data` defaults to China macro indicators such as `cpi`, `ppi`, `pmi`, `m2`, `social_financing`, and `lpr`
 - `prediction_markets` is repurposed into China forward-looking market-structure signals such as `northbound flow`, `margin financing`, and broad `fund flow`
