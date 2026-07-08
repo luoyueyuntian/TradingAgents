@@ -93,6 +93,15 @@ class VendorRoutingTests(unittest.TestCase):
             result = interface.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
         self.assertEqual(result, "AV_DATA")
 
+    def test_cn_fundamentals_falls_back_to_yfinance_within_chain(self):
+        set_config({"data_vendors": {"fundamental_data": "cn_fundamentals,yfinance"}})
+        with self._route_method(
+            "get_fundamentals",
+            {"cn_fundamentals": _no_data, "yfinance": _returns("YF_FUNDAMENTALS")},
+        ):
+            result = interface.route_to_vendor("get_fundamentals", "600519.SS", "2026-06-27")
+        self.assertEqual(result, "YF_FUNDAMENTALS")
+
     def _route_method(self, method, vendors):
         return mock.patch.dict(interface.VENDOR_METHODS, {method: vendors}, clear=False)
 
