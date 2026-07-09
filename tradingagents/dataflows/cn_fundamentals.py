@@ -41,6 +41,14 @@ def _filter_statement_rows(frame: pd.DataFrame, curr_date: str | None) -> pd.Dat
     return filtered
 
 
+def _first_present(row: dict, *candidates: str):
+    for candidate in candidates:
+        value = row.get(candidate)
+        if pd.notna(value):
+            return value
+    return None
+
+
 def _format_statement(
     frame: pd.DataFrame,
     ticker: str,
@@ -94,25 +102,25 @@ def get_fundamentals_china(ticker: str, curr_date: str | None = None) -> str:
         filtered = _filter_statement_rows(abstract_df, curr_date)
         row = filtered.iloc[-1].to_dict() if filtered is not None and not filtered.empty else abstract_df.iloc[-1].to_dict()
         field_map = {
-            "TOTAL_OPERATE_INCOME": "Revenue (TTM)",
-            "PARENT_NETPROFIT": "Net Income",
-            "ROE_WEIGHTED": "Return on Equity",
-            "ROA": "Return on Assets",
-            "GROSS_PROFIT_RATE": "Gross Margin",
-            "CURRENT_RATIO": "Current Ratio",
-            "BASIC_EPS": "EPS (Basic)",
-            "BPS": "Book Value",
-            "OCFPS": "Operating Cash Flow Per Share",
-            "TOTAL_ASSETS": "Total Assets",
-            "TOTAL_LIABILITIES": "Total Liabilities",
-            "NET_CASH_FLOWS_OPER_ACT": "Operating Cash Flow",
+            "Revenue (TTM)": ("TOTAL_OPERATE_INCOME", "营业总收入"),
+            "Net Income": ("PARENT_NETPROFIT", "归母净利润"),
+            "Return on Equity": ("ROE_WEIGHTED", "净资产收益率"),
+            "Return on Assets": ("ROA", "总资产收益率"),
+            "Gross Margin": ("GROSS_PROFIT_RATE", "毛利率"),
+            "Current Ratio": ("CURRENT_RATIO", "流动比率"),
+            "EPS (Basic)": ("BASIC_EPS", "基本每股收益"),
+            "Book Value": ("BPS", "每股净资产"),
+            "Operating Cash Flow Per Share": ("OCFPS", "每股经营现金流"),
+            "Total Assets": ("TOTAL_ASSETS", "总资产"),
+            "Total Liabilities": ("TOTAL_LIABILITIES", "总负债"),
+            "Operating Cash Flow": ("NET_CASH_FLOWS_OPER_ACT", "经营活动产生的现金流量净额"),
         }
-        for source_col, label in field_map.items():
-            value = row.get(source_col)
+        for label, aliases in field_map.items():
+            value = _first_present(row, *aliases)
             if pd.notna(value):
                 lines.append(f"{label}: {value}")
-        total_assets = row.get("TOTAL_ASSETS")
-        total_liabilities = row.get("TOTAL_LIABILITIES")
+        total_assets = _first_present(row, "TOTAL_ASSETS", "总资产")
+        total_liabilities = _first_present(row, "TOTAL_LIABILITIES", "总负债")
         if pd.notna(total_assets) and pd.notna(total_liabilities) and float(total_assets) != 0:
             ratio = (
                 Decimal(str(total_liabilities))
