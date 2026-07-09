@@ -89,6 +89,41 @@ def test_get_fundamentals_china_maps_richer_fields(monkeypatch):
 
 
 @pytest.mark.unit
+def test_get_fundamentals_china_maps_efficiency_and_per_share_fields(monkeypatch):
+    from tradingagents.dataflows import cn_fundamentals
+
+    indicator_df = pd.DataFrame(
+        [
+            {
+                "REPORT_DATE": "2026-03-31",
+                "ROA": 9.7,
+                "CURRENT_RATIO": 1.56,
+                "BPS": 178.43,
+                "OCFPS": 24.88,
+            },
+        ]
+    )
+    info_df = pd.DataFrame([["股票简称", "贵州茅台"], ["行业", "白酒"]], columns=["item", "value"])
+
+    class FakeAK:
+        @staticmethod
+        def stock_financial_abstract_ths(symbol, indicator):
+            return indicator_df
+
+        @staticmethod
+        def stock_individual_info_em(symbol):
+            return info_df
+
+    monkeypatch.setattr(cn_fundamentals, "_load_akshare", lambda: FakeAK)
+    out = cn_fundamentals.get_fundamentals_china("600519.SS", "2026-06-27")
+
+    assert "Return on Assets: 9.7" in out
+    assert "Current Ratio: 1.56" in out
+    assert "Book Value: 178.43" in out
+    assert "Operating Cash Flow Per Share: 24.88" in out
+
+
+@pytest.mark.unit
 def test_get_balance_sheet_china_formats_csv(monkeypatch):
     from tradingagents.dataflows import cn_fundamentals
 
