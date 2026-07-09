@@ -722,7 +722,11 @@ def test_run_service_retry_run_clones_terminal_run(tmp_path):
     assert retried.ticker == source.ticker
     assert retried.date == source.date
     assert retried.selected_analysts == source.selected_analysts
-    assert retried.config == source.config
+    source_config = dict(source.config)
+    retried_config = dict(retried.config)
+    assert retried_config.pop("runtime_run_id") == retried.run_id
+    assert retried_config == source_config
+    assert "runtime_run_id" not in source.config
     assert enqueued == [retried.run_id]
 
 
