@@ -21,6 +21,13 @@ def split_cn_a_symbol(symbol: str) -> tuple[str, str]:
     )
 
 
+def to_tx_symbol(symbol: str) -> str:
+    """Convert a normalized A-share symbol to Tencent's sh/sz-prefixed code."""
+    digits, exchange = split_cn_a_symbol(symbol)
+    prefix = "sh" if exchange == "SH" else "sz"
+    return f"{prefix}{digits}"
+
+
 def normalize_cn_hist_frame(df: pd.DataFrame) -> pd.DataFrame:
     """Normalize AKShare A-share history output into stockstats-friendly OHLCV."""
     frame = df.rename(
