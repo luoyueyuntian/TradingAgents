@@ -257,7 +257,7 @@ def route_to_vendor(method: str, *args, **kwargs):
     else:
         vendor_chain = all_available_vendors
 
-    last_no_data: NoMarketDataError | None = None
+    no_data_errors: list[tuple[str, NoMarketDataError]] = []
     first_error: Exception | None = None
     for vendor in vendor_chain:
         vendor_impl = VENDOR_METHODS[method][vendor]
@@ -274,7 +274,7 @@ def route_to_vendor(method: str, *args, **kwargs):
                 first_error = e  # Surface it if no other vendor can serve the call.
             continue
         except NoMarketDataError as e:
-            last_no_data = e  # No data here; another configured vendor may have it
+            no_data_errors.append((vendor, e))
             continue
         except Exception as e:
             # Don't let one vendor's failure crash the call when another can
@@ -289,7 +289,7 @@ def route_to_vendor(method: str, *args, **kwargs):
     # Return one explicit, instructive sentinel rather than a vendor-specific
     # empty string, so the agent reports "unavailable" instead of inventing a
     # value. This takes precedence over incidental fallback errors.
-    if last_no_data is not None:
+    if no_data_errors:
         if first_error is not None:
             # A vendor also hit a real error; surface it in logs so the no-data
             # verdict can't hide a broken primary (network/auth/etc.).
@@ -297,13 +297,21 @@ def route_to_vendor(method: str, *args, **kwargs):
                 "Returning NO_DATA for %s, but a vendor errored earlier: %s",
                 method, first_error,
             )
-        sym = last_no_data.symbol
-        canonical = last_no_data.canonical
+        sym = no_data_errors[-1][1].symbol
+        canonical = no_data_errors[-1][1].canonical
         resolved = "" if canonical == sym else f" (resolved to '{canonical}')"
-        # Surface the typed error's detail (e.g. "latest row is 2025-06-11 ...
-        # stale") so the agent sees the specific reason — invalid symbol, no
-        # coverage, or stale data — not just a generic "unavailable".
-        reason = f" ({last_no_data.detail})" if last_no_data.detail else ""
+        detail_parts = []
+        seen = set()
+        for vendor, error in no_data_errors:
+            detail = error.detail or str(error)
+            part = f"{vendor}: {detail}"
+            if part not in seen:
+                seen.add(part)
+                detail_parts.append(part)
+        # Surface the typed error details (e.g. stale China rows followed by a
+        # yfinance timeout) so downstream logs don't collapse a multi-vendor
+        # failure into only the last no-data message.
+        reason = f" ({' | '.join(detail_parts)})" if detail_parts else ""
         return (
             f"NO_DATA_AVAILABLE: No usable market data for '{sym}'{resolved} from "
             f"any configured vendor{reason}. The symbol may be invalid, delisted, "
