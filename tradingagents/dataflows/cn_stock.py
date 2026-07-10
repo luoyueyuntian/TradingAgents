@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from importlib import import_module
 import logging
+import os
 import time
 
 import pandas as pd
@@ -12,8 +13,10 @@ from dateutil.relativedelta import relativedelta
 from stockstats import wrap
 
 from .china_equity_utils import normalize_cn_hist_frame, split_cn_a_symbol
+from .config import get_config
 from .errors import NoMarketDataError, VendorNotConfiguredError
 from .stockstats_utils import _assert_ohlcv_not_stale
+from .utils import safe_ticker_component
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +79,21 @@ def _fetch_hist_with_retry(
 def load_ohlcv_china(symbol: str, curr_date: str) -> pd.DataFrame:
     """Fetch mainland A-share OHLCV and normalize it for downstream use."""
     digits, _exchange = split_cn_a_symbol(symbol)
-    start_date = (pd.Timestamp(curr_date) - pd.DateOffset(years=5)).strftime("%Y%m%d")
-    end_date = pd.Timestamp(curr_date).strftime("%Y%m%d")
+    safe_symbol = safe_ticker_component(symbol.strip().upper())
+    config = get_config()
+    curr_date_dt = pd.Timestamp(curr_date)
+    today_date = pd.Timestamp.today()
+    start_date = (today_date - pd.DateOffset(years=5)).strftime("%Y%m%d")
+    end_date = today_date.strftime("%Y%m%d")
+    data_file: str | None = None
+    try:
+        os.makedirs(config["data_cache_dir"], exist_ok=True)
+        data_file = os.path.join(
+            config["data_cache_dir"],
+            f"{safe_symbol}-CnA-data-{start_date}-{end_date}.csv",
+        )
+    except OSError as exc:
+        logger.warning("China stock cache directory unavailable for %s: %s", symbol, exc)
     try:
         ak = _load_akshare()
     except Exception as exc:  # noqa: BLE001
@@ -85,27 +101,47 @@ def load_ohlcv_china(symbol: str, curr_date: str) -> pd.DataFrame:
             f"China stock vendor could not be loaded: {exc}"
         ) from exc
 
-    try:
-        raw = _fetch_hist_with_retry(
-            ak,
-            symbol=digits,
-            period="daily",
-            start_date=start_date,
-            end_date=end_date,
-            adjust="",
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise NoMarketDataError(
-            symbol,
-            digits,
-            f"China A-share history is currently unavailable ({exc})",
-        ) from exc
+    raw = None
+    if data_file and os.path.exists(data_file):
+        try:
+            cached = pd.read_csv(data_file, on_bad_lines="skip", encoding="utf-8")
+            if not cached.empty and "Close" in cached.columns:
+                raw = cached
+        except OSError as exc:
+            logger.warning("China stock cache read failed for %s: %s", symbol, exc)
 
-    if raw is None or raw.empty:
-        raise NoMarketDataError(symbol, digits, f"no China A-share rows through {curr_date}")
+    if raw is None:
+        try:
+            fetched = _fetch_hist_with_retry(
+                ak,
+                symbol=digits,
+                period="daily",
+                start_date=start_date,
+                end_date=end_date,
+                adjust="",
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise NoMarketDataError(
+                symbol,
+                digits,
+                f"China A-share history is currently unavailable ({exc})",
+            ) from exc
+
+        if fetched is None or fetched.empty:
+            raise NoMarketDataError(symbol, digits, f"no China A-share rows through {curr_date}")
+
+        normalized = normalize_cn_hist_frame(fetched)
+        if normalized.empty or "Close" not in normalized.columns:
+            raise NoMarketDataError(symbol, digits, f"no China A-share rows through {curr_date}")
+        if data_file:
+            try:
+                normalized.to_csv(data_file, index=False, encoding="utf-8")
+            except OSError as exc:
+                logger.warning("China stock cache write failed for %s: %s", symbol, exc)
+        raw = normalized
 
     frame = normalize_cn_hist_frame(raw)
-    frame = frame[frame["Date"] <= pd.Timestamp(curr_date)]
+    frame = frame[frame["Date"] <= curr_date_dt]
     if frame.empty:
         raise NoMarketDataError(symbol, digits, f"no China A-share rows through {curr_date}")
     _assert_ohlcv_not_stale(frame, curr_date, symbol, digits)

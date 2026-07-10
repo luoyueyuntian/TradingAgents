@@ -41,6 +41,67 @@ def test_get_stock_data_china_formats_csv(monkeypatch):
 
 
 @pytest.mark.unit
+def test_load_ohlcv_china_uses_cache_after_first_success(tmp_path, monkeypatch):
+    from tradingagents.dataflows import cn_stock
+    from tradingagents.dataflows.config import initialize_config, set_config
+
+    fake_df = pd.DataFrame(
+        [{"日期": "2026-06-26", "开盘": 1462.0, "收盘": 1470.0, "最高": 1472.0, "最低": 1458.0, "成交量": 120000}]
+    )
+    calls = {"count": 0}
+
+    class FakeAK:
+        @staticmethod
+        def stock_zh_a_hist(symbol, period, start_date, end_date, adjust):
+            calls["count"] += 1
+            return fake_df
+
+    initialize_config()
+    try:
+        set_config({"data_cache_dir": str(tmp_path)})
+        monkeypatch.setattr(cn_stock, "_load_akshare", lambda: FakeAK)
+
+        first = cn_stock.load_ohlcv_china("600519.SS", "2026-06-26")
+        second = cn_stock.load_ohlcv_china("600519.SS", "2026-06-26")
+
+        assert calls["count"] == 1
+        assert len(list(tmp_path.iterdir())) == 1
+        assert first.to_dict("records") == second.to_dict("records")
+    finally:
+        initialize_config()
+
+
+@pytest.mark.unit
+def test_load_ohlcv_china_empty_result_does_not_poison_cache(tmp_path, monkeypatch):
+    from tradingagents.dataflows import cn_stock
+    from tradingagents.dataflows.config import initialize_config, set_config
+    from tradingagents.dataflows.errors import NoMarketDataError
+
+    calls = {"count": 0}
+
+    class FakeAK:
+        @staticmethod
+        def stock_zh_a_hist(symbol, period, start_date, end_date, adjust):
+            calls["count"] += 1
+            return pd.DataFrame()
+
+    initialize_config()
+    try:
+        set_config({"data_cache_dir": str(tmp_path)})
+        monkeypatch.setattr(cn_stock, "_load_akshare", lambda: FakeAK)
+
+        with pytest.raises(NoMarketDataError):
+            cn_stock.load_ohlcv_china("600519.SS", "2026-06-26")
+        with pytest.raises(NoMarketDataError):
+            cn_stock.load_ohlcv_china("600519.SS", "2026-06-26")
+
+        assert calls["count"] == 2
+        assert list(tmp_path.iterdir()) == []
+    finally:
+        initialize_config()
+
+
+@pytest.mark.unit
 def test_get_stock_data_china_rejects_stale_rows(monkeypatch):
     from tradingagents.dataflows import cn_stock
     from tradingagents.dataflows.errors import NoMarketDataError
