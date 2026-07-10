@@ -219,6 +219,61 @@ def test_run_service_logs_run_configuration_and_execution_phases(tmp_path):
     assert "Phase: completed analysis" in terminal_output
 
 
+def test_run_service_logs_multi_vendor_market_failure_details(tmp_path):
+    from tradingagents.dataflows.errors import NoMarketDataError
+    from tradingagents.service.run_service import RunService
+
+    class FakeGraph:
+        def __init__(self, *args, **kwargs):
+            self.curr_state = {}
+            self.last_signal = None
+            self.last_state_log_path = None
+
+        def stream_propagate(self, ticker, date, asset_type="stock"):
+            raise NoMarketDataError(
+                ticker,
+                "600036",
+                "cn_stock: China A-share history is currently unavailable (remote closed connection) | "
+                "yfinance: Yahoo Finance returned no rows",
+            )
+            yield  # pragma: no cover
+
+        def process_signal(self, decision):
+            return "Hold"
+
+        def save_reports(self, final_state, ticker):
+            raise AssertionError("save_reports should not run on failure")
+
+    config = DEFAULT_CONFIG.copy()
+    config["market_profile"] = "cn_a"
+    service = RunService(
+        runs_index_path=tmp_path / "runs.json",
+        run_events_dir=tmp_path / "events",
+        runs_root_dir=tmp_path / "runs",
+        graph_factory=FakeGraph,
+    )
+    run = RunState(
+        run_id="failure-run",
+        ticker="600036.SS",
+        date="2026-07-09",
+        asset_type="stock",
+        config=config,
+        selected_analysts=["market"],
+        runtime_context=build_runtime_context("failure-run", base_dir=tmp_path / "runs"),
+        status="running",
+    )
+
+    service._run_analysis_thread(run)
+
+    terminal_output = Path(run.terminal_log_path).read_text(encoding="utf-8")
+    assert "Phase: failed analysis:" in terminal_output
+    assert "cn_stock: China A-share history is currently unavailable" in terminal_output
+    assert "yfinance: Yahoo Finance returned no rows" in terminal_output
+    assert run.status == "failed"
+    assert "cn_stock: China A-share history is currently unavailable" in (run.error or "")
+    assert "yfinance: Yahoo Finance returned no rows" in (run.error or "")
+
+
 def test_local_worker_processes_enqueued_run(tmp_path):
     from tradingagents.service.run_service import RunService
 
