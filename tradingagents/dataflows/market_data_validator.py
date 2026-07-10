@@ -16,6 +16,7 @@ import pandas as pd
 from stockstats import wrap
 
 from tradingagents.dataflows.cn_stock import load_ohlcv_china
+from tradingagents.dataflows.cn_stock_tx import load_ohlcv_china_tx
 from tradingagents.dataflows.errors import (
     NoMarketDataError,
     VendorNotConfiguredError,
@@ -47,6 +48,7 @@ def _load_snapshot_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
 
     raw_loaders = {
         "cn_stock": load_ohlcv_china,
+        "cn_stock_tx": load_ohlcv_china_tx,
         "yfinance": load_ohlcv,
     }
     no_data_errors: list[tuple[str, NoMarketDataError]] = []

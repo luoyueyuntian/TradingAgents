@@ -8,10 +8,12 @@ import pytest
 
 @pytest.mark.unit
 def test_split_cn_symbol_for_hist_vendor():
-    from tradingagents.dataflows.china_equity_utils import split_cn_a_symbol
+    from tradingagents.dataflows.china_equity_utils import split_cn_a_symbol, to_tx_symbol
 
     assert split_cn_a_symbol("600519.SS") == ("600519", "SH")
     assert split_cn_a_symbol("000001.SZ") == ("000001", "SZ")
+    assert to_tx_symbol("600519.SS") == "sh600519"
+    assert to_tx_symbol("000001.SZ") == "sz000001"
 
 
 @pytest.mark.unit
@@ -166,3 +168,28 @@ def test_cn_indicator_window_uses_cn_ohlcv(monkeypatch):
 
     assert "## rsi values from 2026-06-25 to 2026-06-26" in out
     assert "2026-06-26:" in out
+
+
+@pytest.mark.unit
+def test_get_stock_data_china_tx_formats_csv(monkeypatch):
+    from tradingagents.dataflows import cn_stock_tx
+
+    fake_df = pd.DataFrame(
+        [
+            {"date": "2026-07-08", "open": 37.36, "close": 37.94, "high": 37.97, "low": 37.15, "amount": 767135},
+            {"date": "2026-07-09", "open": 37.70, "close": 37.55, "high": 37.81, "low": 37.37, "amount": 765646},
+        ]
+    )
+
+    class FakeAK:
+        @staticmethod
+        def stock_zh_a_hist_tx(symbol, start_date, end_date, adjust):
+            assert symbol == "sh600036"
+            return fake_df
+
+    monkeypatch.setattr(cn_stock_tx, "_load_akshare", lambda: FakeAK)
+    out = cn_stock_tx.get_stock_data_china_tx("600036.SS", "2026-07-08", "2026-07-09")
+
+    assert "# Stock data for 600036.SS from 2026-07-08 to 2026-07-09" in out
+    assert "Date,Open,Close,High,Low,Volume" in out
+    assert "2026-07-09" in out

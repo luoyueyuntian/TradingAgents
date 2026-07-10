@@ -92,6 +92,26 @@ class TestVerifiedSnapshot:
 
         assert "Verified market data snapshot for 600036.SS" in snap
 
+    def test_cn_a_snapshot_falls_back_to_tencent_before_yfinance(self, monkeypatch):
+        config_module.set_config({"market_profile": "cn_a"})
+
+        def _no_china_rows(symbol, _curr_date):
+            raise NoMarketDataError(symbol, "600036", "no China A-share rows through 2026-05-20")
+
+        def _tx_rows(symbol, _curr_date):
+            return _sample_ohlcv()
+
+        def _unexpected_yfinance(*_args, **_kwargs):
+            raise AssertionError("cn_a snapshot should use Tencent fallback before yfinance")
+
+        monkeypatch.setattr(validator, "load_ohlcv_china", _no_china_rows, raising=False)
+        monkeypatch.setattr(validator, "load_ohlcv_china_tx", _tx_rows, raising=False)
+        monkeypatch.setattr(validator, "load_ohlcv", _unexpected_yfinance)
+
+        snap = validator.build_verified_market_snapshot("600036.SS", "2026-05-20")
+
+        assert "Verified market data snapshot for 600036.SS" in snap
+
     def test_cn_a_snapshot_preserves_china_failure_detail_when_fallback_also_fails(self, monkeypatch):
         config_module.set_config({"market_profile": "cn_a"})
 
@@ -106,6 +126,14 @@ class TestVerifiedSnapshot:
             raise NoMarketDataError(symbol, symbol, "Yahoo Finance returned no rows")
 
         monkeypatch.setattr(validator, "load_ohlcv_china", _china_unavailable, raising=False)
+        monkeypatch.setattr(
+            validator,
+            "load_ohlcv_china_tx",
+            lambda symbol, _curr_date: (_ for _ in ()).throw(
+                NoMarketDataError(symbol, "sh600036", "Tencent history endpoint returned no rows")
+            ),
+            raising=False,
+        )
         monkeypatch.setattr(validator, "load_ohlcv", _yahoo_empty)
 
         with pytest.raises(NoMarketDataError) as exc_info:
@@ -113,6 +141,7 @@ class TestVerifiedSnapshot:
 
         message = str(exc_info.value)
         assert "China A-share history is currently unavailable" in message
+        assert "Tencent history endpoint returned no rows" in message
         assert "Yahoo Finance returned no rows" in message
 
 

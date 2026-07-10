@@ -53,6 +53,18 @@ def _get_indicators_china(*args, **kwargs):
     return get_stock_stats_indicators_window_china(*args, **kwargs)
 
 
+def _get_stock_data_china_tx(*args, **kwargs):
+    from .cn_stock_tx import get_stock_data_china_tx
+
+    return get_stock_data_china_tx(*args, **kwargs)
+
+
+def _get_indicators_china_tx(*args, **kwargs):
+    from .cn_stock_tx import get_stock_stats_indicators_window_china_tx
+
+    return get_stock_stats_indicators_window_china_tx(*args, **kwargs)
+
+
 def _get_fundamentals_china(*args, **kwargs):
     from .cn_fundamentals import get_fundamentals_china
 
@@ -127,6 +139,7 @@ VENDOR_LIST = [
     "polymarket",
     "alpha_vantage",
     "cn_stock",
+    "cn_stock_tx",
     "cn_fundamentals",
     "cn_news",
     "cn_macro",
@@ -146,12 +159,14 @@ VENDOR_METHODS = {
     "get_stock_data": {
         "alpha_vantage": get_alpha_vantage_stock,
         "cn_stock": _get_stock_data_china,
+        "cn_stock_tx": _get_stock_data_china_tx,
         "yfinance": get_YFin_data_online,
     },
     # technical_indicators
     "get_indicators": {
         "alpha_vantage": get_alpha_vantage_indicator,
         "cn_stock": _get_indicators_china,
+        "cn_stock_tx": _get_indicators_china_tx,
         "yfinance": get_stock_stats_indicators_window,
     },
     # fundamental_data
