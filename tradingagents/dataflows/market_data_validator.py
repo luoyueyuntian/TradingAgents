@@ -15,6 +15,13 @@ from collections.abc import Iterable
 import pandas as pd
 from stockstats import wrap
 
+from tradingagents.dataflows.cn_stock import load_ohlcv_china
+from tradingagents.dataflows.errors import (
+    NoMarketDataError,
+    VendorNotConfiguredError,
+    VendorRateLimitError,
+)
+from tradingagents.dataflows.interface import get_vendor
 from tradingagents.dataflows.stockstats_utils import load_ohlcv
 
 # A fixed, common indicator set so the snapshot is the same shape every run.
@@ -25,6 +32,71 @@ DEFAULT_SNAPSHOT_INDICATORS: tuple[str, ...] = (
 )
 
 
+def _load_snapshot_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
+    """Load raw OHLCV for deterministic snapshots, honoring cn_a fallback.
+
+    The verified snapshot needs a DataFrame, not the tool layer's formatted
+    text output. Today only the China A-share adapter and the yfinance path
+    expose raw-frame loaders, so we mirror the configured China-first chain
+    when `cn_stock` is present and otherwise preserve the historic yfinance
+    behavior for non-China configurations.
+    """
+    vendor_chain = [v.strip() for v in get_vendor("core_stock_apis", "get_stock_data").split(",")]
+    if "cn_stock" not in vendor_chain:
+        return load_ohlcv(symbol, curr_date)
+
+    raw_loaders = {
+        "cn_stock": load_ohlcv_china,
+        "yfinance": load_ohlcv,
+    }
+    no_data_errors: list[tuple[str, NoMarketDataError]] = []
+    first_error: Exception | None = None
+
+    for vendor in vendor_chain:
+        loader = raw_loaders.get(vendor)
+        if loader is None:
+            continue
+        try:
+            return loader(symbol, curr_date)
+        except VendorRateLimitError as exc:
+            if first_error is None:
+                first_error = exc
+            continue
+        except VendorNotConfiguredError as exc:
+            if first_error is None:
+                first_error = exc
+            continue
+        except NoMarketDataError as exc:
+            no_data_errors.append((vendor, exc))
+            continue
+        except Exception as exc:  # noqa: BLE001 - surface the first real vendor failure
+            if first_error is None:
+                first_error = exc
+            continue
+
+    if no_data_errors:
+        if len(no_data_errors) == 1 and first_error is None:
+            raise no_data_errors[0][1]
+
+        detail_parts = []
+        seen = set()
+        for vendor, error in no_data_errors:
+            detail = error.detail or str(error)
+            part = f"{vendor}: {detail}"
+            if part not in seen:
+                seen.add(part)
+                detail_parts.append(part)
+        if first_error is not None:
+            part = f"earlier error: {first_error}"
+            if part not in seen:
+                detail_parts.append(part)
+        canonical = no_data_errors[-1][1].canonical
+        raise NoMarketDataError(symbol, canonical, " | ".join(detail_parts))
+    if first_error is not None:
+        raise first_error
+    return load_ohlcv(symbol, curr_date)
+
+
 def _verified_rows(symbol: str, curr_date: str) -> pd.DataFrame:
     """OHLCV on or before curr_date, date-sorted. Raises if nothing usable.
 
@@ -32,7 +104,7 @@ def _verified_rows(symbol: str, curr_date: str) -> pd.DataFrame:
     look-ahead rows, but we re-apply the cutoff defensively — this is a
     verification path, so it must not trust its input to be pre-filtered.
     """
-    data = load_ohlcv(symbol, curr_date)
+    data = _load_snapshot_ohlcv(symbol, curr_date)
     if data is None or data.empty:
         raise ValueError(f"No OHLCV data available for {symbol}.")
 

@@ -5,7 +5,9 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+import tradingagents.dataflows.config as config_module
 import tradingagents.dataflows.market_data_validator as validator
+from tradingagents.dataflows.errors import NoMarketDataError
 
 
 def _sample_ohlcv() -> pd.DataFrame:
@@ -61,6 +63,57 @@ class TestVerifiedSnapshot:
         # last-N closes table has at most 30 data rows
         close_rows = [ln for ln in snap.splitlines() if ln.startswith("| 2026-")]
         assert 0 < len(close_rows) <= 30
+
+    def test_cn_a_snapshot_prefers_china_ohlcv_before_yfinance(self, monkeypatch):
+        config_module.set_config({"market_profile": "cn_a"})
+
+        def _unexpected_yfinance(*_args, **_kwargs):
+            raise AssertionError("cn_a snapshot should not call the yfinance-only OHLCV path first")
+
+        monkeypatch.setattr(validator, "load_ohlcv", _unexpected_yfinance)
+        monkeypatch.setattr(
+            validator, "load_ohlcv_china", lambda s, d: _sample_ohlcv(), raising=False
+        )
+
+        snap = validator.build_verified_market_snapshot("600036.SS", "2026-05-20")
+
+        assert "Verified market data snapshot for 600036.SS" in snap
+
+    def test_cn_a_snapshot_falls_back_to_yfinance_when_china_has_no_rows(self, monkeypatch):
+        config_module.set_config({"market_profile": "cn_a"})
+
+        def _no_china_rows(symbol, _curr_date):
+            raise NoMarketDataError(symbol, "600036", "no China A-share rows through 2026-05-20")
+
+        monkeypatch.setattr(validator, "load_ohlcv_china", _no_china_rows, raising=False)
+        monkeypatch.setattr(validator, "load_ohlcv", lambda s, d: _sample_ohlcv())
+
+        snap = validator.build_verified_market_snapshot("600036.SS", "2026-05-20")
+
+        assert "Verified market data snapshot for 600036.SS" in snap
+
+    def test_cn_a_snapshot_preserves_china_failure_detail_when_fallback_also_fails(self, monkeypatch):
+        config_module.set_config({"market_profile": "cn_a"})
+
+        def _china_unavailable(symbol, _curr_date):
+            raise NoMarketDataError(
+                symbol,
+                "600036",
+                "China A-share history is currently unavailable (remote closed connection)",
+            )
+
+        def _yahoo_empty(symbol, _curr_date):
+            raise NoMarketDataError(symbol, symbol, "Yahoo Finance returned no rows")
+
+        monkeypatch.setattr(validator, "load_ohlcv_china", _china_unavailable, raising=False)
+        monkeypatch.setattr(validator, "load_ohlcv", _yahoo_empty)
+
+        with pytest.raises(NoMarketDataError) as exc_info:
+            validator.build_verified_market_snapshot("600036.SS", "2026-05-20")
+
+        message = str(exc_info.value)
+        assert "China A-share history is currently unavailable" in message
+        assert "Yahoo Finance returned no rows" in message
 
 
 @pytest.mark.unit
