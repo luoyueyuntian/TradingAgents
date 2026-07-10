@@ -24,7 +24,11 @@ from tradingagents.service.execution_lock import PROCESS_EXECUTION_LOCK
 from tradingagents.service.models import TERMINAL_RUN_STATUSES, RunCancelledError, RunState
 from tradingagents.service.runtime_context import RuntimeContext, build_runtime_context
 from tradingagents.service.state_backend import StateBackendAdapter, get_state_backend_adapter
-from tradingagents.service.timestamps import coerce_timestamp_ms, current_timestamp_ms
+from tradingagents.service.timestamps import (
+    coerce_timestamp_ms,
+    current_timestamp_ms,
+    local_timestamp_text,
+)
 from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import export_api_keys_to_env, load_settings
 
@@ -225,7 +229,7 @@ class RunService:
         if not line:
             return
         path = self._ensure_terminal_log(run)
-        timestamp = str(current_timestamp_ms(datetime.datetime.now()))
+        timestamp = local_timestamp_text()
         rendered = f"{timestamp} [run:{run.run_id}] {line}"
         with self._terminal_log_lock:
             try:

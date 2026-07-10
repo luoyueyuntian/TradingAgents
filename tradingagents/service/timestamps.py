@@ -20,6 +20,13 @@ def current_timestamp_ms(now: datetime | None = None) -> int:
     return int(resolved.timestamp() * 1000)
 
 
+def local_timestamp_text(now: datetime | None = None) -> str:
+    resolved = now or datetime.now().astimezone()
+    if resolved.tzinfo is None:
+        resolved = resolved.astimezone()
+    return resolved.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def coerce_timestamp_ms(value: Any) -> int | None:
     if value is None:
         return None

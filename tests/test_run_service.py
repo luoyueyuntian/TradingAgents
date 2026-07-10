@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import threading
 import time
+import re
 from pathlib import Path
 
 import pytest
@@ -135,6 +136,34 @@ def test_run_service_persists_terminal_output_from_analysis(tmp_path):
         item["event"] == "terminal_output"
         and item["data"]["line"] == "stdout: downloading market data"
         for item in run.event_history
+    )
+
+
+def test_run_service_terminal_log_uses_local_datetime_text_prefix(tmp_path):
+    from tradingagents.service.run_service import RunService
+
+    service = RunService(
+        runs_index_path=tmp_path / "runs.json",
+        run_events_dir=tmp_path / "events",
+        runs_root_dir=tmp_path / "runs",
+    )
+    run = RunState(
+        run_id="timestamp-run",
+        ticker="AAPL",
+        date="2026-01-15",
+        asset_type="stock",
+        config=DEFAULT_CONFIG.copy(),
+        selected_analysts=["market"],
+        runtime_context=build_runtime_context("timestamp-run", base_dir=tmp_path / "runs"),
+        status="running",
+    )
+
+    service._write_terminal_line(run, "stdout", "Phase: smoke test")
+
+    terminal_output = Path(run.terminal_log_path).read_text(encoding="utf-8").strip()
+    assert re.match(
+        r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[run:timestamp-run\] Phase: smoke test$",
+        terminal_output,
     )
 
 
