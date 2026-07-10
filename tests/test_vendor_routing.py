@@ -25,6 +25,13 @@ def _no_data(symbol, *a, **k):
     raise NoMarketDataError(symbol, symbol, "no rows")
 
 
+def _no_data_with_detail(detail: str):
+    def impl(symbol, *a, **k):
+        raise NoMarketDataError(symbol, symbol, detail)
+
+    return impl
+
+
 def _returns(value):
     def impl(symbol, *a, **k):
         return value
@@ -67,6 +74,18 @@ class VendorRoutingTests(unittest.TestCase):
         with self._route({"yfinance": _no_data, "alpha_vantage": _returns("AV_DATA")}):
             result = interface.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
         self.assertEqual(result, "AV_DATA")
+
+    def test_multi_vendor_no_data_preserves_all_vendor_details(self):
+        set_config({"data_vendors": {"core_stock_apis": "cn_stock,yfinance"}})
+        with self._route(
+            {
+                "cn_stock": _no_data_with_detail("China A-share history is currently unavailable (remote closed connection)"),
+                "yfinance": _no_data_with_detail("Yahoo Finance returned no rows"),
+            }
+        ):
+            result = interface.route_to_vendor("get_stock_data", "600036.SS", "2026-07-01", "2026-07-09")
+        assert "China A-share history is currently unavailable" in result
+        assert "Yahoo Finance returned no rows" in result
 
     def test_primary_error_is_logged_not_masked(self):
         # #989: primary errors + fallback no-data -> NO_DATA, but the failure
