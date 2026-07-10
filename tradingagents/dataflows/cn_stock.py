@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from importlib import import_module
+import logging
+import time
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
@@ -12,6 +14,8 @@ from stockstats import wrap
 from .china_equity_utils import normalize_cn_hist_frame, split_cn_a_symbol
 from .errors import NoMarketDataError, VendorNotConfiguredError
 from .stockstats_utils import _assert_ohlcv_not_stale
+
+logger = logging.getLogger(__name__)
 
 INDICATOR_DESCRIPTIONS = {
     "close_50_sma": "50 SMA: A medium-term trend indicator. Usage: Identify trend direction and serve as dynamic support/resistance. Tips: It lags price; combine with faster indicators for timely signals.",
@@ -34,6 +38,41 @@ def _load_akshare():
     return import_module("akshare")
 
 
+def _fetch_hist_with_retry(
+    ak,
+    *,
+    symbol: str,
+    period: str,
+    start_date: str,
+    end_date: str,
+    adjust: str,
+    max_retries: int = 2,
+    base_delay: float = 1.0,
+):
+    """Retry transient China vendor history failures a few times."""
+    for attempt in range(max_retries + 1):
+        try:
+            return ak.stock_zh_a_hist(
+                symbol=symbol,
+                period=period,
+                start_date=start_date,
+                end_date=end_date,
+                adjust=adjust,
+            )
+        except Exception:  # noqa: BLE001 - vendor-specific transient failures vary widely
+            if attempt >= max_retries:
+                raise
+            delay = base_delay * (2**attempt)
+            logger.warning(
+                "China stock vendor history fetch failed for %s, retrying in %.0fs (attempt %s/%s)",
+                symbol,
+                delay,
+                attempt + 1,
+                max_retries,
+            )
+            time.sleep(delay)
+
+
 def load_ohlcv_china(symbol: str, curr_date: str) -> pd.DataFrame:
     """Fetch mainland A-share OHLCV and normalize it for downstream use."""
     digits, _exchange = split_cn_a_symbol(symbol)
@@ -47,7 +86,8 @@ def load_ohlcv_china(symbol: str, curr_date: str) -> pd.DataFrame:
         ) from exc
 
     try:
-        raw = ak.stock_zh_a_hist(
+        raw = _fetch_hist_with_retry(
+            ak,
             symbol=digits,
             period="daily",
             start_date=start_date,

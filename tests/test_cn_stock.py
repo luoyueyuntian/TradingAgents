@@ -60,6 +60,32 @@ def test_get_stock_data_china_rejects_stale_rows(monkeypatch):
 
 
 @pytest.mark.unit
+def test_get_stock_data_china_retries_transient_vendor_errors(monkeypatch):
+    from tradingagents.dataflows import cn_stock
+
+    fake_df = pd.DataFrame(
+        [{"日期": "2026-06-26", "开盘": 1462.0, "收盘": 1470.0, "最高": 1472.0, "最低": 1458.0, "成交量": 120000}]
+    )
+    calls = {"count": 0}
+
+    class FakeAK:
+        @staticmethod
+        def stock_zh_a_hist(symbol, period, start_date, end_date, adjust):
+            calls["count"] += 1
+            if calls["count"] < 3:
+                raise ConnectionError("remote closed connection")
+            return fake_df
+
+    monkeypatch.setattr(cn_stock, "_load_akshare", lambda: FakeAK)
+    monkeypatch.setattr(cn_stock.time, "sleep", lambda *_args, **_kwargs: None)
+
+    out = cn_stock.get_stock_data_china("600519.SS", "2026-06-26", "2026-06-26")
+
+    assert calls["count"] == 3
+    assert "2026-06-26" in out
+
+
+@pytest.mark.unit
 def test_cn_indicator_window_uses_cn_ohlcv(monkeypatch):
     from tradingagents.dataflows import cn_stock
 
