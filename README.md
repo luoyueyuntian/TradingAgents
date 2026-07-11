@@ -146,6 +146,7 @@ TradingAgents keeps its dependency set minimal. All LLM calls go through HTTP AP
 | **pandas** | ~70 MB | **Always.** DataFrame operations across all data vendor implementations (8 files). Used for data cleaning, date filtering, column mapping, and markdown table generation. |
 | **stockstats** | <1 MB | **Always.** Computes technical indicators (RSI, MACD, Bollinger Bands, etc.) on top of whichever OHLCV vendor served the request. In `cn_a`, that means China-market OHLCV first and `yfinance` only as fallback. |
 | **requests** | <1 MB | When using FRED (macro data), Polymarket (prediction markets), or Alpha Vantage. Direct HTTP calls to these APIs. |
+| **curl-cffi** | — | In `cn_a`, tries Eastmoney's historical K-line endpoint with a Chrome-like TLS/HTTP fingerprint after the standard AKShare Eastmoney path fails and before falling back to Tencent/yfinance. Some upstream anti-bot policies may still require the Tencent fallback. |
 
 #### Optional Dependencies
 
@@ -470,7 +471,7 @@ print(decision)
 
 In `cn_a` mode:
 
-- `core_stock_apis` defaults to China-market A-share OHLCV first and falls back to `yfinance` only when the China adapter returns no usable data
+- `core_stock_apis` defaults to China-market A-share OHLCV first: AKShare/Eastmoney, then an Eastmoney Chrome-fingerprint client, then Tencent, then `yfinance`
 - `technical_indicators` continue to be computed locally, but their underlying OHLCV defaults to the same China-first A-share path
 - `fundamental_data` defaults to China-market fundamentals and financial statements first, then falls back to `yfinance` if the China adapter cannot serve the request
 - `news_data` defaults to China-market company and macro news adapters

@@ -18,8 +18,8 @@ def test_china_profile_vendor_defaults():
     from tradingagents.dataflows.market_profiles import get_profile_data_vendors
 
     vendors = get_profile_data_vendors("cn_a")
-    assert vendors["core_stock_apis"] == "cn_stock,cn_stock_tx,yfinance"
-    assert vendors["technical_indicators"] == "cn_stock,cn_stock_tx,yfinance"
+    assert vendors["core_stock_apis"] == "cn_stock,cn_stock_em,cn_stock_tx,yfinance"
+    assert vendors["technical_indicators"] == "cn_stock,cn_stock_em,cn_stock_tx,yfinance"
     assert vendors["fundamental_data"] == "cn_fundamentals,yfinance"
     assert vendors["news_data"] == "cn_news"
     assert vendors["macro_data"] == "cn_macro"
@@ -31,8 +31,8 @@ def test_get_vendor_uses_china_profile_defaults():
     _reset_config()
     config_module.set_config({"market_profile": "cn_a"})
 
-    assert interface.get_vendor("core_stock_apis", "get_stock_data") == "cn_stock,cn_stock_tx,yfinance"
-    assert interface.get_vendor("technical_indicators", "get_indicators") == "cn_stock,cn_stock_tx,yfinance"
+    assert interface.get_vendor("core_stock_apis", "get_stock_data") == "cn_stock,cn_stock_em,cn_stock_tx,yfinance"
+    assert interface.get_vendor("technical_indicators", "get_indicators") == "cn_stock,cn_stock_em,cn_stock_tx,yfinance"
     assert interface.get_vendor("fundamental_data", "get_fundamentals") == "cn_fundamentals,yfinance"
     assert interface.get_vendor("news_data", "get_news") == "cn_news"
     assert interface.get_vendor("macro_data", "get_macro_indicators") == "cn_macro"
@@ -71,8 +71,8 @@ def test_default_sentinel_still_uses_china_profile_defaults():
         }
     )
 
-    assert interface.get_vendor("core_stock_apis", "get_stock_data") == "cn_stock,cn_stock_tx,yfinance"
-    assert interface.get_vendor("technical_indicators", "get_indicators") == "cn_stock,cn_stock_tx,yfinance"
+    assert interface.get_vendor("core_stock_apis", "get_stock_data") == "cn_stock,cn_stock_em,cn_stock_tx,yfinance"
+    assert interface.get_vendor("technical_indicators", "get_indicators") == "cn_stock,cn_stock_em,cn_stock_tx,yfinance"
     assert interface.get_vendor("fundamental_data", "get_fundamentals") == "cn_fundamentals,yfinance"
     assert interface.get_vendor("news_data", "get_news") == "cn_news"
     assert interface.get_vendor("macro_data", "get_macro_indicators") == "cn_macro"
