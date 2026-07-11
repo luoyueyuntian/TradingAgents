@@ -76,16 +76,18 @@ class VendorRoutingTests(unittest.TestCase):
         self.assertEqual(result, "AV_DATA")
 
     def test_multi_vendor_no_data_preserves_all_vendor_details(self):
-        set_config({"data_vendors": {"core_stock_apis": "cn_stock,cn_stock_tx,yfinance"}})
+        set_config({"data_vendors": {"core_stock_apis": "cn_stock,cn_stock_em,cn_stock_tx,yfinance"}})
         with self._route(
             {
                 "cn_stock": _no_data_with_detail("China A-share history is currently unavailable (remote closed connection)"),
+                "cn_stock_em": _no_data_with_detail("Eastmoney Chrome endpoint returned no rows"),
                 "cn_stock_tx": _no_data_with_detail("Tencent history endpoint returned no rows"),
                 "yfinance": _no_data_with_detail("Yahoo Finance returned no rows"),
             }
         ):
             result = interface.route_to_vendor("get_stock_data", "600036.SS", "2026-07-01", "2026-07-09")
         assert "China A-share history is currently unavailable" in result
+        assert "Eastmoney Chrome endpoint returned no rows" in result
         assert "Tencent history endpoint returned no rows" in result
         assert "Yahoo Finance returned no rows" in result
 
@@ -151,6 +153,8 @@ class VendorRoutingTests(unittest.TestCase):
     def test_china_stock_vendor_registered(self):
         self.assertIn("cn_stock", interface.VENDOR_METHODS["get_stock_data"])
         self.assertIn("cn_stock", interface.VENDOR_METHODS["get_indicators"])
+        self.assertIn("cn_stock_em", interface.VENDOR_METHODS["get_stock_data"])
+        self.assertIn("cn_stock_em", interface.VENDOR_METHODS["get_indicators"])
         self.assertIn("cn_stock_tx", interface.VENDOR_METHODS["get_stock_data"])
         self.assertIn("cn_stock_tx", interface.VENDOR_METHODS["get_indicators"])
 

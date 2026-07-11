@@ -53,6 +53,18 @@ def _get_indicators_china(*args, **kwargs):
     return get_stock_stats_indicators_window_china(*args, **kwargs)
 
 
+def _get_stock_data_china_em(*args, **kwargs):
+    from .cn_stock_em import get_stock_data_china_em
+
+    return get_stock_data_china_em(*args, **kwargs)
+
+
+def _get_indicators_china_em(*args, **kwargs):
+    from .cn_stock_em import get_stock_stats_indicators_window_china_em
+
+    return get_stock_stats_indicators_window_china_em(*args, **kwargs)
+
+
 def _get_stock_data_china_tx(*args, **kwargs):
     from .cn_stock_tx import get_stock_data_china_tx
 
@@ -139,6 +151,7 @@ VENDOR_LIST = [
     "polymarket",
     "alpha_vantage",
     "cn_stock",
+    "cn_stock_em",
     "cn_stock_tx",
     "cn_fundamentals",
     "cn_news",
@@ -159,6 +172,7 @@ VENDOR_METHODS = {
     "get_stock_data": {
         "alpha_vantage": get_alpha_vantage_stock,
         "cn_stock": _get_stock_data_china,
+        "cn_stock_em": _get_stock_data_china_em,
         "cn_stock_tx": _get_stock_data_china_tx,
         "yfinance": get_YFin_data_online,
     },
@@ -166,6 +180,7 @@ VENDOR_METHODS = {
     "get_indicators": {
         "alpha_vantage": get_alpha_vantage_indicator,
         "cn_stock": _get_indicators_china,
+        "cn_stock_em": _get_indicators_china_em,
         "cn_stock_tx": _get_indicators_china_tx,
         "yfinance": get_stock_stats_indicators_window,
     },

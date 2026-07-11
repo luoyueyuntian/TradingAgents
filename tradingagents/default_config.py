@@ -228,11 +228,11 @@ _BASE_CONFIG_TEMPLATE = {
     # The configured value is the exact vendor chain — requests are NOT silently
     # routed to vendors you didn't choose. For ordered fallback, list several,
     # e.g. "yfinance,alpha_vantage". "default" uses all available vendors.
-    # market_profile-specific overrides (for example cn_a -> cn_stock,yfinance)
+    # market_profile-specific overrides (for example cn_a -> cn_stock,cn_stock_em,cn_stock_tx,yfinance)
     # are applied later by tradingagents.dataflows.market_profiles.
     "data_vendors": {
-        "core_stock_apis": "yfinance",       # Options: alpha_vantage, yfinance, cn_stock
-        "technical_indicators": "yfinance",  # Options: alpha_vantage, yfinance, cn_stock
+        "core_stock_apis": "yfinance",       # Options: alpha_vantage, yfinance, cn_stock, cn_stock_em, cn_stock_tx
+        "technical_indicators": "yfinance",  # Options: alpha_vantage, yfinance, cn_stock, cn_stock_em, cn_stock_tx
         "fundamental_data": "yfinance",      # Options: alpha_vantage, yfinance, cn_fundamentals
         "news_data": "yfinance",             # Options: alpha_vantage, yfinance, cn_news
         "macro_data": "fred",                # Options: fred (needs FRED_API_KEY)

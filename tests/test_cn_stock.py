@@ -171,6 +171,45 @@ def test_cn_indicator_window_uses_cn_ohlcv(monkeypatch):
 
 
 @pytest.mark.unit
+def test_get_stock_data_china_em_uses_chrome_impersonation(monkeypatch):
+    from tradingagents.dataflows import cn_stock_em
+
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "data": {
+                    "klines": [
+                        "2026-07-08,37.36,37.94,37.97,37.15,767135,2899053623.00,2.18,1.04,0.39,0.37",
+                        "2026-07-09,37.70,37.55,37.81,37.37,765646,2875450172.00,1.16,-1.03,-0.39,0.37",
+                    ]
+                }
+            }
+
+    class FakeCurlRequests:
+        @staticmethod
+        def get(url, **kwargs):
+            captured["url"] = url
+            captured.update(kwargs)
+            return FakeResponse()
+
+    monkeypatch.setattr(cn_stock_em, "_load_curl_requests", lambda: FakeCurlRequests)
+
+    out = cn_stock_em.get_stock_data_china_em("600036.SS", "2026-07-08", "2026-07-09")
+
+    assert captured["url"] == "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    assert captured["impersonate"] == "chrome"
+    assert captured["params"]["secid"] == "1.600036"
+    assert "# Stock data for 600036.SS from 2026-07-08 to 2026-07-09" in out
+    assert "Date,Open,Close,High,Low,Volume" in out
+    assert "2026-07-09,37.7,37.55,37.81,37.37,765646" in out
+
+
+@pytest.mark.unit
 def test_get_stock_data_china_tx_formats_csv(monkeypatch):
     from tradingagents.dataflows import cn_stock_tx
 

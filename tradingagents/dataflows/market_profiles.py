@@ -7,15 +7,15 @@ without rewriting the graph. ``default`` preserves the current behavior;
 
 from __future__ import annotations
 
-from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.dataflows.config import get_config
+from tradingagents.default_config import DEFAULT_CONFIG
 
 DEFAULT_PROFILE = "default"
 CHINA_A_PROFILE = "cn_a"
 
 CHINA_A_VENDOR_DEFAULTS = {
-    "core_stock_apis": "cn_stock,cn_stock_tx,yfinance",
-    "technical_indicators": "cn_stock,cn_stock_tx,yfinance",
+    "core_stock_apis": "cn_stock,cn_stock_em,cn_stock_tx,yfinance",
+    "technical_indicators": "cn_stock,cn_stock_em,cn_stock_tx,yfinance",
     "fundamental_data": "cn_fundamentals,yfinance",
     "news_data": "cn_news",
     "macro_data": "cn_macro",
