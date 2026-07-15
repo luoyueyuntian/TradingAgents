@@ -31,6 +31,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from .market_profiles import get_market_profile, is_china_a_profile
+from .provenance import record_data_fetch, summarize_request
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,22 @@ def fetch_reddit_posts(
     stay under Reddit's public per-IP rate limit; combined with the RSS-first
     path it makes 429s rare even when several analyses run back-to-back.
     """
+    request_label = summarize_request("fetch_reddit_posts", ticker)
     if is_china_a_profile(get_market_profile()):
+        record_data_fetch(
+            method="fetch_reddit_posts",
+            category="social_sentiment",
+            request_label=request_label,
+            status="not_applicable",
+            required=False,
+            configured_sources=["reddit_rss"],
+            attempted_sources=[],
+            actual_source=None,
+            fallback_used=False,
+            incomplete=False,
+            detail="Disabled for cn_a market profile.",
+            warning=None,
+        )
         return "<reddit disabled for cn_a market profile>"
 
     blocks = []
@@ -243,8 +259,41 @@ def fetch_reddit_posts(
         blocks.append("\n".join(lines))
 
     if total_posts == 0:
+        record_data_fetch(
+            method="fetch_reddit_posts",
+            category="social_sentiment",
+            request_label=request_label,
+            status="unavailable",
+            required=True,
+            configured_sources=["reddit_rss"],
+            attempted_sources=["reddit_rss"],
+            actual_source=None,
+            fallback_used=False,
+            incomplete=True,
+            detail=(
+                f"No Reddit posts found mentioning {ticker.upper()} across "
+                f"{', '.join(f'r/{s}' for s in subreddits)} in the past 7 days"
+            ),
+            warning=f"Reddit sentiment data was unavailable for {ticker.upper()}.",
+        )
         return (
             f"<no Reddit posts found mentioning {ticker.upper()} across "
             f"{', '.join(f'r/{s}' for s in subreddits)} in the past 7 days>"
         )
-    return "\n\n".join(blocks)
+    rendered = "\n\n".join(blocks)
+    record_data_fetch(
+        method="fetch_reddit_posts",
+        category="social_sentiment",
+        request_label=request_label,
+        status="success",
+        required=True,
+        configured_sources=["reddit_rss"],
+        attempted_sources=["reddit_rss"],
+        actual_source="reddit_rss",
+        fallback_used=False,
+        incomplete=False,
+        detail=f"Collected {total_posts} Reddit post(s).",
+        warning=None,
+        result=rendered,
+    )
+    return rendered

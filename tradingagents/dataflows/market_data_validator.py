@@ -24,6 +24,7 @@ from tradingagents.dataflows.errors import (
     VendorRateLimitError,
 )
 from tradingagents.dataflows.interface import get_vendor
+from tradingagents.dataflows.provenance import record_data_fetch, summarize_request
 from tradingagents.dataflows.stockstats_utils import load_ohlcv
 
 # A fixed, common indicator set so the snapshot is the same shape every run.
@@ -44,8 +45,25 @@ def _load_snapshot_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
     behavior for non-China configurations.
     """
     vendor_chain = [v.strip() for v in get_vendor("core_stock_apis", "get_stock_data").split(",")]
+    request_label = summarize_request("get_verified_market_snapshot", symbol, curr_date)
     if "cn_stock" not in vendor_chain:
-        return load_ohlcv(symbol, curr_date)
+        frame = load_ohlcv(symbol, curr_date)
+        record_data_fetch(
+            method="get_verified_market_snapshot",
+            category="market_verification",
+            request_label=request_label,
+            status="success",
+            required=True,
+            configured_sources=["yfinance"],
+            attempted_sources=["yfinance"],
+            actual_source="yfinance",
+            fallback_used=False,
+            incomplete=False,
+            detail=None,
+            warning=None,
+            result=frame,
+        )
+        return frame
 
     raw_loaders = {
         "cn_stock": load_ohlcv_china,
@@ -55,13 +73,36 @@ def _load_snapshot_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
     }
     no_data_errors: list[tuple[str, NoMarketDataError]] = []
     first_error: Exception | None = None
+    attempted_sources: list[str] = []
 
     for vendor in vendor_chain:
         loader = raw_loaders.get(vendor)
         if loader is None:
             continue
         try:
-            return loader(symbol, curr_date)
+            attempted_sources.append(vendor)
+            frame = loader(symbol, curr_date)
+            fallback_used = vendor != vendor_chain[0]
+            record_data_fetch(
+                method="get_verified_market_snapshot",
+                category="market_verification",
+                request_label=request_label,
+                status="fallback" if fallback_used else "success",
+                required=True,
+                configured_sources=vendor_chain,
+                attempted_sources=attempted_sources,
+                actual_source=vendor,
+                fallback_used=fallback_used,
+                incomplete=False,
+                detail=(
+                    f"Used fallback vendor '{vendor}' after {', '.join(attempted_sources[:-1])} failed."
+                    if fallback_used and attempted_sources[:-1]
+                    else None
+                ),
+                warning=None,
+                result=frame,
+            )
+            return frame
         except VendorRateLimitError as exc:
             if first_error is None:
                 first_error = exc
@@ -95,8 +136,36 @@ def _load_snapshot_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
             if part not in seen:
                 detail_parts.append(part)
         canonical = no_data_errors[-1][1].canonical
+        record_data_fetch(
+            method="get_verified_market_snapshot",
+            category="market_verification",
+            request_label=request_label,
+            status="unavailable",
+            required=True,
+            configured_sources=vendor_chain,
+            attempted_sources=attempted_sources,
+            actual_source=None,
+            fallback_used=False,
+            incomplete=True,
+            detail=" | ".join(detail_parts) if detail_parts else None,
+            warning=f"Verified market snapshot could not obtain complete OHLCV data for {symbol}.",
+        )
         raise NoMarketDataError(symbol, canonical, " | ".join(detail_parts))
     if first_error is not None:
+        record_data_fetch(
+            method="get_verified_market_snapshot",
+            category="market_verification",
+            request_label=request_label,
+            status="error",
+            required=True,
+            configured_sources=vendor_chain,
+            attempted_sources=attempted_sources,
+            actual_source=None,
+            fallback_used=False,
+            incomplete=True,
+            detail=str(first_error),
+            warning=f"Verified market snapshot failed before a usable vendor was selected for {symbol}.",
+        )
         raise first_error
     return load_ohlcv(symbol, curr_date)
 

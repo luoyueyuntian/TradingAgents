@@ -8,6 +8,10 @@ import pytest
 import tradingagents.dataflows.config as config_module
 import tradingagents.dataflows.market_data_validator as validator
 from tradingagents.dataflows.errors import NoMarketDataError
+from tradingagents.dataflows.provenance import (
+    get_data_fetch_audit,
+    reset_data_fetch_audit,
+)
 
 
 def _sample_ohlcv() -> pd.DataFrame:
@@ -25,6 +29,12 @@ def _sample_ohlcv() -> pd.DataFrame:
 
 @pytest.mark.unit
 class TestVerifiedSnapshot:
+    def setup_method(self):
+        reset_data_fetch_audit()
+
+    def teardown_method(self):
+        reset_data_fetch_audit()
+
     def test_excludes_future_rows(self, monkeypatch):
         data = pd.concat([
             _sample_ohlcv(),
@@ -111,6 +121,13 @@ class TestVerifiedSnapshot:
         snap = validator.build_verified_market_snapshot("600036.SS", "2026-05-20")
 
         assert "Verified market data snapshot for 600036.SS" in snap
+        audit = get_data_fetch_audit()
+        assert audit[-1]["method"] == "get_verified_market_snapshot"
+        assert audit[-1]["actual_source"] == "cn_stock_tx"
+        assert audit[-1]["status"] == "fallback"
+        assert audit[-1]["fallback_used"] is True
+        assert audit[-1]["result_kind"] == "dataframe"
+        assert "rows=" in audit[-1]["result_preview"]
 
     def test_cn_a_snapshot_preserves_china_failure_detail_when_fallback_also_fails(self, monkeypatch):
         config_module.set_config({"market_profile": "cn_a"})

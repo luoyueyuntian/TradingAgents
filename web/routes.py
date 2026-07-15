@@ -180,6 +180,7 @@ from .schemas import (
     RunCompanyGroupPage,
     RunComment,
     RunCommentCreate,
+    RunDebugConfig,
     RunCommentResolveUpdate,
     RunComparison,
     RunEvent,
@@ -319,6 +320,49 @@ def _analysis_response_from_run(run) -> AnalysisResponse:
         ticker=run.ticker,
         company_name=run.company_name,
         date=run.date,
+    )
+
+
+def _build_run_status(run, tenant_id: str | None = None) -> RunStatus:
+    return RunStatus(
+        run_id=run.run_id,
+        status=run.status,
+        ticker=run.ticker,
+        company_name=run.company_name,
+        date=run.date,
+        asset_type=run.asset_type,
+        created_at=run.created_at,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+        queue_position=get_queue_position(run.run_id, tenant_id),
+        agents=dict(run.agents),
+        report_sections=dict(run.report_sections),
+        config_summary=_run_config_summary(run),
+        current_report=run.current_report,
+        final_report=run.final_report,
+        data_fetches=list(run.data_fetches),
+        data_warnings=list(run.data_warnings),
+        usage_summary=deepcopy(run.usage_summary or {}),
+        signal=run.signal,
+        error=run.error,
+        annotation=_get_run_annotation(run.run_id, tenant_id),
+        review=_get_run_review(run.run_id, tenant_id),
+        public_share=_build_public_share_info(_get_public_run_share_for_run(run.run_id, tenant_id)),
+    )
+
+
+def _build_run_debug_config(run) -> RunDebugConfig:
+    runtime_context = getattr(run, "runtime_context", None)
+    run_root = str(runtime_context.run_root) if runtime_context is not None else None
+    return RunDebugConfig(
+        run_id=run.run_id,
+        selected_analysts=list(run.selected_analysts),
+        config=deepcopy(run.config or {}),
+        run_root=run_root,
+        report_path=run.report_path,
+        state_log_path=run.state_log_path,
+        terminal_log_path=run.terminal_log_path,
+        event_log_path=run.event_log_path,
     )
 
 
@@ -480,7 +524,7 @@ def _run_config_summary(run) -> dict[str, object]:
         "deep_think_model": config.get("deep_think_llm"),
         "output_language": config.get("output_language"),
         "market_profile": config.get("market_profile"),
-        "research_depth": config.get("max_debate_rounds"),
+        "research_depth": _extract_run_research_depth(run),
         "max_risk_discuss_rounds": config.get("max_risk_discuss_rounds"),
         "checkpoint_enabled": config.get("checkpoint_enabled"),
         "benchmark_ticker": config.get("benchmark_ticker"),
@@ -494,6 +538,20 @@ def _run_config_summary(run) -> dict[str, object]:
         "global_news_lookback_days": config.get("global_news_lookback_days"),
         "global_news_queries": list(config.get("global_news_queries", [])),
     }
+
+
+def _extract_run_research_depth(run) -> int | None:
+    config = run.config or {}
+    depth = config.get("max_debate_rounds")
+    if depth is None:
+        depth = config.get("research_depth")
+    if isinstance(depth, bool):
+        return None
+    if isinstance(depth, int):
+        return depth
+    if isinstance(depth, str) and depth.strip().isdigit():
+        return int(depth.strip())
+    return None
 
 
 def _normalize_ticker_symbol(raw_ticker: str) -> str:
@@ -1497,6 +1555,7 @@ def _build_run_summary(run, tenant_id: str | None = None) -> RunSummary:
         completed_at=run.completed_at,
         queue_position=get_queue_position(run.run_id, tenant_id),
         llm_provider=str(run.config.get("llm_provider") or "") or None,
+        research_depth=_extract_run_research_depth(run),
         archived=run.run_id in archived_run_ids,
         signal=run.signal,
         error=run.error,
@@ -5696,28 +5755,16 @@ async def get_run_status(run_id: str, request: Request):
     run = get_run(run_id, tenant_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    return RunStatus(
-        run_id=run.run_id,
-        status=run.status,
-        ticker=run.ticker,
-        company_name=run.company_name,
-        date=run.date,
-        asset_type=run.asset_type,
-        created_at=run.created_at,
-        started_at=run.started_at,
-        completed_at=run.completed_at,
-        queue_position=get_queue_position(run.run_id, tenant_id),
-        agents=dict(run.agents),
-        report_sections=dict(run.report_sections),
-        config_summary=_run_config_summary(run),
-        current_report=run.current_report,
-        final_report=run.final_report,
-        signal=run.signal,
-        error=run.error,
-        annotation=_get_run_annotation(run.run_id, tenant_id),
-        review=_get_run_review(run.run_id, tenant_id),
-        public_share=_build_public_share_info(_get_public_run_share_for_run(run.run_id, tenant_id)),
-    )
+    return _build_run_status(run, tenant_id)
+
+
+@router.get("/api/runs/{run_id}/debug-config", response_model=RunDebugConfig)
+async def get_run_debug_config(run_id: str, request: Request):
+    """Return the full persisted run config plus local artifact paths."""
+    run = get_run(run_id, _request_tenant_id(request))
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return _build_run_debug_config(run)
 
 
 @router.post("/api/runs/{run_id}/cancel", response_model=RunStatus)
@@ -5727,28 +5774,7 @@ async def cancel_analysis_run(run_id: str, request: Request):
     run = cancel_run(run_id, tenant_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    return RunStatus(
-        run_id=run.run_id,
-        status=run.status,
-        ticker=run.ticker,
-        company_name=run.company_name,
-        date=run.date,
-        asset_type=run.asset_type,
-        created_at=run.created_at,
-        started_at=run.started_at,
-        completed_at=run.completed_at,
-        queue_position=get_queue_position(run.run_id, tenant_id),
-        agents=dict(run.agents),
-        report_sections=dict(run.report_sections),
-        config_summary=_run_config_summary(run),
-        current_report=run.current_report,
-        final_report=run.final_report,
-        signal=run.signal,
-        error=run.error,
-        annotation=_get_run_annotation(run.run_id, tenant_id),
-        review=_get_run_review(run.run_id, tenant_id),
-        public_share=_build_public_share_info(_get_public_run_share_for_run(run.run_id, tenant_id)),
-    )
+    return _build_run_status(run, tenant_id)
 
 
 @router.delete("/api/runs/{run_id}", status_code=204)

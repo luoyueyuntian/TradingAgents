@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 
 from tradingagents.default_config import build_default_config
@@ -26,6 +27,9 @@ def serialize_run_state(run: RunState) -> dict:
         "report_sections": dict(run.report_sections),
         "current_report": run.current_report,
         "final_report": run.final_report,
+        "data_fetches": list(run.data_fetches),
+        "data_warnings": list(run.data_warnings),
+        "usage_summary": deepcopy(run.usage_summary) if isinstance(run.usage_summary, dict) else {},
         "signal": run.signal,
         "error": run.error,
         "report_path": run.report_path,
@@ -59,6 +63,9 @@ def deserialize_run_state(payload: dict, *, runs_root_dir: Path) -> RunState:
         status=payload.get("status", "pending"),
         current_report=payload.get("current_report"),
         final_report=payload.get("final_report"),
+        data_fetches=payload.get("data_fetches") or [],
+        data_warnings=payload.get("data_warnings") or [],
+        usage_summary=payload.get("usage_summary") or {},
         signal=payload.get("signal"),
         error=payload.get("error"),
         report_path=payload.get("report_path"),

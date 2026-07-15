@@ -27,6 +27,7 @@ from .errors import (
 from .fred import get_macro_data as get_fred_macro_data
 from .market_profiles import get_profile_data_vendors, uses_builtin_vendor_default
 from .polymarket import get_prediction_markets as get_polymarket_prediction_markets
+from .provenance import record_data_fetch, summarize_request
 from .y_finance import (
     get_balance_sheet as get_yfinance_balance_sheet,
     get_cashflow as get_yfinance_cashflow,
@@ -265,6 +266,7 @@ def route_to_vendor(method: str, *args, **kwargs):
     category = get_category_for_method(method)
     vendor_config = get_vendor(category, method)
     primary_vendors = [v.strip() for v in vendor_config.split(',')]
+    request_label = summarize_request(method, *args, **kwargs)
 
     if method not in VENDOR_METHODS:
         raise ValueError(f"Method '{method}' not supported")
@@ -289,12 +291,35 @@ def route_to_vendor(method: str, *args, **kwargs):
 
     no_data_errors: list[tuple[str, NoMarketDataError]] = []
     first_error: Exception | None = None
+    attempted_sources: list[str] = []
     for vendor in vendor_chain:
         vendor_impl = VENDOR_METHODS[method][vendor]
         impl_func = vendor_impl[0] if isinstance(vendor_impl, list) else vendor_impl
 
         try:
-            return impl_func(*args, **kwargs)
+            attempted_sources.append(vendor)
+            result = impl_func(*args, **kwargs)
+            fallback_used = vendor != vendor_chain[0]
+            record_data_fetch(
+                method=method,
+                category=category,
+                request_label=request_label,
+                status="fallback" if fallback_used else "success",
+                required=category not in OPTIONAL_CATEGORIES,
+                configured_sources=vendor_chain,
+                attempted_sources=attempted_sources,
+                actual_source=vendor,
+                fallback_used=fallback_used,
+                incomplete=False,
+                detail=(
+                    f"Used fallback vendor '{vendor}' after {', '.join(attempted_sources[:-1])} failed."
+                    if fallback_used and attempted_sources[:-1]
+                    else None
+                ),
+                warning=None,
+                result=result,
+            )
+            return result
         except VendorRateLimitError:
             logger.warning("Vendor %r rate-limited for %s; trying next vendor.", vendor, method)
             continue
@@ -342,12 +367,27 @@ def route_to_vendor(method: str, *args, **kwargs):
         # yfinance timeout) so downstream logs don't collapse a multi-vendor
         # failure into only the last no-data message.
         reason = f" ({' | '.join(detail_parts)})" if detail_parts else ""
-        return (
+        message = (
             f"NO_DATA_AVAILABLE: No usable market data for '{sym}'{resolved} from "
             f"any configured vendor{reason}. The symbol may be invalid, delisted, "
             f"not covered, or the vendor returned stale data. Do not estimate or "
             f"fabricate values — report that data is unavailable for this symbol."
         )
+        record_data_fetch(
+            method=method,
+            category=category,
+            request_label=request_label,
+            status="unavailable",
+            required=True,
+            configured_sources=vendor_chain,
+            attempted_sources=attempted_sources,
+            actual_source=None,
+            fallback_used=False,
+            incomplete=True,
+            detail=" | ".join(detail_parts) if detail_parts else None,
+            warning=f"No usable market data was obtained for {request_label or sym}.",
+        )
+        return message
 
     # No vendor returned data and none reported clean "no data" — surface the
     # first real error (e.g. the primary vendor's network failure). Optional
@@ -356,10 +396,38 @@ def route_to_vendor(method: str, *args, **kwargs):
     if first_error is not None:
         if category in OPTIONAL_CATEGORIES:
             logger.warning("Optional %s unavailable for %s: %s", category, method, first_error)
+            record_data_fetch(
+                method=method,
+                category=category,
+                request_label=request_label,
+                status="unavailable",
+                required=False,
+                configured_sources=vendor_chain,
+                attempted_sources=attempted_sources,
+                actual_source=None,
+                fallback_used=False,
+                incomplete=True,
+                detail=str(first_error),
+                warning=f"Optional {category} data was unavailable for {request_label or method}.",
+            )
             return (
                 f"DATA_UNAVAILABLE: optional {category} could not be retrieved "
                 f"({first_error}). Proceed without it; do not fabricate values."
             )
+        record_data_fetch(
+            method=method,
+            category=category,
+            request_label=request_label,
+            status="error",
+            required=True,
+            configured_sources=vendor_chain,
+            attempted_sources=attempted_sources,
+            actual_source=None,
+            fallback_used=False,
+            incomplete=True,
+            detail=str(first_error),
+            warning=f"Required {method} data failed before a usable source could be selected.",
+        )
         raise first_error
 
     raise RuntimeError(f"No available vendor for '{method}'")
