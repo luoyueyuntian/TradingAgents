@@ -68,7 +68,6 @@
                   option-value="value"
                   class="uno-w-full uno-min-w-0"
                   :pt="formSelectPt"
-                  disabled
                 />
               </label>
               <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
@@ -78,7 +77,7 @@
                   date-format="yy-mm-dd"
                   show-icon
                   icon-display="input"
-                  :manual-input="false"
+                  :manual-input="true"
                   fluid
                   input-class="uno-w-full"
                 />
