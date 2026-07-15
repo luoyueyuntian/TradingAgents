@@ -12,6 +12,10 @@ import pytest
 
 from tradingagents.dataflows import interface
 from tradingagents.dataflows.config import initialize_config, set_config
+from tradingagents.dataflows.provenance import (
+    get_data_fetch_audit,
+    reset_data_fetch_audit,
+)
 from tradingagents.dataflows.symbol_utils import NoMarketDataError
 
 
@@ -48,9 +52,11 @@ def _raises(exc):
 class VendorRoutingTests(unittest.TestCase):
     def setUp(self):
         _reset_config()
+        reset_data_fetch_audit()
 
     def tearDown(self):
         _reset_config()
+        reset_data_fetch_audit()
 
     def _route(self, vendors_for_get_stock_data):
         return mock.patch.dict(
@@ -74,6 +80,33 @@ class VendorRoutingTests(unittest.TestCase):
         with self._route({"yfinance": _no_data, "alpha_vantage": _returns("AV_DATA")}):
             result = interface.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
         self.assertEqual(result, "AV_DATA")
+
+        audit = get_data_fetch_audit()
+        self.assertEqual(len(audit), 1)
+        self.assertEqual(audit[0]["method"], "get_stock_data")
+        self.assertEqual(audit[0]["actual_source"], "alpha_vantage")
+        self.assertEqual(audit[0]["status"], "fallback")
+        self.assertTrue(audit[0]["fallback_used"])
+        self.assertFalse(audit[0]["incomplete"])
+        self.assertEqual(audit[0]["configured_sources"], ["yfinance", "alpha_vantage"])
+        self.assertEqual(audit[0]["attempted_sources"], ["yfinance", "alpha_vantage"])
+        self.assertEqual(audit[0]["result_kind"], "text")
+        self.assertEqual(audit[0]["result_preview"], "AV_DATA")
+
+    def test_records_unavailable_required_data_in_audit(self):
+        set_config({"data_vendors": {"core_stock_apis": "yfinance"}})
+        with self._route({"yfinance": _no_data}):
+            result = interface.route_to_vendor("get_stock_data", "FAKE", "2026-01-01", "2026-01-10")
+
+        self.assertIn("NO_DATA_AVAILABLE", result)
+        audit = get_data_fetch_audit()
+        self.assertEqual(len(audit), 1)
+        self.assertEqual(audit[0]["method"], "get_stock_data")
+        self.assertIsNone(audit[0]["actual_source"])
+        self.assertEqual(audit[0]["status"], "unavailable")
+        self.assertTrue(audit[0]["required"])
+        self.assertTrue(audit[0]["incomplete"])
+        self.assertIn("No usable market data", audit[0]["warning"])
 
     def test_multi_vendor_no_data_preserves_all_vendor_details(self):
         set_config({"data_vendors": {"core_stock_apis": "cn_stock,cn_stock_em,cn_stock_tx,yfinance"}})

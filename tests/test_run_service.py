@@ -7,6 +7,7 @@ import threading
 import time
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -137,6 +138,216 @@ def test_run_service_persists_terminal_output_from_analysis(tmp_path):
         and item["data"]["line"] == "stdout: downloading market data"
         for item in run.event_history
     )
+
+
+def test_run_service_emits_structured_tool_call_events(tmp_path):
+    from tradingagents.service.run_service import RunService
+
+    service = RunService(
+        runs_index_path=tmp_path / "runs.json",
+        run_events_dir=tmp_path / "events",
+        runs_root_dir=tmp_path / "runs",
+    )
+    run = RunState(
+        run_id="tool-call-run",
+        ticker="AAPL",
+        date="2026-01-15",
+        asset_type="stock",
+        config=DEFAULT_CONFIG.copy(),
+        selected_analysts=["market"],
+        runtime_context=build_runtime_context("tool-call-run", base_dir=tmp_path / "runs"),
+        status="running",
+    )
+    message = SimpleNamespace(
+        id="msg-1",
+        content="Calling tool",
+        tool_calls=[{"name": "get_stock_data", "args": {"ticker": "AAPL"}}],
+    )
+
+    service._process_chunk(run, {"messages": [message]})
+
+    assert any(
+        item["event"] == "progress"
+        and item["data"].get("tool_call") == "get_stock_data"
+        for item in run.event_history
+    )
+    assert any(
+        item["event"] == "tool_call"
+        and item["data"]["name"] == "get_stock_data"
+        and item["data"]["args_preview"] == '{"ticker": "AAPL"}'
+        for item in run.event_history
+    )
+    assert any(
+        item["event"] == "state_snapshot"
+        and "messages" in item["data"]["chunk_keys"]
+        for item in run.event_history
+    )
+
+
+def test_run_service_logs_data_fetch_audit_summary(tmp_path):
+    from tradingagents.dataflows.provenance import record_data_fetch
+    from tradingagents.service.run_service import RunService
+
+    class FakeGraph:
+        def __init__(self, *args, **kwargs):
+            self.curr_state = {
+                "market_report": "Momentum is improving.",
+                "final_trade_decision": "Hold",
+            }
+            self.last_signal = "Hold"
+            self.last_state_log_path = None
+
+        def stream_propagate(self, ticker, date, asset_type="stock"):
+            record_data_fetch(
+                method="get_stock_data",
+                category="core_stock_apis",
+                request_label=f"{ticker} · 2026-01-01 → {date}",
+                status="fallback",
+                required=True,
+                configured_sources=["yfinance", "alpha_vantage"],
+                attempted_sources=["yfinance", "alpha_vantage"],
+                actual_source="alpha_vantage",
+                fallback_used=True,
+                incomplete=False,
+                detail="Used fallback vendor 'alpha_vantage' after yfinance failed.",
+                warning=None,
+            )
+            record_data_fetch(
+                method="get_fundamentals",
+                category="fundamental_data",
+                request_label=f"{ticker} · {date}",
+                status="unavailable",
+                required=True,
+                configured_sources=["yfinance"],
+                attempted_sources=["yfinance"],
+                actual_source=None,
+                fallback_used=False,
+                incomplete=True,
+                detail="Yahoo Finance returned no rows",
+                warning=f"Fundamentals data was unavailable for {ticker}.",
+            )
+            yield {"market_report": "Momentum is improving."}
+
+        def process_signal(self, decision):
+            return "Hold"
+
+        def save_reports(self, final_state, ticker):
+            path = tmp_path / "report.md"
+            path.write_text("# Report\n", encoding="utf-8")
+            return path
+
+    service = RunService(
+        runs_index_path=tmp_path / "runs.json",
+        run_events_dir=tmp_path / "events",
+        runs_root_dir=tmp_path / "runs",
+        graph_factory=FakeGraph,
+    )
+    run = RunState(
+        run_id="audit-run",
+        ticker="AAPL",
+        date="2026-01-15",
+        asset_type="stock",
+        config=DEFAULT_CONFIG.copy(),
+        selected_analysts=["market"],
+        runtime_context=build_runtime_context("audit-run", base_dir=tmp_path / "runs"),
+        status="running",
+    )
+
+    service._run_analysis_thread(run)
+
+    terminal_output = Path(run.terminal_log_path).read_text(encoding="utf-8")
+    assert "Data fetch audit" in terminal_output
+    assert "Data source: AAPL · 2026-01-01 → 2026-01-15 -> alpha_vantage [fallback]" in terminal_output
+    assert "Data warning: Fundamentals data was unavailable for AAPL." in terminal_output
+    assert run.data_fetches[0]["actual_source"] == "alpha_vantage"
+    assert run.data_warnings[0]["message"] == "Fundamentals data was unavailable for AAPL."
+    assert any(
+        item["event"] == "data_fetch"
+        and item["data"]["method"] == "get_stock_data"
+        and item["data"]["actual_source"] == "alpha_vantage"
+        for item in run.event_history
+    )
+    assert any(
+        item["event"] == "data_warning"
+        and item["data"]["message"] == "Fundamentals data was unavailable for AAPL."
+        for item in run.event_history
+    )
+
+
+def test_run_service_augments_full_state_log_with_run_level_audit(tmp_path):
+    from tradingagents.dataflows.provenance import record_data_fetch
+    from tradingagents.service.run_service import RunService
+
+    class FakeGraph:
+        def __init__(self, *args, **kwargs):
+            self.curr_state = {
+                "company_of_interest": "AAPL",
+                "asset_type": "stock",
+                "trade_date": "2026-01-15",
+                "market_report": "Momentum is improving.",
+                "sentiment_report": "",
+                "news_report": "",
+                "fundamentals_report": "",
+                "investment_debate_state": {},
+                "risk_debate_state": {},
+                "investment_plan": "",
+                "trader_investment_plan": "",
+                "final_trade_decision": "Hold",
+            }
+            self.last_signal = "Hold"
+            self.last_state_log_path = tmp_path / "full_state.json"
+            self.last_state_log_path.write_text('{"company_of_interest": "AAPL"}', encoding="utf-8")
+
+        def stream_propagate(self, ticker, date, asset_type="stock"):
+            record_data_fetch(
+                method="get_stock_data",
+                category="core_stock_apis",
+                request_label=f"{ticker} · 2026-01-01 → {date}",
+                status="success",
+                required=True,
+                configured_sources=["yfinance"],
+                attempted_sources=["yfinance"],
+                actual_source="yfinance",
+                fallback_used=False,
+                incomplete=False,
+                detail=None,
+                warning=None,
+                result="close,volume\n101,10000",
+            )
+            yield {"market_report": "Momentum is improving."}
+
+        def process_signal(self, decision):
+            return "Hold"
+
+        def save_reports(self, final_state, ticker):
+            path = tmp_path / "report.md"
+            path.write_text("# Report\n", encoding="utf-8")
+            return path
+
+    service = RunService(
+        runs_index_path=tmp_path / "runs.json",
+        run_events_dir=tmp_path / "events",
+        runs_root_dir=tmp_path / "runs",
+        graph_factory=FakeGraph,
+    )
+    run = RunState(
+        run_id="state-log-run",
+        ticker="AAPL",
+        date="2026-01-15",
+        asset_type="stock",
+        config=DEFAULT_CONFIG.copy(),
+        selected_analysts=["market"],
+        runtime_context=build_runtime_context("state-log-run", base_dir=tmp_path / "runs"),
+        status="running",
+    )
+
+    service._run_analysis_thread(run)
+
+    payload = __import__("json").loads(Path(run.state_log_path).read_text(encoding="utf-8"))
+    assert payload["data_fetches"][0]["actual_source"] == "yfinance"
+    assert payload["data_fetches"][0]["result_preview"] == "close,volume\n101,10000"
+    assert payload["data_warnings"] == []
+    assert payload["usage_summary"]["provider"] == str(run.config.get("llm_provider") or "")
 
 
 def test_run_service_terminal_log_uses_local_datetime_text_prefix(tmp_path):

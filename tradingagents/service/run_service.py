@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import os
 import queue
@@ -17,6 +18,13 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from tradingagents.default_config import apply_settings_payload
+from tradingagents.dataflows.provenance import (
+    build_data_warnings,
+    get_data_fetch_audit,
+    install_data_fetch_event_sink,
+    reset_data_fetch_audit,
+    reset_data_fetch_event_sink,
+)
 from tradingagents.graph.event_processor import build_run_config
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.llm_clients.api_key_env import get_api_key_env
@@ -29,6 +37,7 @@ from tradingagents.service.timestamps import (
     current_timestamp_ms,
     local_timestamp_text,
 )
+from tradingagents.service.usage_tracking import RunUsageTracker
 from tradingagents.service.web_state import get_web_settings_path
 from tradingagents.settings import export_api_keys_to_env, load_settings
 
@@ -505,7 +514,17 @@ class RunService:
     def _emit_report(self, run: RunState, section: str, content: str) -> None:
         if section in run.report_sections:
             run.report_sections[section] = content
-            self._put_event(run, {"event": "report_update", "data": {"section": section, "content": content}})
+            self._put_event(
+                run,
+                {
+                    "event": "report_update",
+                    "data": {
+                        "section": section,
+                        "content": content,
+                        "content_length": len(content),
+                    },
+                },
+            )
             self._update_current_report(run)
 
     def _update_current_report(self, run: RunState) -> None:
@@ -518,14 +537,117 @@ class RunService:
 
         run.final_report = build_final_report(run.report_sections)
 
+    def _capture_data_fetch_audit(self, run: RunState) -> None:
+        """Persist context-local structured data-fetch metadata onto the run."""
+        run.data_fetches = get_data_fetch_audit()
+        run.data_warnings = build_data_warnings(run.data_fetches)
+
+    def _log_data_fetch_audit(self, run: RunState) -> None:
+        """Write a concise provenance summary into the terminal log."""
+        if not run.data_fetches:
+            return
+        self._write_terminal_line(run, "stdout", "Data fetch audit")
+        for entry in run.data_fetches:
+            source = entry.get("actual_source") or "n/a"
+            status = entry.get("status") or "unknown"
+            request_label = entry.get("request_label") or entry.get("item") or entry.get("method")
+            detail = entry.get("detail")
+            summary = f"Data source: {request_label} -> {source} [{status}]"
+            if detail:
+                summary += f" ({detail})"
+            self._write_terminal_line(run, "stdout", summary)
+        for warning in run.data_warnings:
+            stream_name = "stderr" if warning.get("severity") == "warning" else "stdout"
+            self._write_terminal_line(
+                run,
+                stream_name,
+                f"Data warning: {warning.get('message')}",
+            )
+
+    def _capture_usage_summary(self, run: RunState, tracker: RunUsageTracker) -> None:
+        """Persist one run-scoped aggregate of LLM usage."""
+        run.usage_summary = tracker.snapshot()
+
+    def _augment_state_log(self, run: RunState) -> None:
+        """Merge run-level audit summaries into the saved full-state JSON."""
+        if not run.state_log_path:
+            return
+        path = Path(run.state_log_path)
+        if not path.exists() or not path.is_file():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                return
+            payload["data_fetches"] = deepcopy(run.data_fetches)
+            payload["data_warnings"] = deepcopy(run.data_warnings)
+            payload["usage_summary"] = deepcopy(run.usage_summary)
+            path.write_text(json.dumps(payload, indent=4), encoding="utf-8")
+        except (OSError, json.JSONDecodeError, TypeError):
+            logger.warning("Failed to augment state log for run %s", run.run_id, exc_info=True)
+
+    def _emit_llm_usage_event(self, run: RunState, payload: dict[str, Any]) -> None:
+        """Publish structured LLM prompt / call summaries into the run timeline."""
+        event_name = "llm_prompt" if "prompt_preview" in payload else "llm_call"
+        self._put_event(run, {"event": event_name, "data": deepcopy(payload)})
+
+    def _emit_data_fetch_event(self, run: RunState, entry: dict[str, Any]) -> None:
+        """Publish one structured data-fetch event into the run timeline."""
+        self._put_event(run, {"event": "data_fetch", "data": deepcopy(entry)})
+        warning = str(entry.get("warning") or "").strip()
+        if not warning:
+            return
+        self._put_event(
+            run,
+            {
+                "event": "data_warning",
+                "data": {
+                    "key": str(entry.get("key") or ""),
+                    "method": str(entry.get("method") or ""),
+                    "item": str(entry.get("item") or ""),
+                    "severity": "warning" if entry.get("required") else "info",
+                    "message": warning,
+                },
+            },
+        )
+
+    def _emit_state_snapshot(self, run: RunState, chunk: dict[str, Any]) -> None:
+        """Capture one structured snapshot of run progress after a graph chunk."""
+        in_progress_agents = sorted(
+            agent for agent, status in run.agents.items() if status == "in_progress"
+        )
+        completed_agents = sum(1 for status in run.agents.values() if status == "completed")
+        report_sections_present = sorted(
+            section for section, content in run.report_sections.items() if content
+        )
+        investment_debate_state = chunk.get("investment_debate_state") or {}
+        risk_debate_state = chunk.get("risk_debate_state") or {}
+        self._put_event(
+            run,
+            {
+                "event": "state_snapshot",
+                "data": {
+                    "chunk_keys": sorted(str(key) for key in chunk.keys())[:16],
+                    "in_progress_agents": in_progress_agents,
+                    "completed_agent_count": completed_agents,
+                    "report_sections_present": report_sections_present,
+                    "investment_debate_count": investment_debate_state.get("count"),
+                    "risk_debate_count": risk_debate_state.get("count"),
+                },
+            },
+        )
+
     def _process_chunk(self, run: RunState, chunk: dict[str, Any]) -> None:
         cp = run._chunk_processor
 
         messages, tools = cp.get_messages_and_tools(chunk)
         for msg in messages:
             self._put_event(run, {"event": "progress", "data": {"message": msg}})
-        for tool_name in tools:
-            self._put_event(run, {"event": "progress", "data": {"tool_call": tool_name}})
+        for tool in tools:
+            tool_name = str(tool.get("name") or "")
+            if tool_name:
+                self._put_event(run, {"event": "progress", "data": {"tool_call": tool_name}})
+            self._put_event(run, {"event": "tool_call", "data": tool})
 
         cp.process_chunk(chunk)
 
@@ -538,6 +660,7 @@ class RunService:
                 self._emit_report(run, section, content)
 
         run.current_report = cp.current_report
+        self._emit_state_snapshot(run, chunk)
 
     def cancel_run(self, run_id: str) -> RunState | None:
         """Request cancellation for a run if it is still active."""
@@ -640,6 +763,14 @@ class RunService:
         self._ensure_terminal_log(run)
         if not self._terminal_log_has_content(run):
             self._log_run_configuration(run)
+        reset_data_fetch_audit()
+        usage_tracker = RunUsageTracker(
+            provider=str(run.config.get("llm_provider") or ""),
+            event_sink=lambda payload: self._emit_llm_usage_event(run, payload),
+        )
+        event_sink_token = install_data_fetch_event_sink(
+            lambda entry: self._emit_data_fetch_event(run, entry),
+        )
         self._log_run_phase(run, "waiting for execution lock")
         try:
             with PROCESS_EXECUTION_LOCK:
@@ -662,6 +793,7 @@ class RunService:
                         run.selected_analysts,
                         config=run.config,
                         debug=False,
+                        callbacks=[usage_tracker],
                     )
 
                     self._log_run_phase(run, "starting graph stream")
@@ -690,6 +822,8 @@ class RunService:
 
                     final_state = graph.curr_state or {}
                     run.final_state = final_state
+                    self._capture_data_fetch_audit(run)
+                    self._capture_usage_summary(run, usage_tracker)
                     final_state_keys = ", ".join(sorted(str(key) for key in final_state.keys())[:12]) or "none"
                     self._log_run_phase(run, f"final state collected: keys={final_state_keys}")
                     run.signal = graph.last_signal or graph.process_signal(
@@ -697,10 +831,12 @@ class RunService:
                     )
                     if graph.last_state_log_path is not None:
                         run.state_log_path = str(graph.last_state_log_path)
+                        self._augment_state_log(run)
                     if final_state:
                         self._log_run_phase(run, "saving reports")
                         report_path = graph.save_reports(final_state, run.ticker)
                         run.report_path = str(report_path)
+                    self._log_data_fetch_audit(run)
 
                     self._log_run_phase(run, "updating report sections")
                     for section in run.report_sections:
@@ -723,6 +859,10 @@ class RunService:
 
         except RunCancelledError:
             logger.info("Analysis cancelled for run %s", run.run_id)
+            self._capture_data_fetch_audit(run)
+            self._capture_usage_summary(run, usage_tracker)
+            self._augment_state_log(run)
+            self._log_data_fetch_audit(run)
             self._log_run_phase(run, "cancelled analysis")
             run.status = "cancelled"
             run.error = None
@@ -734,6 +874,10 @@ class RunService:
             self._persist_run(run)
         except Exception as e:
             logger.exception("Analysis failed for run %s", run.run_id)
+            self._capture_data_fetch_audit(run)
+            self._capture_usage_summary(run, usage_tracker)
+            self._augment_state_log(run)
+            self._log_data_fetch_audit(run)
             self._log_run_phase(run, f"failed analysis: {e}", stream_name="stderr")
             for line in traceback.format_exc().splitlines():
                 self._write_terminal_line(run, "stderr", line)
@@ -745,6 +889,7 @@ class RunService:
                 self._put_event(run, terminal_event)
             self._persist_run(run)
         finally:
+            reset_data_fetch_event_sink(event_sink_token)
             self.prune_terminal_runs()
 
     def _enqueue_run(self, run_id: str) -> None:

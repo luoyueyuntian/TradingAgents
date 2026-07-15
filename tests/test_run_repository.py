@@ -35,6 +35,31 @@ def test_serialize_and_deserialize_run_round_trip(tmp_path):
     run.company_name = "Apple Inc."
     run.queue_sequence = 7
     run.report_sections["market_report"] = "report"
+    run.data_fetches = [
+        {
+            "key": "get_stock_data#1",
+            "method": "get_stock_data",
+            "status": "fallback",
+            "actual_source": "cn_stock_tx",
+            "warning": None,
+            "result_preview": "sample csv preview",
+        }
+    ]
+    run.data_warnings = [
+        {
+            "key": "get_fundamentals#1",
+            "severity": "warning",
+            "message": "Fundamentals data was unavailable.",
+        }
+    ]
+    run.usage_summary = {
+        "provider": "openai",
+        "total_calls": 3,
+        "prompt_tokens": 120,
+        "completion_tokens": 45,
+        "total_tokens": 165,
+        "calls_by_model": {"gpt-5.5": 2, "gpt-5.4-mini": 1},
+    }
 
     payload = serialize_run_state(run)
     restored = deserialize_run_state(payload, runs_root_dir=tmp_path)
@@ -46,6 +71,10 @@ def test_serialize_and_deserialize_run_round_trip(tmp_path):
     assert restored.company_name == "Apple Inc."
     assert restored.queue_sequence == 7
     assert restored.report_sections["market_report"] == "report"
+    assert restored.data_fetches[0]["actual_source"] == "cn_stock_tx"
+    assert restored.data_fetches[0]["result_preview"] == "sample csv preview"
+    assert restored.data_warnings[0]["message"] == "Fundamentals data was unavailable."
+    assert restored.usage_summary["total_tokens"] == 165
 
 
 def test_load_runs_from_index_preserves_incomplete_status(tmp_path):

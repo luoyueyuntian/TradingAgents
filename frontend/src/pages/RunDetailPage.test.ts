@@ -117,6 +117,44 @@ function makeRun(status: string) {
     final_report: '',
     signal: status === 'completed' ? 'Hold' : null,
     error: status === 'failed' ? 'Vendor timeout' : null,
+    data_fetches: [
+      {
+        key: 'get_stock_data#1',
+        method: 'get_stock_data',
+        item: 'Market Price Data',
+        category: 'core_stock_apis',
+        request_label: 'AAPL · 2026-06-27 → 2026-07-04',
+        status: 'fallback',
+        required: true,
+        actual_source: 'alpha_vantage',
+        configured_sources: ['yfinance', 'alpha_vantage'],
+        attempted_sources: ['yfinance', 'alpha_vantage'],
+        fallback_used: true,
+        incomplete: false,
+        detail: 'Primary vendor failed and fallback succeeded.',
+        warning: null,
+        result_kind: 'text',
+        result_preview: 'date,open,high,low,close\n2026-07-04,100,102,99,101',
+      },
+    ],
+    data_warnings: [
+      {
+        key: 'get_fundamentals#1',
+        severity: 'warning',
+        message: 'Fundamentals data was unavailable for this run.',
+      },
+    ],
+    usage_summary: {
+      provider: 'openai',
+      total_calls: 3,
+      prompt_tokens: 120,
+      completion_tokens: 45,
+      total_tokens: 165,
+      calls_by_model: {
+        'gpt-5.5': 2,
+        'gpt-5.4-mini': 1,
+      },
+    },
     annotation: null,
     review: null,
     public_share: {
@@ -124,6 +162,23 @@ function makeRun(status: string) {
       expires_at: '2026-07-05T09:00:00Z',
       view_count: 3,
     },
+  };
+}
+
+function makeDebugConfig() {
+  return {
+    run_id: 'source-run',
+    selected_analysts: ['market', 'news'],
+    config: {
+      llm_provider: 'openai',
+      quick_think_llm: 'gpt-5.4-mini',
+      deep_think_llm: 'gpt-5.5',
+    },
+    run_root: '/tmp/source-run',
+    report_path: '/tmp/source-run/report.md',
+    state_log_path: '/tmp/source-run/full_state.json',
+    terminal_log_path: '/tmp/source-run/terminal.log',
+    event_log_path: '/tmp/source-run/events.jsonl',
   };
 }
 
@@ -135,6 +190,16 @@ function mockDetailApis(status: string) {
         return Promise.resolve(run);
       case '/api/runs/source-run/artifacts':
         return Promise.resolve([]);
+      case '/api/runs/source-run/timeline':
+        return Promise.resolve([
+          {
+            timestamp: '2026-07-04T09:02:00Z',
+            event: 'progress',
+            data: { message: 'Fetched market data.' },
+          },
+        ]);
+      case '/api/runs/source-run/debug-config':
+        return Promise.resolve(makeDebugConfig());
       case '/api/pinned-runs':
         return Promise.resolve([]);
       case '/api/runs/source-run/comments':
@@ -255,6 +320,80 @@ describe('RunDetailPage', () => {
     expect(wrapper.text()).toContain('LOCAL:2026-07-05T09:00:00Z');
   });
 
+  it('renders structured data source warnings and actual sources', async () => {
+    const wrapper = await mountPage('completed');
+
+    expect(wrapper.find('[data-testid="run-detail-data-sources-card"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="run-detail-data-warnings"]').text()).toContain('Fundamentals data was unavailable for this run.');
+    expect(wrapper.text()).toContain('Alpha Vantage');
+    expect(wrapper.text()).toContain('Primary vendor failed and fallback succeeded.');
+    expect(wrapper.text()).toContain('date,open,high,low,close');
+  });
+
+  it('renders timeline, debates, and debug process data when available', async () => {
+    const run = makeRun('completed');
+    apiGet.mockImplementation((path: string) => {
+      switch (path) {
+        case '/api/runs/source-run':
+          return Promise.resolve(run);
+        case '/api/runs/source-run/artifacts':
+          return Promise.resolve([
+            { name: 'report-tree/2_research/bull.md', label: '2_research/bull.md', download_url: '/download/bull' },
+            { name: 'full-state', label: 'Full state JSON', download_url: '/download/full-state' },
+          ]);
+        case '/api/runs/source-run/timeline':
+          return Promise.resolve([
+            {
+              timestamp: '2026-07-04T09:02:00Z',
+              event: 'agent_status',
+              data: { agent: 'Bull Researcher', status: 'completed' },
+            },
+            {
+              timestamp: '2026-07-04T09:01:00Z',
+              event: 'llm_prompt',
+              data: { model: 'gpt-5.5', prompt_preview: 'Summarize AAPL price action.' },
+            },
+          ]);
+        case '/api/runs/source-run/debug-config':
+          return Promise.resolve(makeDebugConfig());
+        case '/api/runs/source-run/artifacts/content?name=report-tree%2F2_research%2Fbull.md':
+          return Promise.resolve({
+            name: 'report-tree/2_research/bull.md',
+            label: '2_research/bull.md',
+            content: 'Bull Analyst: Momentum is improving.\nBear Analyst: Valuation is stretched.',
+          });
+        case '/api/runs/source-run/artifacts/content?name=full-state':
+          return Promise.resolve({
+            name: 'full-state',
+            label: 'Full state JSON',
+            content: '{"final_trade_decision":"Hold"}',
+          });
+        case '/api/pinned-runs':
+          return Promise.resolve([]);
+        case '/api/runs/source-run/comments':
+          return Promise.resolve([]);
+        case '/api/members':
+          return Promise.resolve([{ id: 'member-1', name: 'Alice' }]);
+        case '/api/runs':
+          return Promise.resolve([run]);
+        default:
+          throw new Error(`Unexpected apiGet path: ${path}`);
+      }
+    });
+
+    const wrapper = await mountPage('completed', { setupApis: false });
+
+    expect(wrapper.find('[data-testid="run-detail-timeline-card"]').text()).toContain('时间线概览');
+    expect(wrapper.find('[data-testid="run-detail-timeline-card"]').text()).toContain('Agent Status · 1');
+    expect(wrapper.find('[data-testid="run-detail-timeline-card"]').text()).toContain('Bull Researcher completed');
+    expect(wrapper.find('[data-testid="run-detail-timeline-card"]').text()).toContain('Summarize AAPL price action.');
+    expect(wrapper.find('[data-testid="run-detail-debates-card"]').text()).toContain('Momentum is improving.');
+    expect(wrapper.find('[data-testid="run-detail-debates-card"]').text()).toContain('Bear Analyst');
+    expect(wrapper.find('[data-testid="run-detail-debug-card"]').text()).toContain('"llm_provider": "openai"');
+    expect(wrapper.find('[data-testid="run-detail-debug-card"]').text()).toContain('"final_trade_decision":"Hold"');
+    expect(wrapper.find('[data-testid="run-detail-debug-card"]').text()).toContain('"total_tokens": 165');
+  });
+
   it('polls run detail every 5 seconds while the analysis is still running', async () => {
     vi.useFakeTimers();
     const run = makeRun('running');
@@ -264,6 +403,10 @@ describe('RunDetailPage', () => {
           return Promise.resolve({ ...run });
         case '/api/runs/source-run/artifacts':
           return Promise.resolve([]);
+        case '/api/runs/source-run/timeline':
+          return Promise.resolve([]);
+        case '/api/runs/source-run/debug-config':
+          return Promise.resolve(makeDebugConfig());
         case '/api/pinned-runs':
           return Promise.resolve([]);
         case '/api/runs/source-run/comments':
@@ -321,6 +464,10 @@ describe('RunDetailPage', () => {
       switch (path) {
         case '/api/runs/source-run/artifacts':
           return Promise.resolve([]);
+        case '/api/runs/source-run/timeline':
+          return Promise.resolve([]);
+        case '/api/runs/source-run/debug-config':
+          return Promise.resolve(makeDebugConfig());
         case '/api/pinned-runs':
           return Promise.resolve([]);
         case '/api/runs/source-run/comments':

@@ -208,6 +208,7 @@ def test_get_ticker_history_returns_paginated_runs_with_active_metadata(monkeypa
     running.company_name = "Apple Inc."
     running.status = "running"
     running.created_at = "2026-07-05T09:30:00"
+    running.config["max_debate_rounds"] = 3
 
     archived = _make_run("run-archived")
     archived.ticker = "AAPL"
@@ -215,6 +216,7 @@ def test_get_ticker_history_returns_paginated_runs_with_active_metadata(monkeypa
     archived.status = "completed"
     archived.signal = "Buy"
     archived.created_at = "2026-07-04T09:30:00"
+    archived.config["max_debate_rounds"] = 1
 
     older = _make_run("run-older")
     older.ticker = "AAPL"
@@ -240,6 +242,8 @@ def test_get_ticker_history_returns_paginated_runs_with_active_metadata(monkeypa
     assert payload["active_run_status"] == "running"
     assert payload["total_count"] == 3
     assert [item["run_id"] for item in payload["items"]] == ["run-running", "run-archived"]
+    assert payload["items"][0]["research_depth"] == 3
+    assert payload["items"][1]["research_depth"] == 1
     assert payload["items"][1]["archived"] is True
 
 
@@ -319,6 +323,7 @@ def test_list_runs_can_filter_by_query_status_provider_and_asset(monkeypatch):
     completed.asset_type = "stock"
     completed.created_at = "2026-01-15T01:00:00"
     completed.config["llm_provider"] = "openai"
+    completed.config["max_debate_rounds"] = 5
 
     failed = _make_run("btc-google")
     failed.ticker = "BTC-USD"
@@ -341,6 +346,7 @@ def test_list_runs_can_filter_by_query_status_provider_and_asset(monkeypatch):
     assert [item["run_id"] for item in payload] == ["nvda-openai"]
     assert payload[0]["status"] == "completed"
     assert payload[0]["asset_type"] == "stock"
+    assert payload[0]["research_depth"] == 5
 
 
 def test_list_runs_can_filter_by_archive_scope(monkeypatch, tmp_path):
@@ -4552,6 +4558,99 @@ def test_get_run_status_includes_config_summary(monkeypatch):
     assert payload["config_summary"]["memory_log_max_entries"] == 25
     assert payload["config_summary"]["tool_vendors"]["get_global_news"] == "alpha_vantage"
     assert payload["config_summary"]["global_news_queries"] == ["asia earnings outlook"]
+
+
+def test_get_run_status_includes_data_fetch_audit(monkeypatch):
+    client = TestClient(app)
+    run = _make_run()
+    run.data_fetches = [
+        {
+            "key": "get_stock_data#1",
+            "method": "get_stock_data",
+            "item": "Market Price Data",
+            "category": "core_stock_apis",
+            "request_label": "000063.SZ · 2026-07-04 → 2026-07-11",
+            "status": "fallback",
+            "required": True,
+            "actual_source": "cn_stock_tx",
+            "configured_sources": ["cn_stock", "cn_stock_em", "cn_stock_tx", "yfinance"],
+            "attempted_sources": ["cn_stock", "cn_stock_tx"],
+            "fallback_used": True,
+            "incomplete": False,
+            "detail": "Primary China vendor failed and Tencent fallback succeeded.",
+            "warning": None,
+        }
+    ]
+    run.data_warnings = [
+        {
+            "key": "get_fundamentals#1",
+            "severity": "warning",
+            "message": "Fundamentals data was unavailable for this run.",
+        }
+    ]
+    monkeypatch.setattr(web_routes, "get_run", lambda _run_id, tenant_id=None: run)
+
+    response = client.get(f"/api/runs/{run.run_id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data_fetches"][0]["actual_source"] == "cn_stock_tx"
+    assert payload["data_fetches"][0]["fallback_used"] is True
+    assert payload["data_warnings"][0]["severity"] == "warning"
+    assert payload["data_warnings"][0]["message"] == "Fundamentals data was unavailable for this run."
+
+
+def test_get_run_status_includes_usage_summary(monkeypatch):
+    client = TestClient(app)
+    run = _make_run()
+    run.usage_summary = {
+        "provider": "openai",
+        "total_calls": 4,
+        "prompt_tokens": 140,
+        "completion_tokens": 60,
+        "total_tokens": 200,
+        "calls_by_model": {"gpt-5.5": 2, "gpt-5.4-mini": 2},
+    }
+    monkeypatch.setattr(web_routes, "get_run", lambda _run_id, tenant_id=None: run)
+
+    response = client.get(f"/api/runs/{run.run_id}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["usage_summary"]["provider"] == "openai"
+    assert payload["usage_summary"]["total_calls"] == 4
+    assert payload["usage_summary"]["total_tokens"] == 200
+
+
+def test_get_run_debug_config_returns_full_config_and_paths(monkeypatch, tmp_path):
+    client = TestClient(app)
+    run = _make_run()
+    run.config.update({
+        "llm_provider": "openai",
+        "quick_think_llm": "gpt-5.4-mini",
+        "deep_think_llm": "gpt-5.5",
+        "tool_vendors": {"get_global_news": "alpha_vantage"},
+    })
+    run.selected_analysts = ["market", "news"]
+    run.report_path = str(tmp_path / "report.md")
+    run.state_log_path = str(tmp_path / "state.json")
+    run.terminal_log_path = str(tmp_path / "terminal.log")
+    run.event_log_path = str(tmp_path / "events.jsonl")
+    monkeypatch.setattr(web_routes, "get_run", lambda _run_id, tenant_id=None: run)
+
+    response = client.get(f"/api/runs/{run.run_id}/debug-config")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["run_id"] == run.run_id
+    assert payload["selected_analysts"] == ["market", "news"]
+    assert payload["config"]["llm_provider"] == "openai"
+    assert payload["config"]["tool_vendors"]["get_global_news"] == "alpha_vantage"
+    assert payload["run_root"].endswith(run.run_id)
+    assert payload["report_path"] == run.report_path
+    assert payload["state_log_path"] == run.state_log_path
+    assert payload["terminal_log_path"] == run.terminal_log_path
+    assert payload["event_log_path"] == run.event_log_path
 
 
 def test_list_run_artifacts_returns_available_downloads(monkeypatch, tmp_path):

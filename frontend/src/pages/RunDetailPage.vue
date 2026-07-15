@@ -129,6 +129,53 @@
             </div>
           </div>
 
+          <Card v-if="dataFetches.length" data-testid="run-detail-data-sources-card">
+            <template #title>{{ t('runs.dataSources') }}</template>
+            <template #content>
+              <div v-if="dataWarnings.length" data-testid="run-detail-data-warnings" class="uno-mb-4 uno-rounded-lg uno-border uno-border-[#f1d38a] uno-bg-[#fff8e6] uno-p-3">
+                <p class="uno-m-0 uno-font-700 uno-text-[#7b5b12]">{{ t('runs.dataWarnings') }}</p>
+                <ul class="uno-mb-0 uno-mt-2 uno-grid uno-gap-1 uno-pl-[1.1rem] uno-text-[#7b5b12]">
+                  <li v-for="warning in dataWarnings" :key="String(warning.key || warning.message || '')">{{ warning.message }}</li>
+                </ul>
+              </div>
+
+              <div class="uno-grid uno-gap-3">
+                <div
+                  v-for="entry in dataFetches"
+                  :key="String(entry.key || '')"
+                  class="uno-grid uno-gap-2 uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3"
+                >
+                  <div class="uno-flex uno-flex-wrap uno-items-start uno-justify-between uno-gap-3">
+                    <div class="uno-grid uno-gap-1">
+                      <strong class="uno-text-[#132a2d]">{{ dataFetchItemLabel(entry) }}</strong>
+                      <small class="uno-text-[#6f8183]">{{ String(entry.request_label || '') }}</small>
+                    </div>
+                    <Tag :value="dataFetchStatusLabel(entry)" :severity="dataFetchStatusSeverity(entry)" />
+                  </div>
+                  <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-2">
+                    <div class="uno-grid uno-gap-1">
+                      <span class="uno-text-[0.78rem] uno-text-[#6f8183]">{{ t('runs.actualSource') }}</span>
+                      <strong class="uno-text-[#132a2d]">{{ dataFetchSourceLabel(entry.actual_source, entry.status) }}</strong>
+                    </div>
+                    <div class="uno-grid uno-gap-1">
+                      <span class="uno-text-[0.78rem] uno-text-[#6f8183]">{{ t('runs.configuredSources') }}</span>
+                      <span class="uno-text-[#304345]">{{ dataFetchSourceList(entry.configured_sources) }}</span>
+                    </div>
+                    <div class="uno-grid uno-gap-1">
+                      <span class="uno-text-[0.78rem] uno-text-[#6f8183]">{{ t('runs.attemptedSources') }}</span>
+                      <span class="uno-text-[#304345]">{{ dataFetchSourceList(entry.attempted_sources) }}</span>
+                    </div>
+                  </div>
+                  <p v-if="String(entry.detail || '').trim()" class="uno-m-0 uno-text-[#304345]">{{ entry.detail }}</p>
+                  <div v-if="String(entry.result_preview || '').trim()" class="uno-grid uno-gap-1">
+                    <span class="uno-text-[0.78rem] uno-text-[#6f8183]">{{ t('runs.resultPreview') }}</span>
+                    <pre class="uno-m-0 uno-max-h-[180px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#f8fbfb] uno-p-3 uno-text-[#304345]">{{ String(entry.result_preview || '') }}</pre>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </Card>
+
           <div
             data-testid="run-detail-section-tabs"
             class="uno-sticky uno-top-[76px] uno-z-[6] uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white/95 uno-p-1.5 uno-shadow-sm uno-backdrop-blur-md max-[900px]:uno-top-[128px]"
@@ -244,12 +291,116 @@
             <pre class="uno-m-0 uno-mt-3 uno-max-h-[460px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#101b1d] uno-p-[0.85rem] uno-text-[#d8f3ee]">{{ terminalOutput || t('runs.noTerminalOutput') }}</pre>
           </details>
 
+          <details data-testid="run-detail-timeline-card" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+            <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.timeline') }}</summary>
+            <div v-if="timelineDisplayEvents.length" class="uno-mt-3 uno-grid uno-gap-3">
+              <div class="uno-grid uno-gap-2 uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3">
+                <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
+                  <strong class="uno-text-[#132a2d]">{{ t('runs.timelineSummary') }}</strong>
+                  <span class="uno-text-sm uno-text-[#607174]">{{ t('runs.timelineCount', { count: timelineDisplayEvents.length }) }}</span>
+                </div>
+                <div class="uno-flex uno-flex-wrap uno-gap-2">
+                  <Tag
+                    v-for="item in timelineSummaryItems"
+                    :key="item.label"
+                    :value="`${item.label} · ${item.count}`"
+                    severity="secondary"
+                  />
+                </div>
+              </div>
+
+              <details
+                v-for="event in timelineDisplayEvents"
+                :key="String(event.timestamp || '') + ':' + String(event.event || '')"
+                class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3"
+              >
+                <summary class="uno-flex uno-cursor-pointer uno-list-none uno-flex-wrap uno-items-start uno-justify-between uno-gap-3">
+                  <div class="uno-grid uno-min-w-0 uno-gap-1">
+                    <strong class="uno-text-[#132a2d]">{{ timelineEventLabel(event) }}</strong>
+                    <p class="uno-m-0 uno-break-words uno-text-[#304345]">{{ timelineEventSummary(event) }}</p>
+                  </div>
+                  <div class="uno-grid uno-justify-items-end uno-gap-1">
+                    <Tag :value="timelineEventLabel(event)" :severity="timelineEventSeverity(event)" />
+                    <small class="uno-text-[#6f8183]">{{ formatDateTime(event.timestamp) }}</small>
+                  </div>
+                </summary>
+                <pre class="uno-m-0 uno-mt-3 uno-max-h-[240px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#304345]">{{ timelineEventDetailText(event) }}</pre>
+              </details>
+            </div>
+            <p v-else class="uno-m-0 uno-mt-3 uno-text-[#6f8183]">{{ t('runs.noTimeline') }}</p>
+          </details>
+
+          <details data-testid="run-detail-debates-card" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+            <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.debates') }}</summary>
+            <div v-if="debateTranscripts.length" class="uno-mt-3 uno-grid uno-gap-3">
+              <div class="uno-flex uno-flex-wrap uno-gap-2">
+                <button
+                  v-for="transcript in debateTranscripts"
+                  :key="transcript.name"
+                  type="button"
+                  :class="[
+                    'uno-min-h-9 uno-cursor-pointer uno-rounded-lg uno-border uno-px-3 uno-py-1.5 uno-text-sm',
+                    selectedDebateTranscript?.name === transcript.name
+                      ? 'uno-border-[#162326] uno-bg-[#162326] uno-text-white'
+                      : 'uno-border-[#d5e2e2] uno-bg-white uno-text-[#304345] hover:uno-border-[#90a9aa]',
+                  ]"
+                  @click="selectedDebateName = transcript.name"
+                >
+                  {{ transcript.label }}
+                </button>
+              </div>
+
+              <div v-if="selectedDebateTranscript" class="uno-grid uno-gap-3">
+                <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3">
+                  <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
+                    <strong class="uno-text-[#132a2d]">{{ selectedDebateTranscript.label }}</strong>
+                    <span class="uno-text-sm uno-text-[#607174]">{{ t('runs.debateTurnCount', { count: selectedDebateTurns.length || 1 }) }}</span>
+                  </div>
+                </div>
+
+                <div v-if="selectedDebateTurns.length" class="uno-grid uno-gap-3">
+                  <div
+                    v-for="(turn, index) in selectedDebateTurns"
+                    :key="`${selectedDebateTranscript.name}-${index}`"
+                    class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3"
+                  >
+                    <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
+                      <Tag :value="turn.speaker" severity="contrast" />
+                      <small class="uno-text-[#6f8183]">{{ t('runs.debateTurnLabel', { count: index + 1 }) }}</small>
+                    </div>
+                    <p class="uno-m-0 uno-mt-2 uno-whitespace-pre-wrap uno-break-words uno-text-[#304345]">{{ turn.content }}</p>
+                  </div>
+                </div>
+                <pre v-else class="uno-m-0 uno-max-h-[360px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#fbfdfd] uno-p-3 uno-text-[#304345]">{{ selectedDebateTranscript.content }}</pre>
+              </div>
+            </div>
+            <p v-else class="uno-m-0 uno-mt-3 uno-text-[#6f8183]">{{ t('runs.noDebates') }}</p>
+          </details>
+
+          <details data-testid="run-detail-debug-card" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+            <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.debugData') }}</summary>
+            <div class="uno-mt-3 uno-grid uno-gap-3">
+              <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3">
+                <strong class="uno-text-[#132a2d]">{{ t('runs.usageSummary') }}</strong>
+                <pre class="uno-m-0 uno-mt-2 uno-max-h-[280px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#304345]">{{ usageSummaryText || t('runs.noUsageSummary') }}</pre>
+              </div>
+              <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3">
+                <strong class="uno-text-[#132a2d]">{{ t('runs.debugConfig') }}</strong>
+                <pre class="uno-m-0 uno-mt-2 uno-max-h-[360px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#304345]">{{ debugConfigText || t('runs.noDebugConfig') }}</pre>
+              </div>
+              <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3">
+                <strong class="uno-text-[#132a2d]">{{ t('runs.fullState') }}</strong>
+                <pre class="uno-m-0 uno-mt-2 uno-max-h-[420px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#304345]">{{ fullStateContent || t('runs.noFullState') }}</pre>
+              </div>
+            </div>
+          </details>
+
           <details v-if="artifacts.length" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
             <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.artifacts') }}</summary>
             <div class="uno-mt-3 uno-flex uno-flex-wrap uno-gap-2">
               <a
                 v-for="artifact in artifacts"
-                :key="artifact.key"
+                :key="artifactName(artifact)"
                 class="uno-inline-flex uno-min-h-[34px] uno-items-center uno-rounded-lg uno-border uno-border-[#d5e2e2] uno-px-[0.65rem] uno-py-1.5 uno-text-[#162326] uno-no-underline hover:uno-border-[#90a9aa] hover:uno-bg-[#f4f8f8]"
                 :href="artifact.download_url"
               >{{ artifact.label }}</a>
@@ -283,6 +434,17 @@ import { useSession } from '../stores/session';
 import { formatDateTime, signalSeverity, type JsonRecord } from '../utils/format';
 import { buildDecisionHighlights, buildInsightPanels } from '../utils/runDisplay';
 
+type DebateTranscript = {
+  name: string;
+  label: string;
+  content: string;
+};
+
+type DebateTurn = {
+  speaker: string;
+  content: string;
+};
+
 const SECTION_ORDER = [
   'market_report',
   'sentiment_report',
@@ -292,6 +454,23 @@ const SECTION_ORDER = [
   'trader_investment_plan',
   'final_trade_decision',
 ];
+const FULL_STATE_ARTIFACT_NAME = 'full-state';
+
+const DATA_SOURCE_LABELS: Record<string, string> = {
+  alpha_vantage: 'Alpha Vantage',
+  yfinance: 'Yahoo Finance',
+  cn_stock: 'China A-share',
+  cn_stock_em: 'Eastmoney',
+  cn_stock_tx: 'Tencent',
+  cn_fundamentals: 'China Fundamentals',
+  cn_news: 'China News',
+  cn_macro: 'China Macro',
+  cn_market_signals: 'China Market Signals',
+  fred: 'FRED',
+  polymarket: 'Polymarket',
+  stocktwits: 'StockTwits',
+  reddit_rss: 'Reddit RSS',
+};
 
 const session = useSession();
 const route = useRoute();
@@ -304,6 +483,11 @@ const pinnedRuns = ref<JsonRecord[]>([]);
 const comments = ref<JsonRecord[]>([]);
 const historyRuns = ref<JsonRecord[]>([]);
 const historyPickerOpen = ref(false);
+const timelineEvents = ref<JsonRecord[]>([]);
+const debateTranscripts = ref<DebateTranscript[]>([]);
+const selectedDebateName = ref('');
+const debugConfig = ref<JsonRecord | null>(null);
+const fullStateContent = ref('');
 const terminalOutput = ref('');
 const selectedSectionKey = ref('');
 const commentBody = ref('');
@@ -378,6 +562,14 @@ const historyDisabledDates = computed(() => {
   }
   return disabled;
 });
+const debateArtifactLabels = computed<Record<string, string>>(() => ({
+  'report-tree/2_research/bull.md': t('runs.debateBull'),
+  'report-tree/2_research/bear.md': t('runs.debateBear'),
+  'report-tree/2_research/manager.md': t('runs.debateResearchManager'),
+  'report-tree/4_risk/aggressive.md': t('runs.debateAggressive'),
+  'report-tree/4_risk/conservative.md': t('runs.debateConservative'),
+  'report-tree/4_risk/neutral.md': t('runs.debateNeutral'),
+}));
 const orderedReportKeys = computed(() => {
   const sections = selectedRun.value?.report_sections || {};
   const keys = Object.keys(sections);
@@ -398,6 +590,40 @@ const sectionOptions = computed(() => {
     return [{ label: sectionLabel('overview'), value: 'overview' }, ...options];
   }
   return options;
+});
+const dataFetches = computed(() => {
+  const value = selectedRun.value?.data_fetches;
+  return Array.isArray(value) ? value as JsonRecord[] : [];
+});
+const dataWarnings = computed(() => {
+  const value = selectedRun.value?.data_warnings;
+  return Array.isArray(value) ? value as JsonRecord[] : [];
+});
+const timelineDisplayEvents = computed(() => [...timelineEvents.value].reverse());
+const timelineSummaryItems = computed(() => {
+  const counts = new Map<string, number>();
+  for (const event of timelineDisplayEvents.value) {
+    const label = timelineEventLabel(event);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  return Array.from(counts.entries()).map(([label, count]) => ({ label, count }));
+});
+const selectedDebateTranscript = computed(() => {
+  if (!debateTranscripts.value.length) {
+    return null;
+  }
+  return debateTranscripts.value.find((entry) => entry.name === selectedDebateName.value)
+    || debateTranscripts.value[0];
+});
+const selectedDebateTurns = computed(() => parseDebateTranscript(selectedDebateTranscript.value?.content || ''));
+const debugConfigText = computed(() => (
+  debugConfig.value ? JSON.stringify(debugConfig.value, null, 2) : ''
+));
+const usageSummaryText = computed(() => {
+  const value = selectedRun.value?.usage_summary;
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? JSON.stringify(value, null, 2)
+    : '';
 });
 const selectedSectionText = computed(() => {
   if (!selectedRun.value) {
@@ -523,6 +749,238 @@ function insightTitle(key: 'evidence' | 'risks' | 'actions'): string {
   }
 }
 
+function dataFetchItemLabel(entry: JsonRecord): string {
+  return String(entry.item || entry.method || t('common.na'));
+}
+
+function artifactName(artifact: JsonRecord): string {
+  return String(artifact.name || artifact.key || '').trim();
+}
+
+function artifactContentPath(encodedRunId: string, name: string): string {
+  return `/api/runs/${encodedRunId}/artifacts/content?name=${encodeURIComponent(name)}`;
+}
+
+function dataFetchStatusLabel(entry: JsonRecord): string {
+  switch (String(entry.status || '')) {
+    case 'success':
+      return t('runs.dataStatusSuccess');
+    case 'fallback':
+      return t('runs.dataStatusFallback');
+    case 'unavailable':
+      return t('runs.dataStatusUnavailable');
+    case 'error':
+      return t('runs.dataStatusError');
+    case 'not_applicable':
+      return t('runs.dataStatusNotApplicable');
+    default:
+      return String(entry.status || t('common.na'));
+  }
+}
+
+function dataFetchStatusSeverity(entry: JsonRecord): string {
+  switch (String(entry.status || '')) {
+    case 'success':
+      return 'success';
+    case 'fallback':
+      return 'warn';
+    case 'unavailable':
+    case 'error':
+      return 'danger';
+    case 'not_applicable':
+      return 'info';
+    default:
+      return 'secondary';
+  }
+}
+
+function dataFetchSourceLabel(source: unknown, status: unknown): string {
+  const normalized = String(source || '').trim();
+  if (!normalized) {
+    return String(status) === 'not_applicable'
+      ? t('runs.dataSourceNotApplicable')
+      : t('common.na');
+  }
+  return DATA_SOURCE_LABELS[normalized] || normalized;
+}
+
+function dataFetchSourceList(value: unknown): string {
+  if (!Array.isArray(value) || !value.length) {
+    return t('common.na');
+  }
+  return value.map((item) => dataFetchSourceLabel(item, '')).join(' · ');
+}
+
+function timelineEventSeverity(event: JsonRecord): string {
+  switch (String(event.event || '').trim()) {
+    case 'complete':
+    case 'report_update':
+    case 'data_fetch':
+      return 'success';
+    case 'llm_call':
+    case 'tool_call':
+    case 'state_snapshot':
+      return 'info';
+    case 'data_warning':
+    case 'cancelled':
+      return 'warn';
+    case 'error':
+      return 'danger';
+    default:
+      return 'secondary';
+  }
+}
+
+function timelineEventLabel(event: JsonRecord): string {
+  switch (String(event.event || '').trim()) {
+    case 'progress':
+      return 'Progress';
+    case 'agent_status':
+      return 'Agent Status';
+    case 'report_update':
+      return 'Report Update';
+    case 'llm_prompt':
+      return 'LLM Prompt';
+    case 'tool_call':
+      return 'Tool Call';
+    case 'data_fetch':
+      return 'Data Fetch';
+    case 'data_warning':
+      return 'Data Warning';
+    case 'state_snapshot':
+      return 'State Snapshot';
+    case 'terminal_output':
+      return t('runs.terminalOutput');
+    case 'complete':
+      return t('common.completed');
+    case 'cancelled':
+      return t('common.cancelled');
+    case 'error':
+      return 'Error';
+    default:
+      return String(event.event || t('common.na'));
+  }
+}
+
+function timelineEventSummary(event: JsonRecord): string {
+  const data = event.data && typeof event.data === 'object' && !Array.isArray(event.data)
+    ? event.data as JsonRecord
+    : {};
+  switch (String(event.event || '').trim()) {
+    case 'progress':
+      return String(data.message || data.tool_call || t('common.na'));
+    case 'agent_status':
+      return [String(data.agent || ''), String(data.status || '')].filter(Boolean).join(' ');
+    case 'report_update':
+      return [
+        String(data.section ? sectionLabel(String(data.section)) : ''),
+        typeof data.content_length === 'number' ? `${data.content_length} chars` : '',
+      ].filter(Boolean).join(' · ') || String(data.content || t('common.na'));
+    case 'llm_prompt':
+      return [String(data.model || ''), String(data.prompt_preview || '')].filter(Boolean).join(' · ');
+    case 'llm_call': {
+      const tokens = typeof data.total_tokens === 'number' ? `${data.total_tokens} tokens` : '';
+      return [String(data.model || ''), tokens, String(data.response_preview || '')].filter(Boolean).join(' · ');
+    }
+    case 'tool_call':
+      return [String(data.name || ''), String(data.args_preview || '')].filter(Boolean).join(' · ');
+    case 'data_fetch': {
+      const item = String(data.item || data.method || t('common.na'));
+      const source = dataFetchSourceLabel(data.actual_source, data.status);
+      const status = dataFetchStatusLabel(data);
+      const requestLabel = String(data.request_label || '').trim();
+      const detail = String(data.detail || '').trim();
+      const preview = String(data.result_preview || '').trim();
+      return [item, requestLabel, `${source} [${status}]`, detail, preview].filter(Boolean).join(' · ');
+    }
+    case 'data_warning':
+      return String(data.message || t('common.na'));
+    case 'state_snapshot': {
+      const chunkKeys = Array.isArray(data.chunk_keys) ? data.chunk_keys.join(', ') : '';
+      const activeAgents = Array.isArray(data.in_progress_agents) ? data.in_progress_agents.join(', ') : '';
+      const completed = typeof data.completed_agent_count === 'number' ? `${data.completed_agent_count} completed` : '';
+      return [chunkKeys, activeAgents, completed].filter(Boolean).join(' · ');
+    }
+    case 'terminal_output':
+      return String(data.line || data.stream || t('common.na'));
+    case 'complete':
+      return String(data.signal || t('common.completed'));
+    case 'cancelled':
+    case 'error':
+      return String(data.message || t('common.na'));
+    default:
+      try {
+        return JSON.stringify(data, null, 2);
+      } catch {
+        return t('common.na');
+      }
+  }
+}
+
+function timelineEventDetailText(event: JsonRecord): string {
+  const data = event.data && typeof event.data === 'object' && !Array.isArray(event.data)
+    ? event.data as JsonRecord
+    : {};
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return String(data || '');
+  }
+}
+
+function parseDebateTranscript(content: string): DebateTurn[] {
+  const lines = content
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const turns: DebateTurn[] = [];
+  for (const line of lines) {
+    const match = line.match(/^([^:]{1,80}):\s*(.+)$/);
+    if (!match) {
+      if (turns.length) {
+        const current = turns[turns.length - 1];
+        current.content = `${current.content}\n${line}`;
+      }
+      continue;
+    }
+    turns.push({
+      speaker: match[1].trim(),
+      content: match[2].trim(),
+    });
+  }
+  return turns;
+}
+
+async function fetchArtifactContent(encodedRunId: string, name: string): Promise<string | null> {
+  try {
+    const payload = await apiGet<JsonRecord>(artifactContentPath(encodedRunId, name), session.apiContext.value);
+    return typeof payload.content === 'string' ? payload.content : null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadDebateTranscripts(encodedRunId: string, artifactRows: JsonRecord[]): Promise<DebateTranscript[]> {
+  const entries = Object.entries(debateArtifactLabels.value).filter(([name]) => (
+    artifactRows.some((artifact) => artifactName(artifact) === name)
+  ));
+  const loaded = await Promise.all(entries.map(async ([name, label]) => {
+    const content = await fetchArtifactContent(encodedRunId, name);
+    if (!content) {
+      return null;
+    }
+    return { name, label, content };
+  }));
+  return loaded.filter((entry): entry is DebateTranscript => entry !== null);
+}
+
+async function loadFullStateContent(encodedRunId: string, artifactRows: JsonRecord[]): Promise<string> {
+  if (!artifactRows.some((artifact) => artifactName(artifact) === FULL_STATE_ARTIFACT_NAME)) {
+    return '';
+  }
+  return await fetchArtifactContent(encodedRunId, FULL_STATE_ARTIFACT_NAME) || '';
+}
+
 async function loadRunDetail(options: { silent?: boolean } = {}) {
   if (!routeRunId.value) return;
   const { silent = false } = options;
@@ -532,6 +990,11 @@ async function loadRunDetail(options: { silent?: boolean } = {}) {
     artifacts.value = [];
     historyRuns.value = [];
     historyPickerOpen.value = false;
+    timelineEvents.value = [];
+    debateTranscripts.value = [];
+    selectedDebateName.value = '';
+    debugConfig.value = null;
+    fullStateContent.value = '';
     terminalOutput.value = '';
     selectedSectionKey.value = '';
   }
@@ -545,16 +1008,22 @@ async function loadRunDetail(options: { silent?: boolean } = {}) {
     if (!silent || !selectedSectionKey.value) {
       selectedSectionKey.value = hasOverview ? 'overview' : orderedReportKeys.value[0] || '';
     }
-    const [artifactRows, output, pinnedItems, commentItems, memberItems, runRows] = await Promise.all([
+    const [artifactRows, output, pinnedItems, commentItems, memberItems, runRows, timelineRows, debugPayload] = await Promise.all([
       apiGet<JsonRecord[]>(`/api/runs/${encodedRunId}/artifacts`, session.apiContext.value),
       loadTerminalOutput(encodedRunId),
       apiGet<JsonRecord[]>('/api/pinned-runs', session.apiContext.value),
       apiGet<JsonRecord[]>(`/api/runs/${encodedRunId}/comments`, session.apiContext.value),
       apiGet<JsonRecord[]>('/api/members', session.apiContext.value),
       apiGet<JsonRecord[]>('/api/runs', session.apiContext.value),
+      apiGet<JsonRecord[]>(`/api/runs/${encodedRunId}/timeline`, session.apiContext.value),
+      apiGet<JsonRecord>(`/api/runs/${encodedRunId}/debug-config`, session.apiContext.value),
     ]);
     artifacts.value = artifactRows;
     terminalOutput.value = output;
+    timelineEvents.value = Array.isArray(timelineRows) ? timelineRows : [];
+    debugConfig.value = debugPayload && typeof debugPayload === 'object' && !Array.isArray(debugPayload)
+      ? debugPayload
+      : null;
     pinnedRuns.value = pinnedItems;
     comments.value = commentItems;
     members.value = memberItems;
@@ -564,6 +1033,13 @@ async function loadRunDetail(options: { silent?: boolean } = {}) {
     commentAuthor.value = session.state.currentMemberId
       ? (memberItems.find((item) => item.id === session.state.currentMemberId)?.name || '')
       : '';
+    [debateTranscripts.value, fullStateContent.value] = await Promise.all([
+      loadDebateTranscripts(encodedRunId, artifactRows),
+      loadFullStateContent(encodedRunId, artifactRows),
+    ]);
+    if (!selectedDebateName.value || !debateTranscripts.value.some((entry) => entry.name === selectedDebateName.value)) {
+      selectedDebateName.value = debateTranscripts.value[0]?.name || '';
+    }
     hydratePinForm();
     hydrateShareForm();
   } catch (exc) {

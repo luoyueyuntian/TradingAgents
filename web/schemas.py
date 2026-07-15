@@ -1240,11 +1240,27 @@ class RunStatus(BaseModel):
     config_summary: dict[str, object] = Field(default_factory=dict)
     current_report: str | None = None
     final_report: str | None = None
+    data_fetches: list[dict[str, object]] = Field(default_factory=list)
+    data_warnings: list[dict[str, str]] = Field(default_factory=list)
+    usage_summary: dict[str, object] = Field(default_factory=dict)
     signal: str | None = None
     error: str | None = None
     annotation: RunAnnotation | None = None
     review: RunReview | None = None
     public_share: PublicRunShareInfo | None = None
+
+
+class RunDebugConfig(BaseModel):
+    """Debug-oriented full run configuration and local artifact paths."""
+
+    run_id: str
+    selected_analysts: list[str] = Field(default_factory=list)
+    config: dict[str, object] = Field(default_factory=dict)
+    run_root: str | None = None
+    report_path: str | None = None
+    state_log_path: str | None = None
+    terminal_log_path: str | None = None
+    event_log_path: str | None = None
 
 
 class RunSummary(BaseModel):
@@ -1261,6 +1277,7 @@ class RunSummary(BaseModel):
     completed_at: OptionalTimestampMs = None
     queue_position: int | None = None
     llm_provider: str | None = None
+    research_depth: int | None = None
     archived: bool = False
     signal: str | None = None
     error: str | None = None

@@ -20,6 +20,7 @@ import logging
 from urllib.request import Request, urlopen
 
 from .market_profiles import get_market_profile, is_china_a_profile
+from .provenance import record_data_fetch, summarize_request
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,22 @@ def fetch_stocktwits_messages(ticker: str, limit: int = 30, timeout: float = 10.
     symbol has no messages, or the response shape is unexpected — the
     caller never has to special-case None or exceptions.
     """
+    request_label = summarize_request("fetch_stocktwits_messages", ticker)
     if is_china_a_profile(get_market_profile()):
+        record_data_fetch(
+            method="fetch_stocktwits_messages",
+            category="social_sentiment",
+            request_label=request_label,
+            status="not_applicable",
+            required=False,
+            configured_sources=["stocktwits"],
+            attempted_sources=[],
+            actual_source=None,
+            fallback_used=False,
+            incomplete=False,
+            detail="Disabled for cn_a market profile.",
+            warning=None,
+        )
         return "<stocktwits disabled for cn_a market profile>"
 
     url = _API.format(ticker=ticker.upper())
@@ -47,10 +63,38 @@ def fetch_stocktwits_messages(ticker: str, limit: int = 30, timeout: float = 10.
         # OSError covers URLError/TimeoutError/connection resets; HTTPException
         # covers chunked-transfer errors (IncompleteRead/BadStatusLine, #1024).
         logger.warning("StockTwits fetch failed for %s: %s", ticker, exc)
+        record_data_fetch(
+            method="fetch_stocktwits_messages",
+            category="social_sentiment",
+            request_label=request_label,
+            status="unavailable",
+            required=True,
+            configured_sources=["stocktwits"],
+            attempted_sources=["stocktwits"],
+            actual_source=None,
+            fallback_used=False,
+            incomplete=True,
+            detail=str(exc),
+            warning=f"StockTwits sentiment data was unavailable for {ticker.upper()}.",
+        )
         return f"<stocktwits unavailable: {type(exc).__name__}>"
 
     messages = data.get("messages", []) if isinstance(data, dict) else []
     if not messages:
+        record_data_fetch(
+            method="fetch_stocktwits_messages",
+            category="social_sentiment",
+            request_label=request_label,
+            status="unavailable",
+            required=True,
+            configured_sources=["stocktwits"],
+            attempted_sources=["stocktwits"],
+            actual_source=None,
+            fallback_used=False,
+            incomplete=True,
+            detail=f"No StockTwits messages found for ${ticker.upper()}",
+            warning=f"StockTwits returned no recent messages for {ticker.upper()}.",
+        )
         return f"<no StockTwits messages found for ${ticker.upper()}>"
 
     lines = []
@@ -85,4 +129,20 @@ def fetch_stocktwits_messages(ticker: str, limit: int = 30, timeout: float = 10.
         f"Unlabeled: {unlabeled} · "
         f"Total: {total} most-recent messages"
     )
-    return summary + "\n\n" + "\n".join(lines)
+    rendered = summary + "\n\n" + "\n".join(lines)
+    record_data_fetch(
+        method="fetch_stocktwits_messages",
+        category="social_sentiment",
+        request_label=request_label,
+        status="success",
+        required=True,
+        configured_sources=["stocktwits"],
+        attempted_sources=["stocktwits"],
+        actual_source="stocktwits",
+        fallback_used=False,
+        incomplete=False,
+        detail=summary,
+        warning=None,
+        result=rendered,
+    )
+    return rendered
