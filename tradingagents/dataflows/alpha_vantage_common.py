@@ -130,8 +130,8 @@ def _filter_csv_by_date_range(csv_data: str, start_date: str, end_date: str) -> 
 
     # Deliberately unguarded: TIME_SERIES_DAILY_ADJUSTED returns the full series
     # up to today, so this trim is the only thing keeping bars after end_date out
-    # of a historical run. Returning the untrimmed body on failure would leak
-    # future prices, so a parse failure propagates and the caller fails closed.
+    # of a historical run. Swallowing a parse failure would serve the untrimmed
+    # body, and with it future prices.
     df = pd.read_csv(StringIO(csv_data))
 
     # Assume the first column is the date column (timestamp)

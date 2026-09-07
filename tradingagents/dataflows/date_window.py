@@ -36,16 +36,11 @@ def withhold_live_profile(curr_date: str | None, label: str) -> str | None:
     """Notice to serve instead of a live-only company profile, or None to serve it.
 
     Vendor "company overview" endpoints (yfinance ``Ticker.info``, Alpha Vantage
-    ``OVERVIEW``) return only present-day values: market cap, valuation
-    multiples, the 52-week range and TTM income all move with today's quote, and
-    even name, sector and industry shift when a company renames or is
-    reclassified. None of it carries a historical vintage, so serving it into a
-    run dated in the past puts post-decision information into the analyst's
-    context (#1300).
-
-    Centralized so every fundamentals vendor withholds on the same rule and says
-    the same thing; point-in-time statements come from the balance sheet, income
-    statement and cash flow tools, which filter on ``curr_date``.
+    ``OVERVIEW``) carry no historical vintage — not even name, sector and
+    industry, which move when a company renames or is reclassified — so serving
+    one into a run dated in the past leaks post-decision information (#1300).
+    Every fundamentals vendor withholds on this rule, so switching between them
+    cannot reintroduce the leak.
     """
     if not curr_date:
         return None
