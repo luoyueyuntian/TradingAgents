@@ -176,19 +176,19 @@ def test_one_time_task_update_normalizes_selection_and_validates_dates():
     ],
 )
 def test_one_time_task_create_rejects_invalid_date_formats(kwargs, message):
-    base_kwargs = dict(
-        name="Friday Basket",
-        scheduled_for="2026-07-10 21:30",
-        analysis_date="2026-07-10",
-        manual_stocks=[],
-        group_ids=[],
-        analysis_config=AutomationAnalysisConfig(
+    base_kwargs = {
+        "name": "Friday Basket",
+        "scheduled_for": "2026-07-10 21:30",
+        "analysis_date": "2026-07-10",
+        "manual_stocks": [],
+        "group_ids": [],
+        "analysis_config": AutomationAnalysisConfig(
             analysts=["market"],
             llm_provider="openai",
             research_depth=1,
             output_language="English",
         ),
-    )
+    }
     base_kwargs.update(kwargs)
 
     with pytest.raises(ValidationError, match=message):

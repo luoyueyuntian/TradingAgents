@@ -64,7 +64,7 @@ const DatePickerStub = {
       const day = String(value.getDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
     },
-    handleInput(event: Event) {
+    handleInput(this: { $emit: (event: 'update:modelValue', value: Date | null) => void }, event: Event) {
       const value = (event.target as HTMLInputElement).value;
       this.$emit('update:modelValue', value ? new Date(`${value}T00:00:00`) : null);
     },

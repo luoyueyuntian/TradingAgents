@@ -49,15 +49,15 @@ def _northbound_signal(ak, limit: int) -> pd.DataFrame:
     return keep.tail(limit)
 
 
-def _margin_signal(ak, limit: int) -> pd.DataFrame:
-    end_dt = datetime.now()
+def _margin_signal(ak, limit: int, as_of_date: str | None = None) -> pd.DataFrame:
+    end_dt = datetime.strptime(as_of_date, "%Y-%m-%d") if as_of_date else datetime.now()
     start_dt = end_dt - timedelta(days=max(limit * 7, 14))
     frame = ak.stock_margin_sse(
         start_date=start_dt.strftime("%Y%m%d"),
         end_date=end_dt.strftime("%Y%m%d"),
     ).copy()
     cols = [col for col in ("信用交易日期", "融资余额", "融券余额", "融资买入额", "融资偿还额") if col in frame.columns]
-    return frame[cols].tail(limit) if cols else frame.tail(limit)
+    return frame[cols] if cols else frame
 
 
 def _fund_flow_signal(ak, limit: int) -> pd.DataFrame:
@@ -75,10 +75,10 @@ def _fund_flow_signal(ak, limit: int) -> pd.DataFrame:
         )
         if col in frame.columns
     ]
-    return frame[cols].tail(limit) if cols else frame.tail(limit)
+    return frame[cols] if cols else frame
 
 
-def get_china_market_signals(topic: str, limit: int | None = None) -> str:
+def get_china_market_signals(topic: str, limit: int | None = None, as_of_date: str | None = None) -> str:
     """Return China forward-looking market-structure signals as markdown."""
     signal_type = _normalize_topic(topic)
     if not signal_type:
@@ -91,6 +91,9 @@ def get_china_market_signals(topic: str, limit: int | None = None) -> str:
     if limit is None:
         limit = 6
 
+    if as_of_date and signal_type == "northbound" and as_of_date < datetime.now().strftime("%Y-%m-%d"):
+        raise NoMarketDataError(topic, detail="Northbound feed is a live snapshot; historical observations unavailable")
+
     try:
         ak = _load_akshare()
     except Exception as exc:  # noqa: BLE001
@@ -102,7 +105,7 @@ def get_china_market_signals(topic: str, limit: int | None = None) -> str:
         if signal_type == "northbound":
             frame = _northbound_signal(ak, limit)
         elif signal_type == "margin":
-            frame = _margin_signal(ak, limit)
+            frame = _margin_signal(ak, limit, as_of_date)
         else:
             frame = _fund_flow_signal(ak, limit)
     except Exception as exc:  # noqa: BLE001
@@ -121,9 +124,20 @@ def get_china_market_signals(topic: str, limit: int | None = None) -> str:
         )
 
     trimmed = frame.copy()
+    if as_of_date:
+        date_col = next((c for c in ("交易日", "日期", "信用交易日期") if c in trimmed.columns), None)
+        if date_col is None:
+            raise NoMarketDataError(topic, detail="Signal observation dates unavailable; cannot verify as-of cutoff")
+        # Numeric YYYYMMDD must not be interpreted as nanoseconds after 1970.
+        dates = pd.to_datetime(trimmed[date_col].astype(str), errors="coerce")
+        trimmed = trimmed[dates.notna() & (dates.dt.normalize() <= pd.Timestamp(as_of_date))]
+        if trimmed.empty:
+            raise NoMarketDataError(topic, detail=f"No signals on or before {as_of_date}")
+        trimmed = trimmed.assign(_date=dates.loc[trimmed.index]).sort_values("_date").drop(columns="_date")
+    trimmed = trimmed.tail(max(1, int(limit)))
     for col in ("交易日", "日期", "信用交易日期"):
         if col in trimmed.columns:
-            parsed = pd.to_datetime(trimmed[col], errors="coerce")
+            parsed = pd.to_datetime(trimmed[col].astype(str), errors="coerce")
             if parsed.notna().any():
                 trimmed[col] = parsed.dt.strftime("%Y-%m-%d")
 

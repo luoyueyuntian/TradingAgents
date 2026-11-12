@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from tradingagents.service.worker_status import read_worker_status, write_worker_status
 
 

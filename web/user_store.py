@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -94,7 +94,7 @@ def _utc_now() -> int:
 
 
 def _utc_now_dt() -> datetime:
-    return datetime.now(timezone.utc).replace(microsecond=0)
+    return datetime.now(UTC).replace(microsecond=0)
 
 
 def _format_timestamp(value: datetime) -> int:
@@ -155,7 +155,7 @@ def _migrate_table_with_integer_timestamps(
     for row in rows:
         values = []
         for column_name in column_names:
-            value = row[column_name] if column_name in row.keys() else None
+            value = row[column_name] if column_name in row.keys() else None  # noqa: SIM118 - sqlite3.Row iterates values, not keys
             if column_name in timestamp_columns:
                 value = coerce_timestamp_ms(value)
             values.append(value)
@@ -222,7 +222,7 @@ def _user_from_row(row: sqlite3.Row) -> UserRecord:
         must_change_password=bool(row["must_change_password"]),
         expires_at=coerce_timestamp_ms(row["expires_at"]),
         disabled=bool(row["disabled"]),
-        deleted_at=coerce_timestamp_ms(row["deleted_at"]) if "deleted_at" in row.keys() else None,
+        deleted_at=coerce_timestamp_ms(row["deleted_at"]) if "deleted_at" in row.keys() else None,  # noqa: SIM118 - sqlite3.Row iterates values, not keys
         created_at=coerce_timestamp_ms(row["created_at"]) or 0,
         updated_at=coerce_timestamp_ms(row["updated_at"]) or 0,
         last_login_at=coerce_timestamp_ms(row["last_login_at"]),
@@ -236,7 +236,7 @@ def _tenant_from_row(row: sqlite3.Row) -> TenantRecord:
         display_name=row["display_name"],
         disabled=bool(row["disabled"]),
         archived=bool(row["archived"]),
-        expires_at=coerce_timestamp_ms(row["expires_at"]) if "expires_at" in row.keys() else None,
+        expires_at=coerce_timestamp_ms(row["expires_at"]) if "expires_at" in row.keys() else None,  # noqa: SIM118 - sqlite3.Row iterates values, not keys
         created_at=coerce_timestamp_ms(row["created_at"]) or 0,
         updated_at=coerce_timestamp_ms(row["updated_at"]) or 0,
     )
@@ -265,7 +265,7 @@ def _password_reset_token_from_row(row: sqlite3.Row) -> PasswordResetTokenRecord
 
 
 def _user_row_is_active(row: sqlite3.Row) -> bool:
-    if "deleted_at" in row.keys() and row["deleted_at"] is not None:
+    if "deleted_at" in row.keys() and row["deleted_at"] is not None:  # noqa: SIM118 - sqlite3.Row iterates values, not keys
         return False
     if bool(row["disabled"]):
         return False
@@ -510,7 +510,7 @@ class UserStore:
         for row in rows:
             values = []
             for column_name in column_names:
-                value = row[column_name] if column_name in row.keys() else None
+                value = row[column_name] if column_name in row.keys() else None  # noqa: SIM118 - sqlite3.Row iterates values, not keys
                 if column_name in timestamp_columns:
                     value = coerce_timestamp_ms(value)
                 values.append(value)
@@ -1250,9 +1250,7 @@ class UserStore:
         next_expires_at = updates.get("expires_at", current["expires_at"])
         if next_role != "admin" or next_disabled:
             return True
-        if next_expires_at is not None and _is_expired(next_expires_at):
-            return True
-        return False
+        return bool(next_expires_at is not None and _is_expired(next_expires_at))
 
     def _insert_tenant_record_if_missing(
         self,

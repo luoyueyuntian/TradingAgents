@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import Callable
 from contextvars import ContextVar
 from copy import deepcopy
-import json
-from typing import Any, Callable
+from typing import Any
 
 _audit_var: ContextVar[list[dict[str, Any]]] = ContextVar(
     "tradingagents_data_fetch_audit",
@@ -114,8 +115,8 @@ def summarize_result(result: Any, *, max_chars: int = 320) -> tuple[str, str]:
 
     if hasattr(result, "shape") and hasattr(result, "columns"):
         try:
-            rows = getattr(result, "shape")[0]
-            cols = list(getattr(result, "columns"))[:6]
+            rows = result.shape[0]
+            cols = list(result.columns)[:6]
             cols_preview = ", ".join(str(col) for col in cols)
             return "dataframe", f"rows={rows} cols=[{cols_preview}]"
         except Exception:

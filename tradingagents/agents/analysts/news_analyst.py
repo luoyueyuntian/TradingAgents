@@ -1,47 +1,29 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from tradingagents.agents.utils.agent_utils import (
-    get_global_news,
+from tradingagents.agents.analysts.turn import take_turn
+from tradingagents.agents.context import (
     get_instrument_context_from_state,
     get_language_instruction,
     get_market_specific_instruction,
+)
+from tradingagents.agents.tools import (
+    get_global_news,
     get_macro_indicators,
     get_news,
     get_prediction_markets,
 )
-from tradingagents.agents.utils.factories import _ANALYST_SYSTEM_PREAMBLE
 from tradingagents.dataflows.market_profiles import get_market_profile, is_china_a_profile
 
-
-def _build_news_tool_guidance(asset_label: str) -> str:
-    """Describe the news analyst's tool usage for the active market profile."""
-    if is_china_a_profile(get_market_profile()):
-        return (
-            f"Use the available tools: get_news(query, start_date, end_date) for {asset_label}-specific China market news, "
-            "get_global_news(curr_date, look_back_days, limit) for broader China policy and macro news, "
-            "get_macro_indicators(indicator, curr_date, look_back_days) to ground commentary in China macro data "
-            "(e.g. 'cpi', 'ppi', 'pmi', 'm2', 'social_financing', 'lpr'), and "
-            "get_prediction_markets(topic, limit) for China forward-looking market structure signals such as "
-            "'northbound flow', 'margin financing', or 'fund flow'."
-        )
-    return (
-        f"Use the available tools: get_news(query, start_date, end_date) for {asset_label}-specific or targeted news searches, "
-        "get_global_news(curr_date, look_back_days, limit) for broader macroeconomic news, "
-        "get_macro_indicators(indicator, curr_date, look_back_days) to ground macro commentary in actual data from FRED "
-        "(e.g. 'cpi', 'core_pce', 'unemployment', 'fed_funds_rate', '10y_treasury', 'yield_curve'), and "
-        "get_prediction_markets(topic, limit) for live market-implied probabilities of forward-looking events "
-        "(e.g. 'Fed rate cut', 'recession 2026', geopolitical or sector events)."
-    )
+# The tools this analyst is offered; its tool node is built from the same tuple.
+TOOLS = (
+    get_news,
+    get_global_news,
+    get_macro_indicators,
+    get_prediction_markets,
+)
 
 
 def create_news_analyst(llm):
-    tools = [
-        get_news,
-        get_global_news,
-        get_macro_indicators,
-        get_prediction_markets,
-    ]
-
     def news_analyst_node(state):
         current_date = state["trade_date"]
         asset_type = state.get("asset_type", "stock")
@@ -57,20 +39,27 @@ def create_news_analyst(llm):
 
         prompt = ChatPromptTemplate.from_messages(
             [
-                ("system", _ANALYST_SYSTEM_PREAMBLE),
+                (
+                    "system",
+                    "You are a helpful AI assistant, collaborating with other assistants."
+                    " Use the provided tools to progress towards answering the question."
+                    " If you are unable to fully answer, that's OK; another assistant with different tools"
+                    " will help where you left off. Execute what you can to make progress."
+                    " Report what your tools support; another agent decides the trade."
+                    " You have access to the following tools: {tool_names}."
+                    " Today's date is {current_date}; treat it as 'now' for all analysis and tool-call date ranges. {instrument_context}\n"
+                    "{system_message}",
+                ),
                 MessagesPlaceholder(variable_name="messages"),
             ]
         )
 
         prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=", ".join(t.name for t in tools))
+        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in TOOLS]))
         prompt = prompt.partial(current_date=current_date)
         prompt = prompt.partial(instrument_context=instrument_context)
 
-        chain = prompt | llm.bind_tools(tools)
-        result = chain.invoke(state["messages"])
-
-        report = result.content if len(result.tool_calls) == 0 else ""
+        result, report = take_turn(prompt, llm, TOOLS, state["messages"])
 
         return {
             "messages": [result],
@@ -78,3 +67,24 @@ def create_news_analyst(llm):
         }
 
     return news_analyst_node
+
+
+def _build_news_tool_guidance(asset_label: str) -> str:
+    """Describe the news analyst's tool usage for the active market profile."""
+    if is_china_a_profile(get_market_profile()):
+        return (
+            f"Use the available tools: get_news(start_date, end_date) for {asset_label}-specific China market news, "
+            "get_global_news(curr_date, look_back_days, limit) for broader China policy and macro news, "
+            "get_macro_indicators(indicator, curr_date, look_back_days) to ground commentary in China macro data "
+            "(e.g. 'cpi', 'ppi', 'pmi', 'm2', 'social_financing', 'lpr'), and "
+            "get_prediction_markets(topic, limit) for China forward-looking market structure signals such as "
+            "'northbound flow', 'margin financing', or 'fund flow'."
+        )
+    return (
+        f"Use the available tools: get_news(start_date, end_date) for {asset_label}-specific or targeted news searches, "
+        "get_global_news(curr_date, look_back_days, limit) for broader macroeconomic news, "
+        "get_macro_indicators(indicator, curr_date, look_back_days) to ground macro commentary in actual data from FRED "
+        "(e.g. 'cpi', 'core_pce', 'unemployment', 'fed_funds_rate', '10y_treasury', 'yield_curve'), and "
+        "get_prediction_markets(topic, limit) for live market-implied probabilities of forward-looking events "
+        "(e.g. 'Fed rate cut', 'recession 2026', geopolitical or sector events)."
+    )

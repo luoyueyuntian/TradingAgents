@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
@@ -18,12 +18,12 @@ from .auth import get_request_user
 from .schemas import (
     AdminTenantBatchDisableRequest,
     AdminTenantBatchDisableResponse,
-    AdminUserCreate,
-    AdminUserResponse,
-    AdminUserUpdate,
     AdminTenantCreate,
     AdminTenantResponse,
     AdminTenantUpdate,
+    AdminUserCreate,
+    AdminUserResponse,
+    AdminUserUpdate,
 )
 from .user_store import (
     DISABLED_TENANT_READ_ONLY_ERROR,
@@ -113,7 +113,7 @@ def _parse_created_from(value: str | None) -> int | None:
     except ValueError:
         pass
     try:
-        dt = datetime.strptime(trimmed, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        dt = datetime.strptime(trimmed, "%Y-%m-%d").replace(tzinfo=UTC)
     except ValueError as exc:
         raise HTTPException(
             status_code=400,
@@ -131,7 +131,7 @@ def _parse_created_to(value: str | None) -> int | None:
     except ValueError:
         pass
     try:
-        dt = datetime.strptime(trimmed, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        dt = datetime.strptime(trimmed, "%Y-%m-%d").replace(tzinfo=UTC)
     except ValueError as exc:
         raise HTTPException(
             status_code=400,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -202,7 +202,7 @@ def test_logout_clears_session_cookie(monkeypatch, tmp_path):
         ("tenant-disabled", {"disabled": True}),
         (
             "tenant-expired",
-            {"expires_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()},
+            {"expires_at": (datetime.now(UTC) - timedelta(minutes=5)).isoformat()},
         ),
     ],
 )
@@ -255,7 +255,7 @@ def test_login_rejects_expired_user_with_clear_403(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(
         store,
-        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        expires_at=(datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
     )
 
     response = client.post(
@@ -271,7 +271,7 @@ def test_login_hides_expired_user_state_for_wrong_password(monkeypatch, tmp_path
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(
         store,
-        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        expires_at=(datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
     )
 
     response = client.post(
@@ -319,7 +319,7 @@ def test_login_hides_expired_tenant_state_for_wrong_password(monkeypatch, tmp_pa
     _create_user(store, tenant_id="tenant-expired")
     store.update_tenant(
         "tenant-expired",
-        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        expires_at=(datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
     )
 
     response = client.post(
@@ -337,7 +337,7 @@ def test_login_rejects_expired_tenant_with_clear_403(monkeypatch, tmp_path):
     _create_user(store, tenant_id="tenant-expired")
     store.update_tenant(
         "tenant-expired",
-        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        expires_at=(datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
     )
 
     response = client.post(
@@ -601,7 +601,7 @@ def test_password_reset_request_ignores_username_shadowing_email_value(
         ("tenant-disabled", {"disabled": True}),
         (
             "tenant-expired",
-            {"expires_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()},
+            {"expires_at": (datetime.now(UTC) - timedelta(minutes=5)).isoformat()},
         ),
     ],
 )
@@ -716,7 +716,7 @@ def test_password_reset_confirm_does_not_distinguish_fake_and_limited_reset_ids(
         ("tenant-disabled", {"disabled": True}),
         (
             "tenant-expired",
-            {"expires_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()},
+            {"expires_at": (datetime.now(UTC) - timedelta(minutes=5)).isoformat()},
         ),
     ],
 )

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request, status
 
@@ -127,7 +127,7 @@ def create_managed_user_for_tenant(
             tenant_id=tenant_id,
             password_hash=password_record.encoded_hash,
             password_salt=password_record.salt,
-            password_updated_at=current_timestamp_ms(datetime.now(timezone.utc)),
+            password_updated_at=current_timestamp_ms(datetime.now(UTC)),
             must_change_password=True,
             expires_at=payload.expires_at,
         )
@@ -163,7 +163,7 @@ def create_user_for_tenant(
             tenant_id=tenant_id,
             password_hash=password_record.encoded_hash,
             password_salt=password_record.salt,
-            password_updated_at=current_timestamp_ms(datetime.now(timezone.utc)),
+            password_updated_at=current_timestamp_ms(datetime.now(UTC)),
             must_change_password=True,
             expires_at=payload.expires_at,
         )
@@ -201,7 +201,7 @@ def update_user_for_tenant(
         updates.pop("password")
         updates["password_hash"] = password_record.encoded_hash
         updates["password_salt"] = password_record.salt
-        updates["password_updated_at"] = current_timestamp_ms(datetime.now(timezone.utc))
+        updates["password_updated_at"] = current_timestamp_ms(datetime.now(UTC))
         updates["must_change_password"] = True
 
     if "password_hash" in updates:
@@ -285,7 +285,7 @@ def reset_user_password(user_id: str, request: Request) -> AdminUserCredentialRe
             user_id,
             password_hash=password_record.encoded_hash,
             password_salt=password_record.salt,
-            password_updated_at=current_timestamp_ms(datetime.now(timezone.utc)),
+            password_updated_at=current_timestamp_ms(datetime.now(UTC)),
             must_change_password=True,
         )
     except ValueError as exc:

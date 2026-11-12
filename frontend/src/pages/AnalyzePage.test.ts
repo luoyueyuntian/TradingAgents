@@ -1,5 +1,5 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AnalyzePage from './AnalyzePage.vue';
 
@@ -165,9 +165,16 @@ async function mountPage() {
 
 describe('AnalyzePage', () => {
   beforeEach(() => {
+    // Keep the recent-history fixtures inside the local confirmation window.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-05T09:00:00+08:00'));
     apiGet.mockReset();
     apiPost.mockReset();
     push.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('creates a run immediately when the ticker has no recent history and no active run', async () => {

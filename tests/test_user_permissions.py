@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -256,7 +256,7 @@ def test_expired_tenant_blocks_existing_session_requests(monkeypatch, tmp_path):
     _login(client, tenant_id="tenant-expired")
     store.update_tenant(
         "tenant-expired",
-        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        expires_at=(datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
     )
     monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [])
 
@@ -319,7 +319,7 @@ def test_token_authenticated_write_request_rejects_expired_tenant(monkeypatch, t
     store.create_tenant("tenant-expired", display_name="Tenant Expired")
     store.update_tenant(
         "tenant-expired",
-        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        expires_at=(datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
     )
     monkeypatch.setenv("TRADINGAGENTS_WEB_API_TOKEN", "secret-token")
 
@@ -391,7 +391,7 @@ def test_legacy_write_request_rejects_expired_tenant(monkeypatch, tmp_path):
     store.create_tenant("tenant-expired", display_name="Tenant Expired")
     store.update_tenant(
         "tenant-expired",
-        expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        expires_at=(datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
     )
 
     class _Run:

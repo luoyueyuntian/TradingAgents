@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from importlib import import_module
-import re
 
 import pandas as pd
 
@@ -142,6 +142,9 @@ def get_global_news_china(curr_date: str, look_back_days: int = 7, limit: int = 
     else:
         date_col = None
 
+    if date_col is None:
+        raise NoMarketDataError("global", detail="China news publication dates unavailable; cannot verify requested date window")
+
     if date_col is not None:
         frame[date_col] = _parse_datetime(frame[date_col])
         end_dt = datetime.strptime(curr_date, "%Y-%m-%d") + timedelta(days=1)
@@ -168,7 +171,7 @@ def get_global_news_china(curr_date: str, look_back_days: int = 7, limit: int = 
     )
 
 
-def get_insider_transactions_china(ticker: str) -> str:
+def get_insider_transactions_china(ticker: str, as_of_date: str | None = None) -> str:
     """Raise NoMarketDataError — insider/disclosure detail is not mapped."""
     raise NoMarketDataError(
         symbol=ticker,

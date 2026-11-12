@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -59,7 +59,7 @@ def _login(
 
 
 def _now_ms() -> int:
-    return int(datetime.now(timezone.utc).timestamp() * 1000)
+    return int(datetime.now(UTC).timestamp() * 1000)
 
 
 def test_list_tenants_returns_counts_for_admin(monkeypatch, tmp_path):
@@ -235,9 +235,9 @@ def test_list_tenants_filters_by_name_status_and_created_range(monkeypatch, tmp_
     _create_tenant(store, tenant_id="tenant-gamma", display_name="Gamma Capital")
     store.update_tenant("tenant-beta", disabled=True)
     store.update_tenant("tenant-gamma", expires_at=_now_ms() - 60_000)
-    alpha_created_at = int(datetime(2026, 7, 3, tzinfo=timezone.utc).timestamp() * 1000)
-    beta_created_at = int(datetime(2026, 7, 9, tzinfo=timezone.utc).timestamp() * 1000)
-    gamma_created_at = int(datetime(2026, 7, 12, tzinfo=timezone.utc).timestamp() * 1000)
+    alpha_created_at = int(datetime(2026, 7, 3, tzinfo=UTC).timestamp() * 1000)
+    beta_created_at = int(datetime(2026, 7, 9, tzinfo=UTC).timestamp() * 1000)
+    gamma_created_at = int(datetime(2026, 7, 12, tzinfo=UTC).timestamp() * 1000)
 
     with store._connect() as conn:  # noqa: SLF001
         conn.execute(

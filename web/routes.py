@@ -30,13 +30,6 @@ from tradingagents.service.runtime_admin import (
     list_runtime_checkpoints,
     list_runtime_memory_entries,
 )
-from tradingagents.service.timestamps import (
-    coerce_timestamp_ms,
-    current_timestamp_ms,
-    timestamp_ms_to_date_text,
-    timestamp_ms_to_datetime,
-    timestamp_ms_to_filename_text,
-)
 from tradingagents.service.stock_catalog import (
     StockCatalogItem,
     list_stock_markets as list_stock_catalog_markets,
@@ -44,12 +37,19 @@ from tradingagents.service.stock_catalog import (
     search_stock_catalog,
     stock_catalog_needs_refresh,
 )
+from tradingagents.service.timestamps import (
+    coerce_timestamp_ms,
+    current_timestamp_ms,
+    timestamp_ms_to_date_text,
+    timestamp_ms_to_datetime,
+    timestamp_ms_to_filename_text,
+)
 from tradingagents.service.web_state import (
     get_web_settings_path,
     get_web_state_dir,
+    list_web_tenant_ids,
     migrate_all_web_settings_timestamps_to_ms,
     migrate_web_settings_timestamps_to_ms,
-    list_web_tenant_ids,
 )
 from tradingagents.settings import (
     PROVIDER_API_KEY_MAP,
@@ -75,12 +75,6 @@ from .one_time_tasks import (
     process_due_one_time_tasks,
     refresh_one_time_tasks,
     update_one_time_task,
-)
-from .stock_groups import (
-    create_stock_group,
-    delete_stock_group,
-    list_stock_groups,
-    update_stock_group,
 )
 from .runner import (
     TERMINAL_RUN_STATUSES,
@@ -176,13 +170,13 @@ from .schemas import (
     RunBulkActionResult,
     RunChatRequest,
     RunChatResponse,
-    RunCompanyGroup,
-    RunCompanyGroupPage,
     RunComment,
     RunCommentCreate,
-    RunDebugConfig,
     RunCommentResolveUpdate,
+    RunCompanyGroup,
+    RunCompanyGroupPage,
     RunComparison,
+    RunDebugConfig,
     RunEvent,
     RunReview,
     RunReviewCreate,
@@ -191,7 +185,6 @@ from .schemas import (
     RunReviewHistorySummary,
     RunStatus,
     RunSummary,
-    TickerRunHistoryPage,
     SavedItemBulkAction,
     SavedItemBulkActionResult,
     SavedSearch,
@@ -210,12 +203,13 @@ from .schemas import (
     StockCatalogItemResponse,
     StockCatalogRefreshRequest,
     StockCatalogRefreshResponse,
-    StockMarketInfo,
     StockGroup,
     StockGroupCreate,
     StockGroupUpdate,
+    StockMarketInfo,
     TenantInfo,
     TickerOverview,
+    TickerRunHistoryPage,
     ToolVendorSettings,
     WatchlistEntry,
     WatchlistUpdate,
@@ -236,6 +230,12 @@ from .schemas import (
     WorkspaceSnapshotImportResult,
     WorkspaceTimelineEvent,
     WorkspaceTimelineResponse,
+)
+from .stock_groups import (
+    create_stock_group,
+    delete_stock_group,
+    list_stock_groups,
+    update_stock_group,
 )
 from .webhook_delivery import process_pending_webhook_notifications
 from .workspace_import import (
@@ -5860,7 +5860,7 @@ def _read_run_terminal_output(run) -> str:
     try:
         return log_path.read_text(encoding="utf-8")
     except OSError:
-        raise HTTPException(status_code=500, detail="Terminal output is not readable")
+        raise HTTPException(status_code=500, detail="Terminal output is not readable") from None
 
 
 @router.get("/api/runs/{run_id}/terminal-output")
@@ -5921,7 +5921,7 @@ async def stream_run_events(run_id: str, request: Request):
             while True:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Send keepalive comment
                     yield {"comment": "keepalive"}
                     continue

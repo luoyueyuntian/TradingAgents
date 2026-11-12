@@ -9,7 +9,7 @@ import os
 import shutil
 import tempfile
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -112,15 +112,11 @@ class StateBackendAdapter:
             if run_root and run_root.exists():
                 shutil.rmtree(run_root, ignore_errors=True)
             if event_log_path and event_log_path.exists():
-                try:
+                with suppress(OSError):
                     event_log_path.unlink()
-                except OSError:
-                    pass
             claim = claim_path(run_id, claims_dir=self._claims_dir(claims_dir))
-            try:
+            with suppress(FileNotFoundError):
                 claim.unlink()
-            except FileNotFoundError:
-                pass
 
     def load_runs(self, *, runs_root_dir: Path, index_path: Path | None = None):
         if self.kind == "sqlite":
@@ -319,7 +315,7 @@ def _acquire_index_lock(
             fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
             if time.monotonic() >= deadline:
-                raise TimeoutError(f"Timed out acquiring run index lock {lock_path}")
+                raise TimeoutError(f"Timed out acquiring run index lock {lock_path}") from None
             time.sleep(poll_interval)
             continue
         else:
@@ -329,10 +325,8 @@ def _acquire_index_lock(
     try:
         yield
     finally:
-        try:
+        with suppress(FileNotFoundError):
             lock_path.unlink()
-        except FileNotFoundError:
-            pass
 
 
 def _write_payload_atomic(index_path: Path, payload: list[dict]) -> None:
@@ -348,8 +342,6 @@ def _write_payload_atomic(index_path: Path, payload: list[dict]) -> None:
             handle.write("\n")
         os.replace(tmp_path, index_path)
     except OSError:
-        try:
+        with suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
         raise

@@ -5,8 +5,8 @@ from __future__ import annotations
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.service.models import RunState
 from tradingagents.service.run_repository import (
-    deserialize_run_state,
     delete_run_from_index,
+    deserialize_run_state,
     index_lock_path,
     load_runs_from_index,
     save_runs_to_index,
@@ -86,7 +86,7 @@ def test_load_runs_from_index_preserves_incomplete_status(tmp_path):
         "asset_type": "stock",
         "config": DEFAULT_CONFIG.copy(),
         "selected_analysts": ["market"],
-        "run_root": str((tmp_path / "runs" / "run-1")),
+        "run_root": str(tmp_path / "runs" / "run-1"),
         "status": "running",
         "agents": {},
         "report_sections": {},

@@ -59,12 +59,12 @@ class TestVerifiedSnapshot:
 
     def test_raises_when_no_rows_on_or_before_date(self, monkeypatch):
         monkeypatch.setattr(validator, "load_ohlcv", lambda s, d: _sample_ohlcv())
-        with pytest.raises(ValueError):
+        with pytest.raises(NoMarketDataError):
             validator.build_verified_market_snapshot("COF", "2020-01-01")
 
     def test_raises_on_empty_data(self, monkeypatch):
         monkeypatch.setattr(validator, "load_ohlcv", lambda s, d: pd.DataFrame())
-        with pytest.raises(ValueError):
+        with pytest.raises(NoMarketDataError):
             validator.build_verified_market_snapshot("COF", "2026-05-13")
 
     def test_look_back_window_capped_at_30(self, monkeypatch):

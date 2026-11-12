@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import threading
 import time
-import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -382,7 +382,7 @@ def test_run_service_logs_run_configuration_and_execution_phases(tmp_path):
     from tradingagents.service.run_service import RunService
 
     class FakeGraph:
-        def __init__(self, selected_analysts, config=None, debug=False):
+        def __init__(self, selected_analysts, config=None, debug=False, callbacks=None):
             assert selected_analysts == ["market"]
             assert config["llm_provider"] == "openai"
             assert config["quick_think_llm"] == "quick-test"
