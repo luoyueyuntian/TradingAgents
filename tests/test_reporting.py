@@ -48,3 +48,57 @@ def test_save_reports_defaults_under_results_dir(tmp_path):
     assert out.exists()
     assert out.parent.parent.name == "reports"  # results_dir/reports/AAPL_<stamp>/...
     assert out.parent.name.startswith("AAPL_")
+
+
+@pytest.mark.unit
+def test_log_state_persists_extended_process_fields(tmp_path):
+    mock_self = SimpleNamespace(
+        log_states_dict={},
+        ticker="AAPL",
+        config={"results_dir": str(tmp_path)},
+        last_state_log_path=None,
+    )
+    state = {
+        "company_of_interest": "AAPL",
+        "asset_type": "stock",
+        "trade_date": "2026-01-15",
+        "instrument_context": "Resolved identity for AAPL",
+        "past_context": "Past lessons for AAPL",
+        "market_report": "MKT",
+        "sentiment_report": "SENT",
+        "news_report": "NEWS",
+        "fundamentals_report": "FUND",
+        "investment_debate_state": {
+            "bull_history": "Bull",
+            "bear_history": "Bear",
+            "history": "Bull vs Bear",
+            "current_response": "Bear",
+            "judge_decision": "Hold",
+            "count": 4,
+        },
+        "trader_investment_plan": "Trade plan",
+        "risk_debate_state": {
+            "aggressive_history": "Aggressive",
+            "conservative_history": "Conservative",
+            "neutral_history": "Neutral",
+            "history": "Risk history",
+            "latest_speaker": "Neutral",
+            "current_aggressive_response": "Aggressive response",
+            "current_conservative_response": "Conservative response",
+            "current_neutral_response": "Neutral response",
+            "judge_decision": "Buy",
+            "count": 6,
+        },
+        "investment_plan": "Plan",
+        "final_trade_decision": "Buy",
+    }
+
+    TradingAgentsGraph._log_state(mock_self, "2026-01-15", state)
+
+    payload = __import__("json").loads(mock_self.last_state_log_path.read_text(encoding="utf-8"))
+    assert payload["instrument_context"] == "Resolved identity for AAPL"
+    assert payload["past_context"] == "Past lessons for AAPL"
+    assert payload["investment_debate_state"]["count"] == 4
+    assert payload["risk_debate_state"]["latest_speaker"] == "Neutral"
+    assert payload["risk_debate_state"]["current_neutral_response"] == "Neutral response"
+    assert payload["risk_debate_state"]["count"] == 6

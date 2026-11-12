@@ -58,6 +58,11 @@
                 <span>{{ data.llm_provider || t('common.na') }}</span>
               </template>
             </Column>
+            <Column field="research_depth" :header="t('analysis.depth')">
+              <template #body="{ data }">
+                <span>{{ formatResearchDepth(data.research_depth, t) }}</span>
+              </template>
+            </Column>
             <Column field="status" :header="t('common.status')">
               <template #body="{ data }">
                 <Tag :value="data.status" :severity="signalSeverity(data.status)" />
@@ -102,6 +107,7 @@ import { useI18n } from '../i18n';
 import { apiGet } from '../services/api';
 import { useSession } from '../stores/session';
 import { formatDateTime, signalSeverity, type JsonRecord } from '../utils/format';
+import { formatResearchDepth } from '../utils/researchDepth';
 import {
   buildRunCompanyGroupsPath,
   type RunCompanyGroupPage,

@@ -18,4 +18,9 @@ def test_get_messages_and_tools_accepts_dict_tool_calls() -> None:
     messages, tools = processor.get_messages_and_tools({"messages": [message]})
 
     assert messages == ["Fetching market data"]
-    assert tools == ["get_stock_data"]
+    assert tools == [
+        {
+            "name": "get_stock_data",
+            "args_preview": '{"ticker": "600941.SS"}',
+        },
+    ]

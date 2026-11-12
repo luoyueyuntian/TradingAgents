@@ -6,6 +6,7 @@ interpret the delta chunks emitted by ``graph.stream()``.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from tradingagents.default_config import build_default_config
@@ -196,13 +197,14 @@ class ChunkProcessor:
         self._process_risk_debate(chunk)
         self.current_report = build_current_report(self.report_sections)
 
-    def get_messages_and_tools(self, chunk: dict[str, Any]) -> tuple[list[str], list[str]]:
-        """Extract message texts and tool-call names from a chunk.
+    def get_messages_and_tools(self, chunk: dict[str, Any]) -> tuple[list[str], list[dict[str, str]]]:
+        """Extract message texts and structured tool-call summaries from a chunk.
 
-        Returns (messages, tool_names). Deduplicates by message id.
+        Returns ``(messages, tools)`` where each tool item includes a stable
+        ``name`` plus a short ``args_preview`` string. Deduplicates by message id.
         """
         messages: list[str] = []
-        tools: list[str] = []
+        tools: list[dict[str, str]] = []
         for message in chunk.get("messages", []):
             msg_id = getattr(message, "id", None)
             if msg_id is not None:
@@ -216,8 +218,29 @@ class ChunkProcessor:
                 for tc in message.tool_calls:
                     name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
                     if name:
-                        tools.append(name)
+                        raw_args = (
+                            tc.get("args", tc.get("arguments", "")) if isinstance(tc, dict)
+                            else getattr(tc, "args", getattr(tc, "arguments", ""))
+                        )
+                        tools.append({
+                            "name": str(name),
+                            "args_preview": self._preview_tool_args(raw_args),
+                        })
         return messages, tools
+
+    @staticmethod
+    def _preview_tool_args(value: Any) -> str:
+        """Return a compact, human-readable preview of tool call arguments."""
+        if value in (None, "", {}):
+            return ""
+        if isinstance(value, str):
+            text = value.strip()
+        else:
+            try:
+                text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+            except TypeError:
+                text = str(value).strip()
+        return text[:280]
 
     def finalize(self) -> str | None:
         """Build the final report and mark all agents completed."""
