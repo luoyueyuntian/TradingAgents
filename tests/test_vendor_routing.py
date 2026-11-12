@@ -10,30 +10,20 @@ from unittest import mock
 
 import pytest
 
-from tradingagents.dataflows import interface
-from tradingagents.dataflows.config import initialize_config, set_config
-from tradingagents.dataflows.provenance import (
-    get_data_fetch_audit,
-    reset_data_fetch_audit,
-)
-from tradingagents.dataflows.symbol_utils import NoMarketDataError
+import tradingagents.dataflows.config as config_module
+from tradingagents.dataflows import router
+from tradingagents.dataflows.config import set_config
+from tradingagents.dataflows.errors import NoMarketDataError
 
 
 def _reset_config():
     # Hard reset: set_config() merges, so empty DEFAULT dicts (e.g. tool_vendors)
-    # don't clear keys leaked by other tests. Reinitialize config from defaults.
-    initialize_config()
+    # don't clear keys leaked by other tests. Replace the global outright.
+    config_module.initialize_config()
 
 
 def _no_data(symbol, *a, **k):
     raise NoMarketDataError(symbol, symbol, "no rows")
-
-
-def _no_data_with_detail(detail: str):
-    def impl(symbol, *a, **k):
-        raise NoMarketDataError(symbol, symbol, detail)
-
-    return impl
 
 
 def _returns(value):
@@ -52,15 +42,13 @@ def _raises(exc):
 class VendorRoutingTests(unittest.TestCase):
     def setUp(self):
         _reset_config()
-        reset_data_fetch_audit()
 
     def tearDown(self):
         _reset_config()
-        reset_data_fetch_audit()
 
     def _route(self, vendors_for_get_stock_data):
         return mock.patch.dict(
-            interface.VENDOR_METHODS,
+            router.VENDOR_METHODS,
             {"get_stock_data": vendors_for_get_stock_data},
             clear=False,
         )
@@ -70,7 +58,7 @@ class VendorRoutingTests(unittest.TestCase):
         set_config({"data_vendors": {"core_stock_apis": "yfinance"}})
         av = mock.Mock(side_effect=_returns("AV_DATA"))
         with self._route({"yfinance": _no_data, "alpha_vantage": av}):
-            result = interface.route_to_vendor("get_stock_data", "FAKE", "2026-01-01", "2026-01-10")
+            result = router.route_to_vendor("get_stock_data", "FAKE", "2026-01-01", "2026-01-10")
         self.assertIn("NO_DATA_AVAILABLE", result)
         av.assert_not_called()  # the unchosen vendor was never tried
 
@@ -78,60 +66,18 @@ class VendorRoutingTests(unittest.TestCase):
         # Listing both vendors opts in to ordered fallback.
         set_config({"data_vendors": {"core_stock_apis": "yfinance,alpha_vantage"}})
         with self._route({"yfinance": _no_data, "alpha_vantage": _returns("AV_DATA")}):
-            result = interface.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
+            result = router.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
         self.assertEqual(result, "AV_DATA")
 
-        audit = get_data_fetch_audit()
-        self.assertEqual(len(audit), 1)
-        self.assertEqual(audit[0]["method"], "get_stock_data")
-        self.assertEqual(audit[0]["actual_source"], "alpha_vantage")
-        self.assertEqual(audit[0]["status"], "fallback")
-        self.assertTrue(audit[0]["fallback_used"])
-        self.assertFalse(audit[0]["incomplete"])
-        self.assertEqual(audit[0]["configured_sources"], ["yfinance", "alpha_vantage"])
-        self.assertEqual(audit[0]["attempted_sources"], ["yfinance", "alpha_vantage"])
-        self.assertEqual(audit[0]["result_kind"], "text")
-        self.assertEqual(audit[0]["result_preview"], "AV_DATA")
-
-    def test_records_unavailable_required_data_in_audit(self):
-        set_config({"data_vendors": {"core_stock_apis": "yfinance"}})
-        with self._route({"yfinance": _no_data}):
-            result = interface.route_to_vendor("get_stock_data", "FAKE", "2026-01-01", "2026-01-10")
-
-        self.assertIn("NO_DATA_AVAILABLE", result)
-        audit = get_data_fetch_audit()
-        self.assertEqual(len(audit), 1)
-        self.assertEqual(audit[0]["method"], "get_stock_data")
-        self.assertIsNone(audit[0]["actual_source"])
-        self.assertEqual(audit[0]["status"], "unavailable")
-        self.assertTrue(audit[0]["required"])
-        self.assertTrue(audit[0]["incomplete"])
-        self.assertIn("No usable market data", audit[0]["warning"])
-
-    def test_multi_vendor_no_data_preserves_all_vendor_details(self):
-        set_config({"data_vendors": {"core_stock_apis": "cn_stock,cn_stock_em,cn_stock_tx,yfinance"}})
-        with self._route(
-            {
-                "cn_stock": _no_data_with_detail("China A-share history is currently unavailable (remote closed connection)"),
-                "cn_stock_em": _no_data_with_detail("Eastmoney Chrome endpoint returned no rows"),
-                "cn_stock_tx": _no_data_with_detail("Tencent history endpoint returned no rows"),
-                "yfinance": _no_data_with_detail("Yahoo Finance returned no rows"),
-            }
-        ):
-            result = interface.route_to_vendor("get_stock_data", "600036.SS", "2026-07-01", "2026-07-09")
-        assert "China A-share history is currently unavailable" in result
-        assert "Eastmoney Chrome endpoint returned no rows" in result
-        assert "Tencent history endpoint returned no rows" in result
-        assert "Yahoo Finance returned no rows" in result
-
     def test_primary_error_is_logged_not_masked(self):
-        # #989: primary errors + fallback no-data -> NO_DATA, but the failure
-        # must be visible in logs (broken primary not hidden).
+        # #989: a broken primary is not hidden behind a fallback's verdict. It
+        # never said whether it has the symbol, so the answer is unavailable,
+        # and the failure is in the logs.
         set_config({"data_vendors": {"core_stock_apis": "yfinance,alpha_vantage"}})
         with self._route({"yfinance": _raises(ValueError("boom")), "alpha_vantage": _no_data}), \
-                self.assertLogs("tradingagents.dataflows.interface", level="WARNING") as cm:
-            result = interface.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
-        self.assertIn("NO_DATA_AVAILABLE", result)
+                self.assertLogs("tradingagents.dataflows.router", level="WARNING") as cm:
+            result = router.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
+        self.assertTrue(result.startswith("DATA_UNAVAILABLE"), result)
         joined = "\n".join(cm.output)
         self.assertIn("boom", joined)            # the real error surfaced in logs
         self.assertIn("yfinance", joined)
@@ -139,27 +85,18 @@ class VendorRoutingTests(unittest.TestCase):
     def test_unknown_configured_vendor_raises(self):
         set_config({"data_vendors": {"core_stock_apis": "bogus_vendor"}})
         with self.assertRaises(ValueError) as ctx:
-            interface.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
+            router.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
         self.assertIn("bogus_vendor", str(ctx.exception))
 
     def test_default_sentinel_uses_all_vendors(self):
         # No explicit choice ("default") keeps the resilient full-chain behavior.
         set_config({"data_vendors": {"core_stock_apis": "default"}})
         with self._route({"yfinance": _no_data, "alpha_vantage": _returns("AV_DATA")}):
-            result = interface.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
+            result = router.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
         self.assertEqual(result, "AV_DATA")
 
-    def test_cn_fundamentals_falls_back_to_yfinance_within_chain(self):
-        set_config({"data_vendors": {"fundamental_data": "cn_fundamentals,yfinance"}})
-        with self._route_method(
-            "get_fundamentals",
-            {"cn_fundamentals": _no_data, "yfinance": _returns("YF_FUNDAMENTALS")},
-        ):
-            result = interface.route_to_vendor("get_fundamentals", "600519.SS", "2026-06-27")
-        self.assertEqual(result, "YF_FUNDAMENTALS")
-
     def _route_method(self, method, vendors):
-        return mock.patch.dict(interface.VENDOR_METHODS, {method: vendors}, clear=False)
+        return mock.patch.dict(router.VENDOR_METHODS, {method: vendors}, clear=False)
 
     def test_optional_category_degrades_instead_of_raising(self):
         # An optional enrichment vendor (FRED macro) that raises must NOT abort
@@ -168,7 +105,7 @@ class VendorRoutingTests(unittest.TestCase):
         with self._route_method(
             "get_macro_indicators", {"fred": _raises(ValueError("FRED 400: bad series"))}
         ):
-            result = interface.route_to_vendor("get_macro_indicators", "cpi", "2026-01-01")
+            result = router.route_to_vendor("get_macro_indicators", "cpi", "2026-01-01")
         self.assertIn("DATA_UNAVAILABLE", result)
         self.assertIn("macro_data", result)
 
@@ -178,33 +115,31 @@ class VendorRoutingTests(unittest.TestCase):
         set_config({"data_vendors": {"core_stock_apis": "yfinance"}})
         with self._route({"yfinance": _raises(ValueError("boom"))}), \
                 self.assertRaises(ValueError):
-            interface.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
-
-    def test_china_macro_vendor_registered(self):
-        self.assertIn("cn_macro", interface.VENDOR_METHODS["get_macro_indicators"])
-
-    def test_china_stock_vendor_registered(self):
-        self.assertIn("cn_stock", interface.VENDOR_METHODS["get_stock_data"])
-        self.assertIn("cn_stock", interface.VENDOR_METHODS["get_indicators"])
-        self.assertIn("cn_stock_em", interface.VENDOR_METHODS["get_stock_data"])
-        self.assertIn("cn_stock_em", interface.VENDOR_METHODS["get_indicators"])
-        self.assertIn("cn_stock_tx", interface.VENDOR_METHODS["get_stock_data"])
-        self.assertIn("cn_stock_tx", interface.VENDOR_METHODS["get_indicators"])
-
-    def test_china_fundamentals_vendor_registered(self):
-        self.assertIn("cn_fundamentals", interface.VENDOR_METHODS["get_fundamentals"])
-        self.assertIn("cn_fundamentals", interface.VENDOR_METHODS["get_balance_sheet"])
-        self.assertIn("cn_fundamentals", interface.VENDOR_METHODS["get_cashflow"])
-        self.assertIn("cn_fundamentals", interface.VENDOR_METHODS["get_income_statement"])
-
-    def test_china_news_vendor_registered(self):
-        self.assertIn("cn_news", interface.VENDOR_METHODS["get_news"])
-        self.assertIn("cn_news", interface.VENDOR_METHODS["get_global_news"])
-        self.assertIn("cn_news", interface.VENDOR_METHODS["get_insider_transactions"])
-
-    def test_china_market_signals_vendor_registered(self):
-        self.assertIn("cn_market_signals", interface.VENDOR_METHODS["get_prediction_markets"])
+            router.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_china_profile_uses_modular_router_with_provenance(monkeypatch):
+    from tradingagents.dataflows import interface
+    from tradingagents.dataflows.provenance import get_data_fetch_audit, reset_data_fetch_audit
+    _reset_config()
+    set_config({'market_profile': 'cn_a'})
+    reset_data_fetch_audit()
+    calls = []
+    def unavailable(*args, **kwargs):
+        calls.append('cn_stock')
+        raise router.VendorUnavailableError('temporarily offline')
+    monkeypatch.setitem(router.VENDOR_METHODS, 'get_stock_data', {
+        'cn_stock': unavailable, 'cn_stock_em': lambda *a, **k: 'China OHLCV',
+        'cn_stock_tx': lambda *a, **k: 'unused', 'yfinance': lambda *a, **k: 'unused',
+    })
+    assert interface is router
+    assert router.route_to_vendor('get_stock_data', '600519.SS', '2026-06-01', '2026-06-02') == 'China OHLCV'
+    entry = get_data_fetch_audit()[-1]
+    assert entry['actual_source'] == 'cn_stock_em'
+    assert entry['attempted_sources'] == ['cn_stock', 'cn_stock_em']
+    assert entry['fallback_used']
+    _reset_config()

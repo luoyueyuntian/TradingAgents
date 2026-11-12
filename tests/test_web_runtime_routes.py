@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from web.app import app
 from web import routes as web_routes
+from web.app import app
 from web.user_store import UserStore
 
 

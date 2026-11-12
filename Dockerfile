@@ -8,7 +8,7 @@ RUN npm ci
 COPY frontend ./
 RUN npm run build
 
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -18,18 +18,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /build
 
-# 1. Install dependencies first (cached unless pyproject.toml changes)
-COPY pyproject.toml README.md ./
-RUN mkdir -p tradingagents && touch tradingagents/__init__.py \
- && pip install --no-cache-dir ".[web]" \
- && rm -rf tradingagents
-
-# 2. Copy source code and install package (no deps, just the code)
 COPY . .
 COPY --from=frontend-builder /build/web/static/spa ./web/static/spa
-RUN pip install --no-cache-dir --no-deps ".[web]"
+RUN pip install --no-cache-dir ".[web]"
 
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

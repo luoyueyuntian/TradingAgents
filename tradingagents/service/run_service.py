@@ -12,12 +12,11 @@ import threading
 import time
 import traceback
 import uuid
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout, suppress
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, TextIO
 
-from tradingagents.default_config import apply_settings_payload
 from tradingagents.dataflows.provenance import (
     build_data_warnings,
     get_data_fetch_audit,
@@ -25,6 +24,7 @@ from tradingagents.dataflows.provenance import (
     reset_data_fetch_audit,
     reset_data_fetch_event_sink,
 )
+from tradingagents.default_config import apply_settings_payload
 from tradingagents.graph.event_processor import build_run_config
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.llm_clients.api_key_env import get_api_key_env
@@ -69,7 +69,7 @@ def _timestamp_sort_value(value: object | None) -> int:
 class _TerminalOutputRecorder:
     """Thread-safe tee for run-scoped terminal output."""
 
-    def __init__(self, service: "RunService", run: RunState, handle: TextIO) -> None:
+    def __init__(self, service: RunService, run: RunState, handle: TextIO) -> None:
         self._service = service
         self._run = run
         self._handle = handle
@@ -140,10 +140,8 @@ class _TerminalStreamWriter:
             self._buffer = ""
         self._recorder.flush()
         if self._passthrough is not None:
-            try:
+            with suppress(Exception):
                 self._passthrough.flush()
-            except Exception:
-                pass
 
     def isatty(self) -> bool:
         return bool(getattr(self._passthrough, "isatty", lambda: False)())
@@ -627,7 +625,7 @@ class RunService:
             {
                 "event": "state_snapshot",
                 "data": {
-                    "chunk_keys": sorted(str(key) for key in chunk.keys())[:16],
+                    "chunk_keys": sorted(str(key) for key in chunk)[:16],
                     "in_progress_agents": in_progress_agents,
                     "completed_agent_count": completed_agents,
                     "report_sections_present": report_sections_present,
@@ -806,7 +804,7 @@ class RunService:
                     try:
                         for chunk in stream:
                             chunk_count += 1
-                            chunk_keys = ", ".join(sorted(str(key) for key in chunk.keys())[:8]) or "none"
+                            chunk_keys = ", ".join(sorted(str(key) for key in chunk)[:8]) or "none"
                             self._log_run_phase(
                                 run,
                                 f"processed graph chunk {chunk_count}: keys={chunk_keys}",
@@ -824,7 +822,7 @@ class RunService:
                     run.final_state = final_state
                     self._capture_data_fetch_audit(run)
                     self._capture_usage_summary(run, usage_tracker)
-                    final_state_keys = ", ".join(sorted(str(key) for key in final_state.keys())[:12]) or "none"
+                    final_state_keys = ", ".join(sorted(str(key) for key in final_state)[:12]) or "none"
                     self._log_run_phase(run, f"final state collected: keys={final_state_keys}")
                     run.signal = graph.last_signal or graph.process_signal(
                         final_state.get("final_trade_decision", "")

@@ -172,7 +172,6 @@ def test_build_run_request_config_applies_advanced_request_overrides():
 @pytest.mark.unit
 def test_create_run_enqueues_and_returns_queued_status(monkeypatch):
     req = AnalysisRequest(ticker="AAPL", date="2026-01-15")
-    enqueued: list[str] = []
 
     class DummyLoop:
         def is_closed(self):

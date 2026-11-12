@@ -7,11 +7,15 @@ import json
 from fastapi.testclient import TestClient
 
 from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.service.timestamps import coerce_timestamp_ms
-from tradingagents.service.stock_catalog import StockCatalogItem
 from tradingagents.service.runtime_context import build_runtime_context
-from web import automation as web_automation, one_time_tasks as web_one_time_tasks, routes as web_routes
-from web import stock_groups as stock_groups_module
+from tradingagents.service.stock_catalog import StockCatalogItem
+from tradingagents.service.timestamps import coerce_timestamp_ms
+from web import (
+    automation as web_automation,
+    one_time_tasks as web_one_time_tasks,
+    routes as web_routes,
+    stock_groups as stock_groups_module,
+)
 from web.app import app
 from web.runner import RunState
 from web.user_store import UserStore

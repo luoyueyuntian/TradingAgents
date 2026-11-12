@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -101,7 +102,5 @@ def delete_run_artifacts(
 
     event_file = _existing_file(event_log_path)
     if event_file is not None:
-        try:
+        with contextlib.suppress(OSError):
             event_file.unlink()
-        except OSError:
-            pass

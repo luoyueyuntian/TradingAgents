@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Callable, Iterable
 
 from tradingagents.service.web_state import get_web_state_base_dir
 

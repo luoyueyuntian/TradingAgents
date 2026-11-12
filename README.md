@@ -5,7 +5,6 @@
 <div align="center" style="line-height: 1;">
   <a href="https://arxiv.org/abs/2412.20138" target="_blank"><img alt="arXiv" src="https://img.shields.io/badge/arXiv-2412.20138-B31B1B?logo=arxiv"/></a>
   <a href="https://discord.com/invite/hk9PGKShPK" target="_blank"><img alt="Discord" src="https://img.shields.io/badge/Discord-TradingResearch-7289da?logo=discord&logoColor=white&color=7289da"/></a>
-  <a href="./assets/wechat.png" target="_blank"><img alt="WeChat" src="https://img.shields.io/badge/WeChat-TauricResearch-brightgreen?logo=wechat&logoColor=white"/></a>
   <a href="https://x.com/TauricResearch" target="_blank"><img alt="X Follow" src="https://img.shields.io/badge/X-TauricResearch-white?logo=x&logoColor=white"/></a>
   <br>
   <a href="https://github.com/TauricResearch/" target="_blank"><img alt="Community" src="https://img.shields.io/badge/Join_GitHub_Community-TauricResearch-14C290?logo=discourse"/></a>
@@ -28,6 +27,7 @@
 # TradingAgents: Multi-Agents LLM Financial Trading Framework
 
 ## News
+- [2026-11] Synced the upstream v0.7.1 engine (`9fa1196`), including parallel analysts, memory settlement, tier-specific providers, ChatGPT sign-in, point-in-time data checks, and HTML reports. This fork retains its Web UI, tenant settings, and China A-share vendors. Python 3.11 or newer is required; rerun `pip install -e ".[web]"` after updating.
 - [2026-06] **TradingAgents v0.3.0** released with a verified data-access contract, an expanded provider registry (NVIDIA, Kimi, Groq, Mistral, Bedrock, and any OpenAI-compatible endpoint), FRED and Polymarket data vendors, a current-generation model catalog, and a CI gate. See [CHANGELOG.md](CHANGELOG.md) for the full list.
 - [2026-05] **TradingAgents v0.2.5** released with the grounded Sentiment Analyst, GPT-5.5 etc. model coverage, Qwen/GLM/MiniMax dual-region support, `TRADINGAGENTS_*` env-var configurability with API-key auto-detection, remote Ollama support, non-US alpha benchmarks, and ticker path-traversal hardening.
 - [2026-04] **TradingAgents v0.2.4** released with structured-output agents (Research Manager, Trader, Portfolio Manager), LangGraph checkpoint resume, persistent decision log, DeepSeek/Qwen/GLM/Azure provider support, Docker, and a Windows UTF-8 encoding fix.
@@ -114,7 +114,7 @@ cd TradingAgents
 
 Create a virtual environment in any of your favorite environment managers:
 ```bash
-conda create -n tradingagents python=3.12
+conda create -n tradingagents python=3.13
 conda activate tradingagents
 ```
 
@@ -419,6 +419,8 @@ In the Web UI, enter the ticker in the Analysis Configuration panel. The workspa
 We built TradingAgents with LangGraph to ensure flexibility and modularity. The framework supports multiple LLM providers: OpenAI, Google, Anthropic, xAI, DeepSeek, Qwen (Alibaba DashScope, international and China endpoints), GLM (Zhipu), MiniMax (global + China), Xiaomi MiMo, OpenRouter, Ollama for local models, and Azure OpenAI for enterprise.
 
 ### Python Usage
+
+The upstream CLI is also available: run `tradingagents --help`. Docker continues to start the Web UI by default; use `docker compose run --rm tradingagents tradingagents --help` for the CLI.
 
 To use TradingAgents inside your code, you can import the `tradingagents` module and initialize a `TradingAgentsGraph()` object. The `.propagate()` function will return a decision. Here's a quick example:
 

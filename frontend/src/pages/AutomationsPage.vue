@@ -699,10 +699,6 @@ function manualStockFromSymbol(symbol: string): ManualStockPick {
   };
 }
 
-function manualStocksFromResolvedTickers(tickers: string[]) {
-  return tickers.map((ticker) => manualStockFromSymbol(ticker));
-}
-
 function upsertManyManualStocks(stocks: ManualStockPick[]) {
   let next = [...oneTimeForm.manualStocks];
   for (const stock of stocks) {

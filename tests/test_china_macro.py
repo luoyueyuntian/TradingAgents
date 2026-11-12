@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
+
 from tradingagents.dataflows.errors import NoMarketDataError, VendorNotConfiguredError
 
 
@@ -43,7 +44,6 @@ def test_china_macro_unknown_alias_returns_guidance():
 @pytest.mark.unit
 def test_china_macro_vendor_unavailable_is_explicit(monkeypatch):
     from tradingagents.dataflows import china_macro
-    from tradingagents.dataflows.errors import VendorNotConfiguredError
 
     monkeypatch.setattr(
         china_macro,

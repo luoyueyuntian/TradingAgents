@@ -2,8 +2,6 @@ import logging
 from datetime import datetime
 from typing import Annotated
 
-logger = logging.getLogger(__name__)
-
 import pandas as pd
 import yfinance as yf
 from dateutil.relativedelta import relativedelta
@@ -16,6 +14,8 @@ from .stockstats_utils import (
     yf_retry,
 )
 from .symbol_utils import NoMarketDataError, normalize_symbol
+
+logger = logging.getLogger(__name__)
 
 
 def get_YFin_data_online(

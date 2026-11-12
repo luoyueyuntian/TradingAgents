@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from tradingagents.agents.utils.agent_utils import (
     get_instrument_context_from_state,
-    get_language_instruction,
 )
 
 # ── Shared system preamble for tool-using analysts ─────────────────────────
@@ -100,7 +100,7 @@ def create_research_debate_agent(
         investment_debate_state = state["investment_debate_state"]
         history = investment_debate_state.get("history", "")
         owned_history = investment_debate_state.get(owned_history_key, "")
-        current_response = investment_debate_state.get("current_response", "")
+        investment_debate_state.get("current_response", "")
 
         instrument_context = get_instrument_context_from_state(state)
 

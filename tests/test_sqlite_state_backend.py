@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.service.event_publisher import append_event_record, load_event_history

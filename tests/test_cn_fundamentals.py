@@ -35,7 +35,7 @@ def test_get_fundamentals_china_formats_key_value_lines(monkeypatch):
             return info_df
 
     monkeypatch.setattr(cn_fundamentals, "_load_akshare", lambda: FakeAK)
-    out = cn_fundamentals.get_fundamentals_china("600519.SS", "2026-06-27")
+    out = cn_fundamentals.get_fundamentals_china("600519.SS")
 
     assert "# Company Fundamentals for 600519.SS" in out
     assert "Name: 贵州茅台" in out
@@ -77,7 +77,7 @@ def test_get_fundamentals_china_maps_richer_fields(monkeypatch):
             return info_df
 
     monkeypatch.setattr(cn_fundamentals, "_load_akshare", lambda: FakeAK)
-    out = cn_fundamentals.get_fundamentals_china("600519.SS", "2026-06-27")
+    out = cn_fundamentals.get_fundamentals_china("600519.SS")
 
     assert "Market Cap: 1850000000000" in out
     assert "Gross Margin: 91.5" in out
@@ -115,7 +115,7 @@ def test_get_fundamentals_china_maps_efficiency_and_per_share_fields(monkeypatch
             return info_df
 
     monkeypatch.setattr(cn_fundamentals, "_load_akshare", lambda: FakeAK)
-    out = cn_fundamentals.get_fundamentals_china("600519.SS", "2026-06-27")
+    out = cn_fundamentals.get_fundamentals_china("600519.SS")
 
     assert "Return on Assets: 9.7" in out
     assert "Current Ratio: 1.56" in out
@@ -158,7 +158,7 @@ def test_get_fundamentals_china_accepts_common_alias_columns(monkeypatch):
             return info_df
 
     monkeypatch.setattr(cn_fundamentals, "_load_akshare", lambda: FakeAK)
-    out = cn_fundamentals.get_fundamentals_china("600519.SS", "2026-06-27")
+    out = cn_fundamentals.get_fundamentals_china("600519.SS")
 
     assert "Revenue (TTM): 1000000000" in out
     assert "Net Income: 200000000" in out
@@ -181,8 +181,8 @@ def test_get_balance_sheet_china_formats_csv(monkeypatch):
 
     fake_df = pd.DataFrame(
         [
-            {"REPORT_DATE": "2025-12-31", "TOTAL_ASSETS": 10, "TOTAL_LIABILITIES": 4},
-            {"REPORT_DATE": "2026-03-31", "TOTAL_ASSETS": 11, "TOTAL_LIABILITIES": 4.2},
+            {"NOTICE_DATE": "2026-03-01", "REPORT_DATE": "2025-12-31", "TOTAL_ASSETS": 10, "TOTAL_LIABILITIES": 4},
+            {"NOTICE_DATE": "2026-04-30", "REPORT_DATE": "2026-03-31", "TOTAL_ASSETS": 11, "TOTAL_LIABILITIES": 4.2},
         ]
     )
 
@@ -215,4 +215,22 @@ def test_get_fundamentals_china_raises_when_no_usable_fields(monkeypatch):
 
     monkeypatch.setattr(cn_fundamentals, "_load_akshare", lambda: FakeAK)
     with pytest.raises(NoMarketDataError, match="no fundamental fields returned"):
-        cn_fundamentals.get_fundamentals_china("000001.SZ", "2026-06-27")
+        cn_fundamentals.get_fundamentals_china("000001.SZ")
+
+
+def test_historical_overview_never_fetches_live_snapshot(monkeypatch):
+    from tradingagents.dataflows import cn_fundamentals as vendor
+    from tradingagents.dataflows.errors import NoMarketDataError
+    monkeypatch.setattr(vendor, '_load_akshare', lambda: pytest.fail('live snapshot fetched'))
+    with pytest.raises(NoMarketDataError, match='Historical fundamentals'):
+        vendor.get_fundamentals_china('600519.SS', '2000-01-01')
+
+
+def test_statement_cutoff_uses_publication_date():
+    from tradingagents.dataflows.cn_fundamentals import _filter_statement_rows
+    from tradingagents.dataflows.errors import NoMarketDataError
+    frame = pd.DataFrame({'REPORT_DATE': ['2026-03-31'], 'NOTICE_DATE': ['2026-04-30']})
+    assert _filter_statement_rows(frame, '2026-04-01').empty
+    assert len(_filter_statement_rows(frame, '2026-04-30')) == 1
+    with pytest.raises(NoMarketDataError, match='Publication dates'):
+        _filter_statement_rows(frame.drop(columns='NOTICE_DATE'), '2026-04-01')

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -163,7 +162,7 @@ def _insert_user_direct(db_path, **overrides):
 
 def _parse_timestamp(value):
     if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+        return datetime.fromtimestamp(value / 1000, tz=UTC)
     return datetime.fromisoformat(value)
 
 
@@ -528,7 +527,7 @@ def test_delete_user_soft_deletes_user_and_removes_only_their_sessions(
     alice_raw_one, _alice_session_one = store.create_session(alice.id)
     alice_raw_two, _alice_session_two = store.create_session(alice.id)
     bob_raw, bob_session = store.create_session(bob.id)
-    deleted_at = datetime(2026, 7, 2, 12, 0, 0, tzinfo=timezone.utc)
+    deleted_at = datetime(2026, 7, 2, 12, 0, 0, tzinfo=UTC)
 
     with monkeypatch.context() as clock:
         clock.setattr(user_store_module, "_utc_now_dt", lambda: deleted_at)
@@ -739,8 +738,8 @@ def test_touch_session_updates_last_seen_and_optionally_extends_expiry(
         SimpleNamespace(token_urlsafe=lambda length: "touch-session"),
         raising=False,
     )
-    created_at = datetime(2026, 7, 2, 10, 0, 0, tzinfo=timezone.utc)
-    touched_at = datetime(2026, 7, 2, 10, 0, 30, tzinfo=timezone.utc)
+    created_at = datetime(2026, 7, 2, 10, 0, 0, tzinfo=UTC)
+    touched_at = datetime(2026, 7, 2, 10, 0, 30, tzinfo=UTC)
 
     with monkeypatch.context() as clock:
         clock.setattr(user_store_module, "_utc_now_dt", lambda: created_at)
@@ -756,7 +755,7 @@ def test_touch_session_updates_last_seen_and_optionally_extends_expiry(
     assert touched.user_id == session.user_id
     assert touched.created_at == session.created_at
     assert touched.last_seen_at == int(touched_at.timestamp() * 1000)
-    assert touched.expires_at == int(datetime(2026, 7, 2, 10, 5, 30, tzinfo=timezone.utc).timestamp() * 1000)
+    assert touched.expires_at == int(datetime(2026, 7, 2, 10, 5, 30, tzinfo=UTC).timestamp() * 1000)
     assert _parse_timestamp(touched.last_seen_at) > _parse_timestamp(session.last_seen_at)
     assert _parse_timestamp(touched.expires_at) > _parse_timestamp(session.expires_at)
 
@@ -773,8 +772,8 @@ def test_touch_session_returns_none_for_missing_or_expired_sessions(
         SimpleNamespace(token_urlsafe=lambda length: "expired-session"),
         raising=False,
     )
-    created_at = datetime(2026, 7, 2, 10, 0, 0, tzinfo=timezone.utc)
-    after_expiry = datetime(2026, 7, 2, 10, 1, 1, tzinfo=timezone.utc)
+    created_at = datetime(2026, 7, 2, 10, 0, 0, tzinfo=UTC)
+    after_expiry = datetime(2026, 7, 2, 10, 1, 1, tzinfo=UTC)
 
     assert store.touch_session("missing-session") is None
     with monkeypatch.context() as clock:

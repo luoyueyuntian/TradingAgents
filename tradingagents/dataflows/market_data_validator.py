@@ -25,7 +25,12 @@ from tradingagents.dataflows.errors import (
 )
 from tradingagents.dataflows.interface import get_vendor
 from tradingagents.dataflows.provenance import record_data_fetch, summarize_request
-from tradingagents.dataflows.stockstats_utils import load_ohlcv
+from tradingagents.dataflows.vendors.yahoo.common import price_text
+from tradingagents.dataflows.vendors.yahoo.ohlcv import load_ohlcv as _yahoo_load_ohlcv
+
+
+def load_ohlcv(symbol, curr_date):
+    return _yahoo_load_ohlcv(symbol, curr_date, fill_gaps=False)
 
 # A fixed, common indicator set so the snapshot is the same shape every run.
 DEFAULT_SNAPSHOT_INDICATORS: tuple[str, ...] = (
@@ -46,7 +51,7 @@ def _load_snapshot_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
     """
     vendor_chain = [v.strip() for v in get_vendor("core_stock_apis", "get_stock_data").split(",")]
     request_label = summarize_request("get_verified_market_snapshot", symbol, curr_date)
-    if "cn_stock" not in vendor_chain:
+    if not any(v in vendor_chain for v in ("cn_stock", "cn_stock_em", "cn_stock_tx")):
         frame = load_ohlcv(symbol, curr_date)
         record_data_fetch(
             method="get_verified_market_snapshot",
@@ -179,14 +184,14 @@ def _verified_rows(symbol: str, curr_date: str) -> pd.DataFrame:
     """
     data = _load_snapshot_ohlcv(symbol, curr_date)
     if data is None or data.empty:
-        raise ValueError(f"No OHLCV data available for {symbol}.")
+        raise NoMarketDataError(symbol, detail="No OHLCV data available")
 
     df = data.copy()
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df = df.dropna(subset=["Date"])
     df = df[df["Date"] <= pd.to_datetime(curr_date)].sort_values("Date")
     if df.empty:
-        raise ValueError(f"No OHLCV rows on or before {curr_date} for {symbol}.")
+        raise NoMarketDataError(symbol, detail=f"No OHLCV rows on or before {curr_date}")
     return df
 
 
@@ -200,7 +205,7 @@ def _fmt(value) -> str:
     if isinstance(value, (int,)):
         return str(value)
     if isinstance(value, float):
-        return f"{value:.2f}"
+        return price_text(value)
     return str(value)
 
 

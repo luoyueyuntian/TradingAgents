@@ -123,8 +123,13 @@ def test_get_stock_data_china_rejects_stale_rows(monkeypatch):
 
 
 @pytest.mark.unit
-def test_get_stock_data_china_retries_transient_vendor_errors(monkeypatch):
+def test_get_stock_data_china_retries_transient_vendor_errors(monkeypatch, tmp_path):
     from tradingagents.dataflows import cn_stock
+    from tradingagents.dataflows.config import get_config
+
+    config = get_config()
+    config["data_cache_dir"] = str(tmp_path)
+    monkeypatch.setattr(cn_stock, "get_config", lambda: config)
 
     fake_df = pd.DataFrame(
         [{"日期": "2026-06-26", "开盘": 1462.0, "收盘": 1470.0, "最高": 1472.0, "最低": 1458.0, "成交量": 120000}]

@@ -1078,9 +1078,9 @@ async function refreshRunningRun() {
     autoRefreshInFlight = false;
     if (shouldAutoRefreshRun(selectedRun.value?.status)) {
       ensureAutoRefresh();
-      return;
+    } else {
+      stopAutoRefresh();
     }
-    stopAutoRefresh();
   }
 }
 

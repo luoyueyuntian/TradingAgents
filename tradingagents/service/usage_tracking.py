@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from copy import deepcopy
-from typing import Any, Callable
+from typing import Any
 
 try:  # pragma: no cover - import availability depends on runtime extras
     from langchain_core.callbacks import BaseCallbackHandler

@@ -7,6 +7,7 @@ manually editing ``.env`` files.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -98,10 +99,8 @@ def save_settings(settings: dict[str, Any], path: str | Path | None = None) -> N
         os.replace(tmp_path, str(settings_path))
     except OSError:
         # Clean up temp file on failure
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
         raise
 
 

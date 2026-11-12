@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_EVEN
 from datetime import datetime
+from decimal import ROUND_HALF_EVEN, Decimal
 from importlib import import_module
 
 import pandas as pd
@@ -27,11 +27,11 @@ def _filter_statement_rows(frame: pd.DataFrame, curr_date: str | None) -> pd.Dat
 
     filtered = frame.copy()
     date_col = next(
-        (col for col in ("REPORT_DATE", "REPORT_DATE_NAME", "Date", "日期") if col in filtered.columns),
+        (col for col in ("NOTICE_DATE", "ANNOUNCEMENT_DATE", "公告日期", "披露日期") if col in filtered.columns),
         None,
     )
     if date_col is None:
-        return filtered
+        raise NoMarketDataError("financial statements", detail="Publication dates unavailable; cannot verify historical availability")
 
     filtered[date_col] = pd.to_datetime(filtered[date_col], errors="coerce")
     filtered = filtered.dropna(subset=[date_col])
@@ -69,6 +69,8 @@ def _format_statement(
 
 def get_fundamentals_china(ticker: str, curr_date: str | None = None) -> str:
     digits, _exchange = split_cn_a_symbol(ticker)
+    if curr_date and curr_date < datetime.now().strftime("%Y-%m-%d"):
+        raise NoMarketDataError(ticker, digits, "Historical fundamentals overview unavailable: live company snapshot cannot be dated as of the requested date")
     try:
         ak = _load_akshare()
     except Exception as exc:  # noqa: BLE001
@@ -99,8 +101,9 @@ def get_fundamentals_china(ticker: str, curr_date: str | None = None) -> str:
             lines.append(f"Market Cap: {info_map['总市值']}")
 
     if isinstance(abstract_df, pd.DataFrame) and not abstract_df.empty:
-        filtered = _filter_statement_rows(abstract_df, curr_date)
-        row = filtered.iloc[-1].to_dict() if filtered is not None and not filtered.empty else abstract_df.iloc[-1].to_dict()
+        # Historical overviews are rejected above; this is explicitly a live snapshot.
+        filtered = _filter_statement_rows(abstract_df, None)
+        row = filtered.iloc[-1].to_dict() if filtered is not None and not filtered.empty else {}
         field_map = {
             "Revenue (TTM)": ("TOTAL_OPERATE_INCOME", "营业总收入"),
             "Net Income": ("PARENT_NETPROFIT", "归母净利润"),
