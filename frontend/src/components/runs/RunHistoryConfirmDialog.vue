@@ -17,6 +17,11 @@
         @row-click="emit('row-open', $event.data)"
       >
         <Column field="date" :header="t('common.date')" />
+        <Column field="research_depth" :header="t('analysis.depth')">
+          <template #body="{ data }">
+            <span>{{ formatResearchDepth(data.research_depth, t) }}</span>
+          </template>
+        </Column>
         <Column field="status" :header="t('common.status')">
           <template #body="{ data }">
             <Tag :value="String(data.status || t('common.na'))" :severity="signalSeverity(data.status)" />
@@ -76,6 +81,7 @@ import { computed } from 'vue';
 import { useI18n } from '../../i18n';
 import type { TickerRunHistoryPage } from '../../pages/tickerHistory';
 import { signalSeverity } from '../../utils/format';
+import { formatResearchDepth } from '../../utils/researchDepth';
 
 const props = defineProps<{
   visible: boolean;

@@ -134,7 +134,7 @@ describe('RunsPage', () => {
           run_count: 2,
           latest_created_at: '2026-07-04T09:00:00',
           recent_runs: [
-            { run_id: 'run-1', ticker: 'AAPL', date: '2026-07-04', status: 'completed', signal: 'Buy', llm_provider: 'openai' },
+            { run_id: 'run-1', ticker: 'AAPL', date: '2026-07-04', status: 'completed', signal: 'Buy', llm_provider: 'openai', research_depth: 3 },
           ],
         },
       ],
@@ -148,6 +148,7 @@ describe('RunsPage', () => {
 
     expect(wrapper.find('[data-testid="runs-company-group-card"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('llm_provider');
+    expect(wrapper.text()).toContain('research_depth 深度');
 
     await wrapper.get('[data-testid="run-row"]').trigger('click');
 
