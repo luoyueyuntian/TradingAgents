@@ -87,7 +87,7 @@
         </label>
         <label class="uno-grid uno-gap-[0.35rem]">
           <span class="uno-text-[#6f8183]">{{ t('runs.pinDueDate') }}</span>
-          <InputText v-model="pinForm.due_date" type="date" :disabled="!canWrite" />
+          <DateTimeInput v-model="pinForm.due_date" :disabled="!canWrite" />
         </label>
       </div>
       <Textarea v-model="pinForm.note" rows="3" auto-resize :placeholder="t('runs.pinNote')" class="uno-mt-3 uno-w-full" :disabled="!canWrite" />
@@ -428,6 +428,7 @@ import { useRoute, useRouter } from 'vue-router';
 import MetricGrid from '../components/MetricGrid.vue';
 import PageHeader from '../components/PageHeader.vue';
 import ReportMarkdown from '../components/ReportMarkdown.vue';
+import DateTimeInput from '../components/DateTimeInput.vue';
 import { useI18n } from '../i18n';
 import { apiDelete, apiGet, apiPatch, apiPost, buildApiUrl } from '../services/api';
 import { useSession } from '../stores/session';

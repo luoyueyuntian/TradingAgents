@@ -29,7 +29,7 @@
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
             <span class="uno-text-[#6f8183]">{{ t('users.expiresAt') }}</span>
-            <InputText v-model="createForm.expires_at" type="datetime-local" />
+            <DateTimeInput v-model="createForm.expires_at" mode="datetime" />
           </label>
         </div>
         <Message v-if="createError" severity="error" :closable="false" class="uno-mt-3">{{ createError }}</Message>
@@ -80,7 +80,7 @@
                   />
                 </td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">
-                  <InputText v-model="user.draftExpiresAt" type="datetime-local" :disabled="readOnly" />
+                  <DateTimeInput v-model="user.draftExpiresAt" mode="datetime" :disabled="readOnly" />
                 </td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">
                   <label class="uno-flex uno-items-center uno-gap-2">
@@ -139,6 +139,7 @@ import Message from 'primevue/message';
 import Select from 'primevue/select';
 import { computed, onMounted, reactive, ref } from 'vue';
 
+import DateTimeInput from './DateTimeInput.vue';
 import { useI18n } from '../i18n';
 import { apiDelete, apiGet, apiPatch, apiPost } from '../services/api';
 import { formatDateTimeInputValue } from '../utils/format';

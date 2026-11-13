@@ -175,6 +175,7 @@ function mountPage() {
         Button: ButtonStub,
         Card: { template: '<div><slot name="title" /><slot name="content" /></div>' },
         InputText: InputTextStub,
+        DateTimeInput: InputTextStub,
         Message: { template: '<div><slot /></div>' },
         MultiSelect: MultiSelectStub,
         PageHeader: { template: '<div><slot name="actions" /></div>' },
