@@ -11,7 +11,16 @@ declare module 'vue-router' {
   }
 }
 
+export type NavigationSection = 'research' | 'workspace' | 'administration';
+
+export const navigationSections: { id: NavigationSection; labelKey: MessageKey }[] = [
+  { id: 'research', labelKey: 'nav.sectionResearch' },
+  { id: 'workspace', labelKey: 'nav.sectionWorkspace' },
+  { id: 'administration', labelKey: 'nav.sectionAdministration' },
+];
+
 export type NavigationGroup = {
+  section: NavigationSection;
   labelKey: MessageKey;
   icon: string;
   path: string;
@@ -33,42 +42,49 @@ function loadPage(path: string) {
 
 export const navigationGroups: NavigationGroup[] = [
   {
+    section: 'research',
     labelKey: 'nav.dashboard',
     icon: 'pi pi-home',
     path: '/',
     descriptionKey: 'nav.dashboardDesc',
   },
   {
+    section: 'research',
     labelKey: 'nav.analysis',
     icon: 'pi pi-play-circle',
     path: '/analysis',
     descriptionKey: 'nav.analysisDesc',
   },
   {
+    section: 'research',
     labelKey: 'nav.runs',
     icon: 'pi pi-list-check',
     path: '/runs',
     descriptionKey: 'nav.runsDesc',
   },
   {
+    section: 'workspace',
     labelKey: 'nav.portfolio',
     icon: 'pi pi-chart-line',
     path: '/portfolio',
     descriptionKey: 'nav.portfolioDesc',
   },
   {
+    section: 'workspace',
     labelKey: 'nav.workspace',
     icon: 'pi pi-objects-column',
     path: '/workspace',
     descriptionKey: 'nav.workspaceDesc',
   },
   {
+    section: 'workspace',
     labelKey: 'nav.automations',
     icon: 'pi pi-clock',
     path: '/automations',
     descriptionKey: 'nav.automationsDesc',
   },
   {
+    section: 'administration',
     labelKey: 'nav.settings',
     icon: 'pi pi-cog',
     path: '/settings',
@@ -76,6 +92,7 @@ export const navigationGroups: NavigationGroup[] = [
     minRole: 'admin',
   },
   {
+    section: 'administration',
     labelKey: 'nav.tenants',
     icon: 'pi pi-building',
     path: '/tenants',
@@ -83,6 +100,7 @@ export const navigationGroups: NavigationGroup[] = [
     minRole: 'admin',
   },
   {
+    section: 'administration',
     labelKey: 'nav.users',
     icon: 'pi pi-users',
     path: '/users',

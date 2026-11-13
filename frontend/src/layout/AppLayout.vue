@@ -1,6 +1,6 @@
 <template>
   <div class="uno-grid uno-min-h-screen uno-min-w-[320px] uno-grid-cols-[260px_minmax(0,1fr)] uno-bg-[#f6f7f7] uno-font-sans uno-text-[15px] uno-text-[#162326] max-[900px]:uno-grid-cols-1">
-    <aside class="uno-sticky uno-top-0 uno-h-screen uno-border-r uno-border-[#dbe5e5] uno-bg-[#162326] uno-p-4 uno-text-[#f7fbfb] max-[900px]:uno-static max-[900px]:uno-h-auto">
+    <aside class="app-sidebar">
       <RouterLink class="uno-flex uno-items-center uno-gap-3 uno-px-[0.55rem] uno-pb-4 uno-pt-[0.65rem] uno-text-inherit uno-no-underline" to="/">
         <span class="uno-grid uno-h-[42px] uno-w-[42px] uno-place-items-center uno-rounded-lg uno-bg-[#f4b740] uno-font-800 uno-text-[#2b2107]">TA</span>
         <span>
@@ -9,18 +9,32 @@
         </span>
       </RouterLink>
 
-      <nav class="uno-mt-2 uno-grid uno-gap-1 max-[900px]:uno-grid-cols-[repeat(auto-fit,minmax(130px,1fr))]" :aria-label="t('topbar.primaryNavigation')">
-        <RouterLink
-          v-for="item in visibleNavigationGroups"
-          :key="item.path"
-          :to="item.path"
-          class="uno-flex uno-min-h-[42px] uno-items-center uno-gap-[0.65rem] uno-rounded-lg uno-px-[0.7rem] uno-py-[0.55rem] uno-text-[#dce8e8] uno-no-underline"
-          active-class="uno-text-[#0099ff]"
-          :title="t(item.descriptionKey)"
+      <nav class="sidebar-navigation" :aria-label="t('topbar.primaryNavigation')">
+        <section
+          v-for="section in visibleNavigationSections"
+          :key="section.id"
+          class="sidebar-section"
+          :aria-labelledby="`nav-section-${section.id}`"
         >
-          <i :class="item.icon" />
-          <span>{{ t(item.labelKey) }}</span>
-        </RouterLink>
+          <h2 :id="`nav-section-${section.id}`" class="sidebar-heading">{{ t(section.labelKey) }}</h2>
+          <ul class="sidebar-links">
+            <li v-for="item in section.items" :key="item.path">
+              <RouterLink v-slot="{ href, navigate }" :to="item.path" custom>
+                <a
+                  :href="href"
+                  class="sidebar-link"
+                  :class="{ 'sidebar-link-active': isNavigationActive(item.path) }"
+                  :aria-current="isNavigationActive(item.path) ? 'page' : undefined"
+                  :title="t(item.descriptionKey)"
+                  @click="navigate"
+                >
+                  <i :class="item.icon" aria-hidden="true" />
+                  <span>{{ t(item.labelKey) }}</span>
+                </a>
+              </RouterLink>
+            </li>
+          </ul>
+        </section>
       </nav>
     </aside>
 
@@ -104,24 +118,33 @@
 <script setup lang="ts">
 import Button from 'primevue/button';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { RouterLink, RouterView, useRouter } from 'vue-router';
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 
 import { setDefaultLocale, useI18n, type Locale } from '../i18n';
-import { navigationGroups } from '../router/pages';
+import { navigationGroups, navigationSections } from '../router/pages';
 import { apiGet } from '../services/api';
 import { useSession } from '../stores/session';
 import type { JsonRecord } from '../utils/format';
 
 const router = useRouter();
+const route = useRoute();
 const session = useSession();
 const { locale, locales, t } = useI18n();
 const languageMenuOpen = ref(false);
 const languageMenuRef = ref<HTMLElement | null>(null);
 const userMenuOpen = ref(false);
 
-const visibleNavigationGroups = computed(() => navigationGroups.filter((item) => (
-  item.minRole !== 'admin' || session.isAdmin.value
-)));
+const visibleNavigationSections = computed(() => navigationSections.map((section) => ({
+  ...section,
+  items: navigationGroups.filter((item) => item.section === section.id && (
+    item.minRole !== 'admin' || session.isAdmin.value
+  )),
+})).filter((section) => section.items.length > 0));
+
+function isNavigationActive(path: string) {
+  return route.path === path || (path !== '/' && route.path.startsWith(`${path}/`));
+}
+
 const roleLabelKey = computed(() => {
   const role = session.state.currentUser?.role;
   if (role === 'admin') {
@@ -197,3 +220,136 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', handleDocumentClick);
 });
 </script>
+
+<style scoped>
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 0;
+  padding: 16px;
+  border-right: 1px solid #2d4144;
+  background: #162326;
+  color: #f7fbfb;
+}
+
+.sidebar-navigation {
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 16px;
+  padding: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #4e6669 transparent;
+}
+
+.sidebar-section + .sidebar-section {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid #304346;
+}
+
+.sidebar-heading {
+  margin: 0 0 10px;
+  padding: 0 12px;
+  color: #a3b9bc;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0.04em;
+}
+
+.sidebar-links {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #d0dfe1;
+  line-height: 24px;
+  text-decoration: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.sidebar-link > i {
+  flex: 0 0 20px;
+  font-size: 17px;
+  text-align: center;
+  color: #a3b9bc;
+}
+
+.sidebar-link:hover {
+  background: #22373b;
+  color: #fff;
+}
+
+.sidebar-link:focus-visible {
+  outline: 2px solid #f4b740;
+  outline-offset: 2px;
+}
+
+.sidebar-link-active,
+.sidebar-link-active:hover {
+  background: #334039;
+  color: #ffda83;
+  font-weight: 600;
+}
+
+.sidebar-link-active > i {
+  color: inherit;
+}
+
+.sidebar-link-active::before {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: #f4b740;
+  content: '';
+}
+
+@media (max-width: 900px) {
+  .app-sidebar {
+    position: static;
+    height: auto;
+  }
+
+  .sidebar-navigation {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 20px;
+    margin-top: 8px;
+  }
+
+  .sidebar-section + .sidebar-section {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-link {
+    transition: none;
+  }
+}
+</style>
