@@ -21,7 +21,7 @@
             <Select v-model="form.source" :options="sourceOptions" option-label="label" option-value="value" :disabled="!canWrite" />
             <Select v-model="form.cadence" :options="cadenceOptions" option-label="label" option-value="value" :disabled="!canWrite" />
             <Select v-model="form.weekday" :options="weekdayOptions" option-label="label" option-value="value" :disabled="!canWrite || form.cadence !== 'weekly'" />
-            <InputText v-model="form.time" type="time" :disabled="!canWrite" />
+            <DateTimeInput v-model="form.time" mode="time" :disabled="!canWrite" />
           </div>
           <Textarea
             v-model="form.tickers"
@@ -107,8 +107,10 @@
                 </label>
                 <label class="uno-grid uno-gap-1">
                   <span>{{ t('automations.scheduledFor') }}</span>
-                  <InputText
+                  <DateTimeInput
                     v-model="oneTimeForm.scheduledFor"
+                    mode="datetime"
+                    separator=" "
                     data-testid="one-time-scheduled-for"
                     placeholder="2026-07-10 21:30"
                     :disabled="!canWrite"
@@ -116,7 +118,7 @@
                 </label>
                 <label class="uno-grid uno-gap-1">
                   <span>{{ t('automations.analysisDate') }}</span>
-                  <InputText
+                  <DateTimeInput
                     v-model="oneTimeForm.analysisDate"
                     data-testid="one-time-analysis-date"
                     :placeholder="t('common.date')"
@@ -390,6 +392,7 @@ import Tag from 'primevue/tag';
 import Textarea from 'primevue/textarea';
 import { computed, onMounted, reactive, ref } from 'vue';
 
+import DateTimeInput from '../components/DateTimeInput.vue';
 import PageHeader from '../components/PageHeader.vue';
 import { useI18n } from '../i18n';
 import { apiDelete, apiGet, apiPatch, apiPost } from '../services/api';

@@ -36,21 +36,17 @@
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
             <span class="uno-text-[#6f8183]">{{ t('tenants.createdFrom') }}</span>
-            <input
+            <DateTimeInput
               v-model="filters.createdFrom"
               data-testid="tenant-filter-created-from"
-              type="date"
-              class="uno-rounded-md uno-border uno-border-[#dce7e7] uno-bg-white uno-px-3 uno-py-2"
-            >
+            />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
             <span class="uno-text-[#6f8183]">{{ t('tenants.createdTo') }}</span>
-            <input
+            <DateTimeInput
               v-model="filters.createdTo"
               data-testid="tenant-filter-created-to"
-              type="date"
-              class="uno-rounded-md uno-border uno-border-[#dce7e7] uno-bg-white uno-px-3 uno-py-2"
-            >
+            />
           </label>
           <div class="uno-flex uno-flex-wrap uno-items-end uno-gap-2">
             <Button data-testid="tenant-filter-submit" icon="pi pi-search" :label="t('common.search')" @click="loadTenants" />
@@ -159,7 +155,7 @@
         </label>
         <label class="uno-grid uno-gap-[0.35rem]">
           <span class="uno-text-[#6f8183]">{{ t('users.expiresAt') }}</span>
-          <InputText v-model="tenantForm.expires_at" data-testid="tenant-form-expires-at" type="datetime-local" />
+          <DateTimeInput v-model="tenantForm.expires_at" data-testid="tenant-form-expires-at" mode="datetime" />
         </label>
         <Message v-if="dialogError" severity="error" :closable="false">{{ dialogError }}</Message>
         <div class="uno-flex uno-justify-end uno-gap-2">
@@ -185,6 +181,7 @@ import Message from 'primevue/message';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
+import DateTimeInput from '../components/DateTimeInput.vue';
 import PageHeader from '../components/PageHeader.vue';
 import { useI18n } from '../i18n';
 import { apiGet, apiPatch, apiPost } from '../services/api';

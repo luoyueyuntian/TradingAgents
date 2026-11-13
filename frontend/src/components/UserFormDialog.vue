@@ -51,10 +51,10 @@
 
       <label class="uno-grid uno-gap-[0.35rem]">
         <span class="uno-text-[#6f8183]">{{ t('users.expiresAt') }}</span>
-        <InputText
+        <DateTimeInput
           v-model="form.expires_at"
           data-testid="user-form-expires-at"
-          type="datetime-local"
+          mode="datetime"
           :disabled="loading"
         />
       </label>
@@ -82,6 +82,7 @@ import Message from 'primevue/message';
 import Select from 'primevue/select';
 import { computed, reactive, watch } from 'vue';
 
+import DateTimeInput from './DateTimeInput.vue';
 import { useI18n } from '../i18n';
 
 type AdminUserRole = 'viewer' | 'analyst' | 'admin';

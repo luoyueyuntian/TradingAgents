@@ -84,6 +84,7 @@ function mountPage() {
         Card: { template: '<div><slot name="title" /><slot name="content" /></div>' },
         Dialog: { props: ['visible'], template: '<div v-if="visible"><slot /></div>' },
         InputText: InputTextStub,
+        DateTimeInput: InputTextStub,
         Message: { template: '<div><slot /></div>' },
         PageHeader: { template: '<div><slot name="actions" /></div>' },
       },
