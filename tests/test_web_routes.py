@@ -1903,6 +1903,7 @@ def test_workspace_screener_filters_saved_candidates(monkeypatch, tmp_path):
 
     nvda = _make_run("nvda-run")
     nvda.ticker = "NVDA"
+    nvda.company_name = "NVIDIA Corporation"
     nvda.status = "completed"
     nvda.signal = "Buy"
     nvda.created_at = "2026-01-15T03:00:00"
@@ -1932,6 +1933,7 @@ def test_workspace_screener_filters_saved_candidates(monkeypatch, tmp_path):
     assert payload["summary"]["portfolio_count"] == 1
     assert payload["summary"]["pinned_count"] == 1
     assert payload["rows"][0]["ticker"] == "NVDA"
+    assert payload["rows"][0]["company_name"] == "NVIDIA Corporation"
     assert payload["rows"][0]["has_alert_hit"] is True
     assert payload["rows"][0]["on_watchlist"] is True
     assert payload["rows"][0]["in_portfolio"] is True
@@ -1946,6 +1948,9 @@ def test_workspace_screener_watchlist_scope_includes_unrun_tickers(monkeypatch, 
     monkeypatch.setattr(web_routes, "get_web_settings_path", lambda tenant_id=None: tmp_path / "tenant.json")
     monkeypatch.setattr(web_routes, "load_settings", lambda path=None: state)
     monkeypatch.setattr(web_routes, "list_runs", lambda tenant_id=None: [])
+    monkeypatch.setattr(web_routes, "search_stock_catalog", lambda *args, **kwargs: [
+        StockCatalogItem(market="us", symbol="TSLA", name="Tesla, Inc.", exchange="NASDAQ"),
+    ])
 
     response = client.get("/api/screener", params={"scope": "watchlist"})
 
@@ -1953,6 +1958,7 @@ def test_workspace_screener_watchlist_scope_includes_unrun_tickers(monkeypatch, 
     payload = response.json()
     assert payload["summary"]["total_candidates"] == 1
     assert payload["rows"][0]["ticker"] == "TSLA"
+    assert payload["rows"][0]["company_name"] == "Tesla, Inc."
     assert payload["rows"][0]["latest_run_id"] is None
     assert payload["rows"][0]["on_watchlist"] is True
 
