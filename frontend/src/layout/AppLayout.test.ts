@@ -12,7 +12,7 @@ import { useSession } from '../stores/session';
 function createTestRouter() {
   return createRouter({
     history: createMemoryHistory(),
-    routes: navigationGroups.map((item) => ({
+    routes: [...navigationGroups, { path: '/runs/:runId' }, { path: '/portfolio/positions' }, { path: '/tenants/:tenantId' }, { path: '/profile' }].map((item) => ({
       path: item.path,
       component: { template: '<div />' },
     })),
@@ -49,6 +49,41 @@ describe('AppLayout', () => {
       }
       throw new Error(`Unexpected apiGet path: ${path}`);
     });
+  });
+
+  it('groups navigation by purpose and omits the entire management section for analysts', async () => {
+    setLocale('zh-CN');
+    const router = createTestRouter();
+    await router.push('/');
+    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: true } } });
+    const nav = wrapper.get('aside nav');
+    expect(nav.findAll('h2').map((heading) => heading.text())).toEqual(['分析与研究', '投资与协作']);
+    expect(nav.text()).toContain('发起分析');
+    expect(nav.text()).toContain('投资组合');
+    expect(nav.find('a[href="/settings"]').exists()).toBe(false);
+    useSession().state.currentUser!.role = 'admin';
+    await flushPromises();
+    expect(nav.findAll('h2').map((heading) => heading.text())).toEqual(['分析与研究', '投资与协作', '系统管理']);
+    expect(nav.find('a[href="/settings"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it.each([
+    ['/runs/run-123', '/runs'],
+    ['/portfolio/positions', '/portfolio'],
+    ['/tenants/tenant-a', '/tenants'],
+    ['/', '/'],
+  ])('keeps exactly the owning navigation item highlighted at %s', async (path, owner) => {
+    useSession().state.currentUser!.role = 'admin';
+    const router = createTestRouter();
+    await router.push(path);
+    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: true } } });
+    const active = wrapper.findAll('aside nav a[aria-current="page"]');
+    expect(active).toHaveLength(1);
+    expect(active[0].attributes('href')).toBe(owner);
+    await router.push('/analysis');
+    expect(wrapper.get('aside nav a[aria-current="page"]').attributes('href')).toBe('/analysis');
+    wrapper.unmount();
   });
 
   it('lets page content use the full available width instead of capping at 1440px', async () => {
