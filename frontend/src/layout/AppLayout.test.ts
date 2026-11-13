@@ -232,7 +232,7 @@ describe('AppLayout', () => {
     expect(wrapper.get('[data-testid="user-menu-trigger"]').find('.pi-angle-up').exists()).toBe(true);
   });
 
-  it('shows the current member as a text trigger and opens a member menu on click', async () => {
+  it('shows the logged-in user without a separate member selector', async () => {
     const router = createTestRouter();
     await router.push('/');
     await router.isReady();
@@ -250,13 +250,10 @@ describe('AppLayout', () => {
 
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="current-member-select"]').exists()).toBe(false);
-    expect(wrapper.text()).not.toContain('当前成员');
-    expect(wrapper.get('[data-testid="current-member-trigger"]').text()).toContain('Bob Builder');
-
-    await wrapper.get('[data-testid="current-member-trigger"]').trigger('click');
-
-    expect(wrapper.get('[data-testid="current-member-option-member-1"]').text()).toContain('Alice Analyst');
-    expect(wrapper.get('[data-testid="current-member-option-member-2"]').find('.pi-check').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="current-member-menu"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="current-member-trigger"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="user-menu-trigger"]').text()).toContain('Alice Analyst');
+    expect(wrapper.text()).not.toContain('Bob Builder');
+    wrapper.unmount();
   });
 });

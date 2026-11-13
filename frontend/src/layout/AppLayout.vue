@@ -59,39 +59,6 @@
             </div>
           </div>
           <div
-            data-testid="current-member-menu"
-            class="uno-relative"
-            @focusout="handleCurrentMemberMenuFocusOut"
-          >
-            <button
-              data-testid="current-member-trigger"
-              type="button"
-              class="uno-inline-flex uno-min-h-10 uno-max-w-[220px] uno-cursor-pointer uno-items-center uno-gap-1.5 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#243a3d] hover:uno-text-[#132a2d] max-[900px]:uno-max-w-full"
-              :aria-expanded="currentMemberMenuOpen"
-              :aria-label="t('topbar.currentMember')"
-              @click="toggleCurrentMemberMenu"
-            >
-              <span class="uno-max-w-[190px] uno-truncate">{{ currentMemberLabel }}</span>
-              <i :class="currentMemberMenuOpen ? 'pi pi-angle-up uno-text-xs' : 'pi pi-angle-down uno-text-xs'" />
-            </button>
-            <div
-              v-if="currentMemberMenuOpen"
-              class="uno-absolute uno-right-0 uno-top-[calc(100%+0.35rem)] uno-z-20 uno-grid uno-min-w-[190px] uno-gap-1 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-2 uno-shadow-lg"
-            >
-              <button
-                v-for="option in memberOptions"
-                :key="option.value"
-                :data-testid="`current-member-option-${option.value}`"
-                type="button"
-                class="uno-flex uno-min-h-9 uno-cursor-pointer uno-items-center uno-justify-between uno-gap-3 uno-rounded-md uno-border-0 uno-bg-transparent uno-px-2 uno-py-1.5 uno-text-left uno-text-[#243a3d] hover:uno-bg-[#f1f6f6]"
-                @click="selectCurrentMember(option.value)"
-              >
-                <span class="uno-truncate">{{ option.label }}</span>
-                <i v-if="option.value === currentMemberDraft" class="pi pi-check uno-text-[#1c7f5f]" />
-              </button>
-            </div>
-          </div>
-          <div
             data-testid="user-menu"
             class="uno-relative"
             @mouseenter="userMenuOpen = true"
@@ -150,22 +117,11 @@ const session = useSession();
 const { locale, locales, t } = useI18n();
 const languageMenuOpen = ref(false);
 const languageMenuRef = ref<HTMLElement | null>(null);
-const currentMemberMenuOpen = ref(false);
 const userMenuOpen = ref(false);
-const currentMemberDraft = ref(session.state.currentMemberId);
-const members = ref<JsonRecord[]>([]);
 
 const visibleNavigationGroups = computed(() => navigationGroups.filter((item) => (
   item.minRole !== 'admin' || session.isAdmin.value
 )));
-const memberOptions = computed(() => members.value.map((member) => ({
-  label: String(member.name || member.id || ''),
-  value: String(member.id || ''),
-})));
-const currentMemberLabel = computed(() => (
-  memberOptions.value.find((member) => member.value === currentMemberDraft.value)?.label || t('topbar.memberPlaceholder')
-));
-
 const roleLabelKey = computed(() => {
   const role = session.state.currentUser?.role;
   if (role === 'admin') {
@@ -209,36 +165,6 @@ function handleUserMenuFocusOut(event: FocusEvent) {
   userMenuOpen.value = false;
 }
 
-function handleCurrentMemberMenuFocusOut(event: FocusEvent) {
-  const nextTarget = event.relatedTarget;
-  if (nextTarget instanceof Node && event.currentTarget instanceof HTMLElement && event.currentTarget.contains(nextTarget)) {
-    return;
-  }
-  currentMemberMenuOpen.value = false;
-}
-
-function toggleCurrentMemberMenu() {
-  currentMemberMenuOpen.value = !currentMemberMenuOpen.value;
-}
-
-function selectCurrentMember(value: string) {
-  currentMemberDraft.value = value;
-  session.setCurrentMemberId(value);
-  currentMemberMenuOpen.value = false;
-}
-
-async function loadMembers() {
-  try {
-    members.value = await apiGet<JsonRecord[]>('/api/members', session.apiContext.value);
-    if (currentMemberDraft.value && !members.value.some((member) => String(member.id) === currentMemberDraft.value)) {
-      currentMemberDraft.value = '';
-      session.setCurrentMemberId('');
-    }
-  } catch {
-    members.value = [];
-  }
-}
-
 async function loadDefaultUiLanguage() {
   try {
     const settings = await apiGet<JsonRecord>('/api/settings', session.apiContext.value);
@@ -256,22 +182,15 @@ async function handleLogout() {
   await router.push('/login');
 }
 
-watch(() => session.state.tenantId, async (value) => {
-  currentMemberDraft.value = session.state.currentMemberId;
+watch(() => session.state.tenantId, (value) => {
   if (value) {
-    await Promise.all([loadMembers(), loadDefaultUiLanguage()]);
-    return;
+    void loadDefaultUiLanguage();
   }
-  members.value = [];
-});
-
-watch(() => session.state.currentMemberId, (value) => {
-  currentMemberDraft.value = value;
 });
 
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick);
-  void Promise.all([loadMembers(), loadDefaultUiLanguage()]);
+  void loadDefaultUiLanguage();
 });
 
 onBeforeUnmount(() => {
