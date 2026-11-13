@@ -2406,6 +2406,7 @@ def _build_workspace_screener_response(
             research_depth = int(depth) if isinstance(depth, int) else None
         row = ScreenerRow(
             ticker=ticker,
+            company_name=overview.company_name,
             run_count=overview.run_count,
             latest_run_id=overview.latest_run_id,
             latest_signal=overview.latest_signal,

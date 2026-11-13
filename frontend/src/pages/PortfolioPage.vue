@@ -35,6 +35,11 @@
         </div>
         <DataTable :value="asArray(screener?.rows)" size="small" class="uno-mt-3">
           <Column field="ticker" :header="t('common.ticker')" />
+          <Column field="company_name" :header="t('common.companyName')">
+            <template #body="{ data }">
+              {{ data.company_name || t('common.na') }}
+            </template>
+          </Column>
           <Column field="latest_status" :header="t('common.status')" />
           <Column field="latest_signal" :header="t('common.signal')" />
           <Column field="run_count" :header="t('nav.runs')" />

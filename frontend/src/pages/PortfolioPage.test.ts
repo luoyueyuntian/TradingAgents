@@ -73,8 +73,6 @@ function mountPage() {
       stubs: {
         Button: ButtonStub,
         Card: { template: '<div><slot name="title" /><slot name="content" /></div>' },
-        Column: { template: '<div><slot /></div>' },
-        DataTable: { template: '<div><slot /></div>' },
         InputText: InputTextStub,
         Message: { template: '<div><slot /></div>' },
         MetricGrid: { props: ['items'], template: '<div data-testid="metric-grid-stub">{{ items.length }}</div>' },
@@ -103,7 +101,10 @@ describe('PortfolioPage', () => {
         return Promise.resolve({ rules: [{ id: 'alert-1', ticker: 'NVDA', field: 'signal', value: 'buy' }] });
       }
       if (path.startsWith('/api/screener?')) {
-        return Promise.resolve({ rows: [{ ticker: 'TSLA', latest_status: 'ready', latest_signal: 'hold', run_count: 2 }] });
+        return Promise.resolve({ rows: [
+          { ticker: 'TSLA', company_name: 'Tesla, Inc.', latest_status: 'ready', latest_signal: 'hold', run_count: 2 },
+          { ticker: 'UNKNOWN', company_name: null, latest_status: null, latest_signal: null, run_count: 0 },
+        ] });
       }
       if (path === '/api/stock-groups') {
         return Promise.resolve([
@@ -128,5 +129,17 @@ describe('PortfolioPage', () => {
     expect(wrapper.find('[data-to="/portfolio/stock-groups"]').exists()).toBe(true);
     expect(wrapper.find('[data-to="/portfolio/alerts"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid^="stock-group-delete-"]').exists()).toBe(false);
+  });
+
+  it('shows stock names alongside tickers and a placeholder when a name is unavailable', async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const rows = wrapper.findAll('tbody tr');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.text()).toContain('TSLA');
+    expect(rows[0]!.text()).toContain('Tesla, Inc.');
+    expect(rows[1]!.text()).toContain('UNKNOWN');
+    expect(rows[1]!.text()).toContain('无');
   });
 });

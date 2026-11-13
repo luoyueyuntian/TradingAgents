@@ -1733,6 +1733,7 @@ class ScreenerRow(BaseModel):
     """One candidate row in the workspace screener."""
 
     ticker: str
+    company_name: str | None = None
     run_count: int = 0
     latest_run_id: str | None = None
     latest_signal: str | None = None
