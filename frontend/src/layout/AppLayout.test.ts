@@ -22,6 +22,7 @@ function createTestRouter() {
 describe('AppLayout', () => {
   beforeEach(() => {
     const session = useSession();
+    session.state.tenants = [];
     session.state.currentUser = {
       id: 'user-1',
       username: 'alice',
@@ -291,4 +292,35 @@ describe('AppLayout', () => {
     expect(wrapper.text()).not.toContain('Bob Builder');
     wrapper.unmount();
   });
+  it('offers joined tenants and preserves the current workspace when a switch fails', async () => {
+    const session = useSession();
+    session.state.tenants = [
+      { tenant_id: 'tenant-a', display_name: '研发团队', role: 'analyst', member_id: 'user-1' },
+      { tenant_id: 'tenant-b', display_name: '投研团队', role: 'viewer', member_id: 'member-b' },
+    ];
+    vi.spyOn(apiService, 'apiPost').mockRejectedValue(new Error('Tenant membership is unavailable'));
+    const router = createTestRouter();
+    await router.push('/');
+    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: true } } });
+    const selector = wrapper.get('[data-testid="tenant-switcher"]');
+    expect(selector.findAll('option').map(option => option.text())).toEqual(['研发团队', '投研团队']);
+    await selector.setValue('tenant-b');
+    await flushPromises();
+    expect(session.state.currentUser?.tenant_id).toBe('tenant-a');
+    expect((selector.element as HTMLSelectElement).value).toBe('tenant-a');
+    expect(wrapper.get('[role="alert"]').text()).toContain('unavailable');
+    wrapper.unmount();
+  });
+
+  it('shows a recovery empty state when no tenant is accessible', async () => {
+    setLocale('zh-CN');
+    useSession().state.currentUser!.tenant_id = '';
+    const router = createTestRouter();
+    await router.push('/');
+    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: true } } });
+    expect(wrapper.get('[role="status"]').text()).toContain('暂无可访问租户');
+    expect(wrapper.find('[data-testid="tenant-switcher"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
 });

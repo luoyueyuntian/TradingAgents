@@ -84,9 +84,9 @@ def test_session_tenant_overrides_request_tenant(monkeypatch, tmp_path):
         headers={"X-TradingAgents-Tenant": "gamma"},
     )
 
-    assert response.status_code == 200
-    assert response.json()["tenant_id"] == "alpha"
-    assert seen["tenant_id"] == "alpha"
+    assert response.status_code == 409
+    assert response.json()["code"] == "tenant_context_mismatch"
+    assert "tenant_id" not in seen
 
 
 def test_unauthenticated_request_is_rejected_when_user_auth_enabled(monkeypatch, tmp_path):
@@ -246,7 +246,7 @@ def test_disabled_tenant_blocks_existing_session_requests(monkeypatch, tmp_path)
     response = client.get("/api/runs")
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Tenant is disabled"
+    assert response.json()["detail"] == "No accessible tenant membership"
 
 
 def test_expired_tenant_blocks_existing_session_requests(monkeypatch, tmp_path):
@@ -263,7 +263,7 @@ def test_expired_tenant_blocks_existing_session_requests(monkeypatch, tmp_path):
     response = client.get("/api/runs")
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Tenant has expired"
+    assert response.json()["detail"] == "No accessible tenant membership"
 
 
 def test_token_authenticated_write_request_rejects_disabled_tenant(monkeypatch, tmp_path):

@@ -40,12 +40,16 @@ def is_public_path(path: str, method: str) -> bool:
 
 def is_auth_path(path: str, method: str) -> bool:
     normalized = (method.upper(), path)
-    return normalized in _PUBLIC_AUTH_PATHS or normalized in _PASSWORD_CHANGE_ALLOWED
+    return (normalized in _PUBLIC_AUTH_PATHS or normalized in _PASSWORD_CHANGE_ALLOWED
+            or normalized in {("GET", "/api/auth/tenants"), ("POST", "/api/auth/switch-tenant")}
+            or path == "/api/auth/profile" or path.startswith("/api/auth/profile/"))
 
 
 def required_role_for_request(path: str, method: str) -> str | None:
     if is_public_path(path, method) or is_auth_path(path, method):
         return None
+    if path == "/api/auth/profile" or path.startswith("/api/auth/profile/"):
+        return "viewer"
     if path.startswith(_ADMIN_PREFIXES):
         return "admin"
     if method.upper() in {"GET", "HEAD"}:

@@ -10,12 +10,15 @@ from tradingagents.service.web_state import get_web_auth_db_path
 
 from .admin_user_routes import (
     create_user_for_tenant,
+    add_existing_membership,
     delete_user_for_tenant,
     list_users_for_tenant,
     update_user_for_tenant,
 )
 from .auth import get_request_user
 from .schemas import (
+    AdminMembershipCreate,
+    AdminUserCredentialResult,
     AdminTenantBatchDisableRequest,
     AdminTenantBatchDisableResponse,
     AdminTenantCreate,
@@ -44,6 +47,13 @@ def _require_admin_user(request: Request) -> UserRecord:
     user = get_request_user(request)
     if user is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    return user
+
+
+def _require_tenant_admin(request: Request, tenant_id: str) -> UserRecord:
+    user = _require_admin_user(request)
+    if user.tenant_id != tenant_id:
+        raise HTTPException(status_code=403, detail="Membership management requires the active tenant")
     return user
 
 
@@ -267,7 +277,7 @@ def batch_disable_tenants(
 
 @router.get("/{tenant_id}/users", response_model=dict[str, list[AdminUserResponse]])
 def list_tenant_users(tenant_id: str, request: Request) -> dict[str, list[AdminUserResponse]]:
-    _require_admin_user(request)
+    _require_tenant_admin(request, tenant_id)
     store = _get_store()
     _get_existing_tenant(store, tenant_id)
     return list_users_for_tenant(store, tenant_id)
@@ -279,7 +289,7 @@ def create_tenant_user(
     payload: AdminUserCreate,
     request: Request,
 ) -> dict[str, AdminUserResponse]:
-    _require_admin_user(request)
+    _require_tenant_admin(request, tenant_id)
     store = _get_store()
     _get_writable_tenant(store, tenant_id)
     return create_user_for_tenant(store, tenant_id, payload)
@@ -292,7 +302,7 @@ def update_tenant_user(
     payload: AdminUserUpdate,
     request: Request,
 ) -> dict[str, AdminUserResponse]:
-    _require_admin_user(request)
+    _require_tenant_admin(request, tenant_id)
     store = _get_store()
     _get_writable_tenant(store, tenant_id)
     return update_user_for_tenant(store, tenant_id, user_id, payload)
@@ -300,7 +310,15 @@ def update_tenant_user(
 
 @router.delete("/{tenant_id}/users/{user_id}", response_model=dict[str, AdminUserResponse])
 def delete_tenant_user(tenant_id: str, user_id: str, request: Request) -> dict[str, AdminUserResponse]:
-    _require_admin_user(request)
+    _require_tenant_admin(request, tenant_id)
     store = _get_store()
     _get_writable_tenant(store, tenant_id)
     return delete_user_for_tenant(store, tenant_id, user_id)
+
+
+@router.post("/{tenant_id}/users/memberships", status_code=201, response_model=AdminUserCredentialResult)
+def add_tenant_membership(tenant_id: str, payload: AdminMembershipCreate, request: Request):
+    _require_tenant_admin(request, tenant_id)
+    store = _get_store()
+    _get_writable_tenant(store, tenant_id)
+    return add_existing_membership(store, tenant_id, payload)

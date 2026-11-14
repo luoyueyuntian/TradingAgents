@@ -5,16 +5,6 @@
       <template #content>
         <form class="uno-grid uno-gap-4" @submit.prevent="submitLogin">
           <div class="uno-grid uno-gap-2">
-            <label class="uno-text-sm uno-font-600" for="login-tenant">{{ t('auth.tenantName') }}</label>
-            <InputText
-              id="login-tenant"
-              v-model="tenantId"
-              autocomplete="organization"
-              :placeholder="t('auth.tenantPlaceholder')"
-            />
-          </div>
-
-          <div class="uno-grid uno-gap-2">
             <label class="uno-text-sm uno-font-600" for="login-identifier">{{ t('auth.identifier') }}</label>
             <InputText
               id="login-identifier"
@@ -62,13 +52,12 @@ import { useSession } from '../stores/session';
 const router = useRouter();
 const session = useSession();
 const { t } = useI18n();
-const tenantId = ref('');
 const identifier = ref('');
 const password = ref('');
 
 async function submitLogin() {
   try {
-    await session.login(tenantId.value, identifier.value, password.value);
+    await session.login(identifier.value, password.value);
     await router.push(session.mustChangePassword.value ? '/change-password' : '/');
   } catch {
     // Store error state is rendered in the form.

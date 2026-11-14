@@ -80,10 +80,7 @@ def get_session_user(request: Request) -> UserRecord | None:
     if not raw_session_id:
         return None
     store = UserStore(get_web_auth_db_path())
-    session = store.get_session(raw_session_id)
-    if session is None:
-        return None
-    return store.get_user(session.user_id)
+    return store.get_session_user(raw_session_id)
 
 
 def get_request_user(request: Request) -> UserRecord | None:

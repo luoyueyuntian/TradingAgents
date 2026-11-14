@@ -53,7 +53,14 @@
         :label="t('common.add')"
         icon="pi pi-user-plus"
         :disabled="readOnly"
-        @click="openCreateDialog"
+        @click="openCreateDialog(false)"
+      />
+      <Button
+        data-testid="open-add-member"
+        :label="t('users.addExistingAccount')"
+        icon="pi pi-users"
+        :disabled="readOnly"
+        @click="openCreateDialog(true)"
       />
       <Button
         data-testid="open-bulk-delete"
@@ -128,14 +135,7 @@
                       :disabled="readOnly"
                       @click="openDeleteConfirm(user)"
                     />
-                    <Button
-                      :data-testid="`reset-password-${user.id}`"
-                      :label="t('users.resetPassword')"
-                      severity="secondary"
-                      text
-                      :disabled="readOnly"
-                      @click="openResetConfirm(user)"
-                    />
+
                   </div>
                 </td>
               </tr>
@@ -148,6 +148,7 @@
     <UserFormDialog
       v-model:visible="formVisible"
       :mode="formMode"
+      :existing-account="addingExisting"
       :loading="formSubmitting"
       :error="formError"
       :user="formUser"
@@ -160,22 +161,6 @@
       :description="passwordDescription"
       :password="generatedPassword"
     />
-
-    <Dialog
-      :visible="Boolean(resetTarget)"
-      modal
-      :header="t('users.resetPassword')"
-      :style="{ width: 'min(480px, 94vw)' }"
-      @update:visible="handleResetDialogVisible"
-    >
-      <p>{{ t('users.resetPasswordConfirm', { username: resetTarget?.username || '' }) }}</p>
-      <template #footer>
-        <div class="uno-flex uno-justify-end uno-gap-2">
-          <Button :label="t('common.cancel')" severity="secondary" @click="resetTarget = null" />
-          <Button data-testid="confirm-reset-password" :label="t('users.resetPassword')" @click="confirmResetPassword" />
-        </div>
-      </template>
-    </Dialog>
 
     <Dialog
       :visible="Boolean(deleteTarget)"
@@ -282,7 +267,7 @@ const editingUser = ref<AdminUserResponse | null>(null);
 const passwordVisible = ref(false);
 const generatedPassword = ref('');
 const passwordDescription = ref('');
-const resetTarget = ref<AdminUserResponse | null>(null);
+const addingExisting = ref(false);
 const deleteTarget = ref<AdminUserResponse | null>(null);
 const bulkDeleteVisible = ref(false);
 
@@ -359,7 +344,8 @@ function statusLabel(user: AdminUserResponse) {
   return t('users.active');
 }
 
-function openCreateDialog() {
+function openCreateDialog(existing = false) {
+  addingExisting.value = existing;
   editingUser.value = null;
   formMode.value = 'create';
   formError.value = '';
@@ -367,14 +353,11 @@ function openCreateDialog() {
 }
 
 function openEditDialog(user: AdminUserResponse) {
+  addingExisting.value = false;
   editingUser.value = user;
   formMode.value = 'edit';
   formError.value = '';
   formVisible.value = true;
-}
-
-function openResetConfirm(user: AdminUserResponse) {
-  resetTarget.value = user;
 }
 
 function openDeleteConfirm(user: AdminUserResponse) {
@@ -417,8 +400,8 @@ async function submitForm(payload: UserFormPayload) {
   try {
     if (formMode.value === 'create') {
       const response = await apiPost<{ user: AdminUserResponse; temporary_password: string }>(
-        props.createPath,
-        {
+        addingExisting.value ? `${props.createPath}/memberships` : props.createPath,
+        addingExisting.value ? { email: payload.email.trim(), role: payload.role, expires_at: toApiDateTime(payload.expires_at) } : {
           username: payload.username.trim(),
           display_name: payload.display_name.trim(),
           email: payload.email.trim(),
@@ -428,14 +411,12 @@ async function submitForm(payload: UserFormPayload) {
       );
       generatedPassword.value = response.temporary_password;
       passwordDescription.value = t('users.generatedPasswordDescription', { username: response.user.username });
-      passwordVisible.value = true;
+      passwordVisible.value = Boolean(response.temporary_password);
       notice.value = t('users.userCreated', { username: response.user.username });
     } else if (editingUser.value) {
       const response = await apiPatch<{ user: AdminUserResponse }>(
         props.updatePath(editingUser.value.id),
         {
-          display_name: payload.display_name.trim(),
-          email: payload.email.trim(),
           role: payload.role,
           expires_at: toApiDateTime(payload.expires_at),
         },
@@ -482,26 +463,6 @@ async function confirmDeleteUser() {
   }
 }
 
-async function confirmResetPassword() {
-  if (!resetTarget.value) {
-    return;
-  }
-  pageError.value = '';
-  try {
-    const response = await apiPost<{ user: AdminUserResponse; temporary_password: string }>(
-      props.resetPasswordPath(resetTarget.value.id),
-      {},
-    );
-    generatedPassword.value = response.temporary_password;
-    passwordDescription.value = t('users.generatedPasswordDescription', { username: response.user.username });
-    passwordVisible.value = true;
-    notice.value = t('users.passwordResetNotice', { username: response.user.username });
-    resetTarget.value = null;
-    await loadUsers();
-  } catch (error) {
-    pageError.value = error instanceof Error ? error.message : t('users.resetError');
-  }
-}
 
 async function confirmBulkDelete() {
   pageError.value = '';
@@ -523,11 +484,6 @@ async function confirmBulkDelete() {
   }
 }
 
-function handleResetDialogVisible(value: boolean) {
-  if (!value) {
-    resetTarget.value = null;
-  }
-}
 
 function handleDeleteDialogVisible(value: boolean) {
   if (!value) {

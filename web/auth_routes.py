@@ -31,6 +31,8 @@ from .schemas import (
     AuthLoginRequest,
     AuthMeResponse,
     AuthUser,
+    AuthTenantMembership,
+    SwitchTenantRequest,
     ChangePasswordRequest,
     PasswordResetAvailability,
     PasswordResetConfirm,
@@ -115,6 +117,8 @@ def _session_cookie_secure(request: Request) -> bool:
 def _build_auth_user(user: UserRecord) -> AuthUser:
     return AuthUser(
         id=user.id,
+        account_id=user.account_id,
+        member_id=user.id if user.tenant_id else None,
         username=user.username,
         email=user.email,
         display_name=user.display_name,
@@ -126,7 +130,18 @@ def _build_auth_user(user: UserRecord) -> AuthUser:
 
 
 def _build_me_response(user: UserRecord, session_expires_at: int) -> AuthMeResponse:
+    store = _get_store()
+    tenants = [
+        AuthTenantMembership(
+            tenant_id=member.tenant_id,
+            display_name=store.get_tenant(member.tenant_id).display_name,
+            role=member.role,
+            member_id=member.id,
+        )
+        for member in store.list_account_memberships(user.account_id)
+    ]
     return AuthMeResponse(
+        tenants=tenants,
         user=_build_auth_user(user),
         session_expires_at=session_expires_at,
         password_reset=PasswordResetAvailability(available=_password_reset_available()),
@@ -141,7 +156,7 @@ def _get_current_session(request: Request):
     session = store.get_session(raw_session_id)
     if session is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    user = store.get_user(session.user_id)
+    user = store.get_session_user(raw_session_id)
     if user is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return store, raw_session_id, session, user
@@ -159,26 +174,21 @@ def _lookup_password_reset_row(
 
 
 def _get_user_by_email(store: UserStore, email: str) -> UserRecord | None:
-    target = email.casefold()
-    for user in store.list_users():
-        if user.email.casefold() == target:
-            return user
-    return None
+    user = store.get_account_by_identifier(email)
+    return user if user and user.email.casefold() == email.strip().casefold() else None
 
 
 @router.post("/login", response_model=AuthMeResponse)
 def login(payload: AuthLoginRequest, request: Request, response: Response) -> AuthMeResponse:
     store = _get_store()
-    if payload.tenant_id is None:
-        raise HTTPException(status_code=400, detail="tenant_id must not be blank")
-    user = store.get_user_by_identifier(payload.tenant_id, payload.identifier)
+    user = store.get_account_by_identifier(payload.identifier)
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not verify_password(payload.password, user.password_hash, user.password_salt):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     _ensure_user_can_login(user)
-    _ensure_tenant_allows_access(store, user.tenant_id)
-    raw_session_id, session = store.create_session(user.id, ttl_seconds=SESSION_TTL_SECONDS)
+    raw_session_id, session = store.create_session(user.account_id, ttl_seconds=SESSION_TTL_SECONDS)
+    user = store.get_session_user(raw_session_id)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=raw_session_id,
@@ -211,6 +221,22 @@ def me(request: Request) -> AuthMeResponse:
     return _build_me_response(user, session.expires_at)
 
 
+@router.get("/tenants", response_model=dict[str, list[AuthTenantMembership]])
+def my_tenants(request: Request):
+    _store, _raw, session, user = _get_current_session(request)
+    return {"tenants": _build_me_response(user, session.expires_at).tenants}
+
+
+@router.post("/switch-tenant", response_model=AuthMeResponse)
+def switch_tenant(payload: SwitchTenantRequest, request: Request) -> AuthMeResponse:
+    store, raw, session, _user = _get_current_session(request)
+    try:
+        user = store.switch_session_tenant(raw, payload.tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Tenant membership is unavailable") from exc
+    return _build_me_response(user, session.expires_at)
+
+
 @router.post("/change-password", response_model=AuthMeResponse)
 def change_password(
     payload: ChangePasswordRequest,
@@ -218,8 +244,6 @@ def change_password(
 ) -> AuthMeResponse:
     store, _raw_session_id, session, user = _get_current_session(request)
     _ensure_user_can_login(user)
-    if not verify_password(payload.old_password, user.password_hash, user.password_salt):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
     try:
         validate_password_policy(
             payload.new_password,
@@ -230,8 +254,8 @@ def change_password(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     password_record = hash_password(payload.new_password)
-    updated = store.update_user(
-        user.id,
+    store.update_account(
+        user.account_id,
         password_hash=password_record.encoded_hash,
         password_salt=password_record.salt,
         password_updated_at=current_timestamp_ms(datetime.now(UTC)),
@@ -241,9 +265,9 @@ def change_password(
         "auth.password_changed",
         actor_user_id=user.id,
         target_user_id=user.id,
-        tenant_id=user.tenant_id,
+        tenant_id=user.tenant_id or None,
     )
-    return _build_me_response(updated, session.expires_at)
+    return _build_me_response(store.get_session_user(_raw_session_id), session.expires_at)
 
 
 @router.post("/password-reset/request", response_model=PasswordResetAvailability)
@@ -265,13 +289,7 @@ def password_reset_request(
     if user is None or user.disabled or _is_user_expired(user):
         hash_verification_code(code)
         return PasswordResetAvailability(available=True, reset_id=fallback_reset_id)
-    try:
-        _ensure_tenant_allows_access(store, user.tenant_id)
-    except HTTPException:
-        hash_verification_code(code)
-        return PasswordResetAvailability(available=True, reset_id=fallback_reset_id)
-
-    token = store.create_password_reset_token(user.id, hash_verification_code(code))
+    token = store.create_password_reset_token(user.account_id, hash_verification_code(code))
     background_tasks.add_task(
         _send_password_reset_email_safely,
         PasswordResetEmail(to_email=user.email, code=code),
@@ -306,15 +324,10 @@ def password_reset_confirm(payload: PasswordResetConfirm) -> dict[str, str]:
             store.increment_password_reset_attempts(payload.reset_id)
         raise _invalid_reset_code_error()
 
-    user = store.get_user(token.user_id)
+    user = store.get_account_user(token.user_id)
     if user is None or user.disabled or _is_user_expired(user):
         _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
-    try:
-        _ensure_tenant_allows_access(store, user.tenant_id)
-    except HTTPException as exc:
-        _burn_reset_code_verification(payload.code)
-        raise _invalid_reset_code_error() from exc
     try:
         validate_password_policy(
             payload.new_password,
@@ -329,17 +342,18 @@ def password_reset_confirm(payload: PasswordResetConfirm) -> dict[str, str]:
     except ValueError as exc:
         raise _invalid_reset_code_error() from exc
     password_record = hash_password(payload.new_password)
-    store.update_user(
-        user.id,
+    store.update_account(
+        user.account_id,
         password_hash=password_record.encoded_hash,
         password_salt=password_record.salt,
         password_updated_at=current_timestamp_ms(datetime.now(UTC)),
         must_change_password=False,
     )
+    store.delete_sessions_for_user(user.account_id)
     store.record_audit_event(
         "auth.password_reset_confirmed",
         actor_user_id=user.id,
         target_user_id=user.id,
-        tenant_id=user.tenant_id,
+        tenant_id=user.tenant_id or None,
     )
     return {"status": "ok"}

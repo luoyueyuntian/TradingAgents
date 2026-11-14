@@ -215,6 +215,12 @@ export const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/profile',
+    name: 'profile',
+    component: () => import('../pages/ProfilePage.vue'),
+    meta: requiresAuth,
+  },
+  {
     path: '/login',
     name: 'login',
     component: () => import('../pages/LoginPage.vue'),

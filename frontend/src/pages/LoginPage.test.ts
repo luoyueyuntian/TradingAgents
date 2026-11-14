@@ -75,18 +75,17 @@ describe('LoginPage', () => {
     session.mustChangePassword.value = false;
   });
 
-  it('renders a tenant field and sends its value from the login form', async () => {
+  it('logs in with account credentials without a tenant field', async () => {
     loginMock.mockResolvedValue(undefined);
     const wrapper = mountPage();
 
-    expect(wrapper.find('#login-tenant').exists()).toBe(true);
-    await wrapper.get('#login-tenant').setValue('tenant-a');
+    expect(wrapper.find('#login-tenant').exists()).toBe(false);
     await wrapper.get('#login-identifier').setValue('alice');
     await wrapper.get('#login-password').setValue('StrongPass123!');
     await wrapper.get('form').trigger('submit.prevent');
     await flushPromises();
 
-    expect(loginMock).toHaveBeenCalledWith('tenant-a', 'alice', 'StrongPass123!');
+    expect(loginMock).toHaveBeenCalledWith('alice', 'StrongPass123!');
     expect(pushMock).toHaveBeenCalledWith('/');
   });
 });

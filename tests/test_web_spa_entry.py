@@ -96,3 +96,26 @@ def test_dockerfile_builds_vue_frontend_assets():
     assert "npm run build" in dockerfile
     assert "COPY --from=frontend-builder" in dockerfile
     assert "frontend/node_modules" in dockerignore
+
+
+def test_spa_shell_and_worker_require_revalidation(monkeypatch, tmp_path):
+    index_path = _write_spa_shell(tmp_path)
+    monkeypatch.setattr(web_routes, '_spa_index_path', lambda: index_path)
+    client = TestClient(app)
+    assert client.get('/').headers.get('cache-control') == 'no-cache'
+    assert client.get('/service-worker.js').headers.get('cache-control') == 'no-cache'
+
+
+def test_frontend_build_uses_content_hashes_to_avoid_stale_scripts():
+    config = Path('frontend/vite.config.ts').read_text()
+    assert "entryFileNames: 'assets/app-[hash].js'" in config
+    assert "chunkFileNames: 'assets/[name]-[hash].js'" in config
+
+
+def test_legacy_spa_page_links_redirect_to_root_routes():
+    client = TestClient(app)
+    for old, new in [('/static/spa/', '/'), ('/static/spa/settings?tab=llm', '/settings?tab=llm'), ('/static/spa/runs/run-123', '/runs/run-123'), ('/static/spa/change-password', '/change-password')]:
+        response = client.get(old, follow_redirects=False)
+        assert response.status_code == 307
+        assert response.headers['location'] == new
+    assert client.get('/static/spa/assets/missing.js', follow_redirects=False).status_code == 404

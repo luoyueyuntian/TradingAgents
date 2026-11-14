@@ -6225,7 +6225,7 @@ async def get_service_worker():
     return FileResponse(
         path,
         media_type="application/javascript",
-        headers={"Service-Worker-Allowed": "/"},
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
     )
 
 
@@ -6261,7 +6261,7 @@ def _serve_spa_index() -> HTMLResponse:
             status_code=503,
             detail="Vue SPA assets are not built. Run `npm --prefix frontend run build`.",
         )
-    return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content=index_path.read_text(encoding="utf-8"), headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/", response_class=HTMLResponse)

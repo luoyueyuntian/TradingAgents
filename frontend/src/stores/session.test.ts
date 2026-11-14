@@ -126,21 +126,19 @@ describe('session store', () => {
     session.setApiToken('operator-token');
 
     await session.loadCurrentUser();
-    await session.login('tenant-a', 'alice', 'StrongPass123!');
+    await session.login('alice', 'StrongPass123!');
     await session.logout();
-    await session.changePassword('OldPass123!', 'NewPass456!');
+    await session.changePassword('NewPass456!');
     await session.requestPasswordReset('alice@example.com');
     await session.confirmPasswordReset('reset-123', '123456', 'NewPass456!');
 
     expect(apiGetMock).toHaveBeenCalledWith('/api/auth/me', {});
     expect(apiPostMock).toHaveBeenNthCalledWith(1, '/api/auth/login', {
-      tenant_id: 'tenant-a',
       identifier: 'alice',
       password: 'StrongPass123!',
     }, {});
     expect(apiPostMock).toHaveBeenNthCalledWith(2, '/api/auth/logout', {}, {});
     expect(apiPostMock).toHaveBeenNthCalledWith(3, '/api/auth/change-password', {
-      old_password: 'OldPass123!',
       new_password: 'NewPass456!',
     }, {});
     expect(apiPostMock).toHaveBeenNthCalledWith(4, '/api/auth/password-reset/request', {
@@ -170,7 +168,7 @@ describe('session store', () => {
   it.each([
     'Tenant is disabled',
     'Tenant has expired',
-  ])('clears the auth session when /api/auth/me reports an unavailable tenant: %s', async (detail) => {
+  ])('preserves the auth session for recovery when /api/auth/me reports an unavailable tenant: %s', async (detail) => {
     apiGetMock.mockRejectedValue(Object.assign(new Error(detail), { status: 403 }));
     const { useSession } = await loadSessionModule();
 
@@ -180,10 +178,9 @@ describe('session store', () => {
     session.state.passwordReset = { available: true, reset_id: 'reset-1', detail: 'Reset is available' };
 
     await expect(session.loadCurrentUser()).rejects.toThrow(detail);
-    expect(session.state.currentUser).toBeNull();
-    expect(session.state.sessionExpiresAt).toBe(0);
-    expect(session.state.passwordReset).toEqual({ available: false, reset_id: null, detail: null });
-    expect(session.state.error).toBe('');
+    expect(session.state.currentUser?.username).toBe('alice');
+    expect(session.state.sessionExpiresAt).toBe(1_751_500_800_000);
+    expect(session.state.error).toBe(detail);
   });
 
   it('preserves the auth session on unrelated forbidden /api/auth/me failures', async () => {
@@ -223,10 +220,9 @@ describe('session store', () => {
     const { useSession } = await loadSessionModule();
 
     const session = useSession();
-    await session.login(' tenant-a ', ' alice ', 'StrongPass123!');
+    await session.login(' alice ', 'StrongPass123!');
 
     expect(apiPostMock).toHaveBeenCalledWith('/api/auth/login', {
-      tenant_id: 'tenant-a',
       identifier: 'alice',
       password: 'StrongPass123!',
     }, {});
@@ -257,10 +253,9 @@ describe('session store', () => {
     const { useSession } = await loadSessionModule();
 
     const session = useSession();
-    await session.changePassword('OldPass123!', 'NewPass456!');
+    await session.changePassword('NewPass456!');
 
     expect(apiPostMock).toHaveBeenCalledWith('/api/auth/change-password', {
-      old_password: 'OldPass123!',
       new_password: 'NewPass456!',
     }, {});
     expect(session.mustChangePassword.value).toBe(false);
@@ -321,5 +316,34 @@ describe('session store', () => {
     expect(session.isAdmin.value).toBe(true);
     expect(session.canWrite.value).toBe(true);
     expect(session.canAnalyze.value).toBe(true);
+  });
+});
+
+
+describe('account tenant context', () => {
+  it('stores returned memberships and uses the active member role on switch', async () => {
+    apiGetMock.mockResolvedValue(makeAuthResponse());
+    const { useSession } = await loadSessionModule();
+    const session = useSession();
+    await session.loadCurrentUser();
+    apiPostMock.mockResolvedValue({ ...makeAuthResponse({ user: makeUser({ id: 'member-b', role: 'viewer', tenant_id: 'tenant-b' }) }),
+      tenants: [{ tenant_id: 'tenant-b', display_name: 'Tenant B', role: 'viewer', member_id: 'member-b' }] });
+    await session.switchTenant('tenant-b');
+    expect(apiPostMock).toHaveBeenCalledWith('/api/auth/switch-tenant', { tenant_id: 'tenant-b' }, {});
+    expect(session.state.tenants[0]?.display_name).toBe('Tenant B');
+    expect(session.state.currentMemberId).toBe('member-b');
+    expect(session.apiContext.value.tenantId).toBe('tenant-b');
+    expect(window.localStorage.getItem('tradingagents.sessionSwitch')).toBeTruthy();
+    expect(session.canWrite.value).toBe(false);
+  });
+
+  it('keeps the current context when switching fails', async () => {
+    apiGetMock.mockResolvedValue(makeAuthResponse());
+    const { useSession } = await loadSessionModule();
+    const session = useSession();
+    await session.loadCurrentUser();
+    apiPostMock.mockRejectedValue(new Error('Tenant membership is unavailable'));
+    await expect(session.switchTenant('outsider')).rejects.toThrow('unavailable');
+    expect(session.state.currentUser?.tenant_id).toBe('tenant-a');
   });
 });
