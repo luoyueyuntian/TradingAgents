@@ -18,6 +18,13 @@ type ApiErrorDetail = {
 
 const authInvalidationHandlers = new Set<ApiAuthInvalidationHandler>();
 
+let sessionTenantProvider: () => string | undefined = () => undefined;
+let tenantContextHandler: () => void = () => undefined;
+export function registerSessionTenantContext(provider: () => string | undefined, handler: () => void): void {
+  sessionTenantProvider = provider;
+  tenantContextHandler = handler;
+}
+
 export function buildApiUrl(path: string, context: ApiContext = {}): string {
   const url = new URL(path, window.location.origin);
   const tenantId = context.tenantId?.trim();
@@ -35,19 +42,9 @@ function withApiStatus(error: Error, response: Response): ApiRequestError {
   return Object.assign(error, { status: response.status });
 }
 
-function isTenantUnavailableError(error: ApiRequestError): boolean {
-  return error.status === 403 && /tenant (is disabled|has expired)/i.test(error.message);
-}
-
-function isCrossTenantAdminRequest(path: string): boolean {
-  return path.startsWith('/api/admin/tenants/');
-}
-
 function shouldInvalidateAuth(error: ApiRequestError, path: string): boolean {
-  if (!isTenantUnavailableError(error)) {
-    return false;
-  }
-  return !isCrossTenantAdminRequest(path);
+  // Tenant availability does not invalidate the account: the user can switch tenants.
+  return error.status === 401 && path !== '/api/auth/login';
 }
 
 function notifyAuthInvalidationHandlers(error: ApiRequestError, path: string): void {
@@ -112,11 +109,15 @@ async function apiRequest<T>(
   context: ApiContext = {},
   body?: RequestBody,
 ): Promise<T> {
+  const sessionTenant = path.startsWith('/api/auth/') ? undefined : sessionTenantProvider();
   const fetchImpl = context.fetchImpl || fetch;
   const init: RequestInit = {
     credentials: 'same-origin',
     headers: apiHeaders(context),
   };
+  if (sessionTenant !== undefined) {
+    (init.headers as Record<string, string>)['X-TradingAgents-Session-Tenant'] = sessionTenant;
+  }
   if (method !== 'GET') {
     init.method = method;
   }
@@ -127,6 +128,9 @@ async function apiRequest<T>(
   const response = await fetchImpl(buildApiUrl(path, context), init);
   if (!response.ok) {
     const error = await createApiError(response);
+    if (error.status === 409 && sessionTenant !== undefined && error.message === 'Tenant context changed; reload required') {
+      tenantContextHandler();
+    }
     notifyAuthInvalidationHandlers(error, path);
     throw error;
   }

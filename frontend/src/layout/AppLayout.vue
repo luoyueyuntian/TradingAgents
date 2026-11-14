@@ -40,7 +40,25 @@
 
     <div class="uno-min-w-0">
       <header class="uno-sticky uno-top-0 uno-z-10 uno-flex uno-min-h-[64px] uno-items-center uno-justify-between uno-gap-4 uno-border-b uno-border-[#dce7e7] uno-bg-white/90 uno-px-5 uno-py-3 uno-backdrop-blur-md max-[900px]:uno-flex-col max-[900px]:uno-items-stretch">
-        <div data-testid="header-start" class="uno-min-w-0" />
+        <div data-testid="header-start" class="uno-min-w-0">
+          <label class="uno-flex uno-items-center uno-gap-2 uno-text-sm">
+            <span>{{ t('topbar.currentTenant') }}</span>
+            <select
+              v-if="session.state.tenants?.length"
+              data-testid="tenant-switcher"
+              :aria-label="t('topbar.switchTenant')"
+              :value="session.state.currentUser?.tenant_id || ''"
+              :disabled="switchingTenant"
+              class="uno-max-w-[260px] uno-rounded-md uno-border uno-border-[#dce7e7] uno-bg-white uno-px-3 uno-py-2"
+              @change="handleTenantChange"
+            >
+              <option v-if="!session.state.currentUser?.tenant_id" value="" disabled>{{ t('topbar.chooseTenant') }}</option>
+              <option v-for="tenant in session.state.tenants" :key="tenant.tenant_id" :value="tenant.tenant_id">{{ tenant.display_name }}</option>
+            </select>
+            <span v-else>{{ t('topbar.noTenant') }}</span>
+          </label>
+          <p v-if="tenantSwitchError" role="alert" class="uno-m-0 uno-mt-1 uno-text-sm uno-text-red-700">{{ tenantSwitchError }}</p>
+        </div>
         <div data-testid="header-actions" class="uno-flex uno-flex-wrap uno-items-center uno-justify-end uno-gap-[0.55rem] max-[900px]:uno-w-full">
           <Button icon="pi pi-search" text rounded :aria-label="t('topbar.workspaceSearch')" @click="router.push('/workspace')" />
           <div ref="languageMenuRef" data-testid="language-menu" class="uno-relative">
@@ -91,25 +109,45 @@
             </button>
             <div
               v-if="userMenuOpen"
-              class="uno-absolute uno-right-0 uno-top-full uno-z-20 uno-grid uno-min-w-[240px] uno-gap-2 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3 uno-shadow-lg"
+              class="uno-absolute uno-right-0 uno-top-full uno-z-20 uno-min-w-[200px] uno-max-w-[280px] uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-py-1 uno-shadow-lg"
             >
-              <div class="uno-min-w-0">
-                <strong class="uno-block uno-truncate uno-text-[#132a2d]">{{ currentUserName }}</strong>
-                <small class="uno-block uno-truncate uno-text-[#6f8183]">
-                  {{ t(roleLabelKey) }}
-                </small>
-                <small class="uno-block uno-truncate uno-text-[#6f8183]">
+              <div class="uno-min-w-0 uno-border-b uno-border-[#e8eeee] uno-px-3 uno-py-2">
+                <div class="uno-flex uno-items-center uno-gap-2 uno-text-[13px] uno-leading-5">
+                  <strong class="uno-min-w-0 uno-flex-1 uno-truncate uno-text-[#132a2d]">{{ currentUserName }}</strong>
+                  <span class="uno-shrink-0 uno-text-xs uno-text-[#6f8183]">{{ t(roleLabelKey) }}</span>
+                </div>
+                <p class="uno-m-0 uno-truncate uno-text-xs uno-leading-5 uno-text-[#6f8183]">
                   {{ t('topbar.tenantValue', { tenant: session.state.currentUser?.tenant_id || t('common.notSet') }) }}
-                </small>
+                </p>
               </div>
-              <Button icon="pi pi-sign-out" :label="t('auth.logout')" severity="secondary" class="uno-w-full" @click="handleLogout" />
+              <nav class="uno-py-1" :aria-label="t('profile.title')">
+                <RouterLink
+                  to="/profile"
+                  class="uno-flex uno-min-h-[32px] uno-items-center uno-gap-2 uno-px-3 uno-py-1 uno-text-[13px] uno-text-[#243a3d] uno-no-underline hover:uno-bg-[#f1f5f5] focus-visible:uno-bg-[#f1f5f5]"
+                  @click="userMenuOpen = false"
+                >
+                  <i class="pi pi-user uno-text-sm" aria-hidden="true" />
+                  <span>{{ t('profile.title') }}</span>
+                </RouterLink>
+                <button
+                  type="button"
+                  class="uno-flex uno-min-h-[32px] uno-w-full uno-cursor-pointer uno-items-center uno-gap-2 uno-border-0 uno-bg-transparent uno-px-3 uno-py-1 uno-text-left uno-font-inherit uno-text-[13px] uno-text-[#243a3d] hover:uno-bg-[#f1f5f5] focus-visible:uno-bg-[#f1f5f5]"
+                  @click="handleLogout"
+                >
+                  <i class="pi pi-sign-out uno-text-sm" aria-hidden="true" />
+                  <span>{{ t('auth.logout') }}</span>
+                </button>
+              </nav>
             </div>
           </div>
         </div>
       </header>
 
       <main class="uno-w-full uno-p-5">
-        <RouterView />
+        <div v-if="session.state.currentUser && !session.state.currentUser.tenant_id && route.path !== '/profile'" role="status" class="uno-rounded-lg uno-bg-white uno-p-6">
+          {{ t('topbar.noTenantHelp') }}
+        </div>
+        <RouterView v-else />
       </main>
     </div>
   </div>
@@ -133,6 +171,27 @@ const { locale, locales, t } = useI18n();
 const languageMenuOpen = ref(false);
 const languageMenuRef = ref<HTMLElement | null>(null);
 const userMenuOpen = ref(false);
+const switchingTenant = ref(false);
+const tenantSwitchError = ref('');
+
+async function handleTenantChange(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const tenantId = select.value;
+  const previous = session.state.currentUser?.tenant_id || '';
+  if (tenantId === previous) return;
+  switchingTenant.value = true;
+  tenantSwitchError.value = '';
+  try {
+    await session.switchTenant(tenantId);
+    // A fresh document tears down tenant-scoped stores, subscriptions and in-flight callbacks.
+    window.location.assign('/');
+  } catch (error) {
+    tenantSwitchError.value = error instanceof Error ? error.message : String(error);
+    select.value = previous;
+    switchingTenant.value = false;
+  }
+}
+
 
 const visibleNavigationSections = computed(() => navigationSections.map((section) => ({
   ...section,

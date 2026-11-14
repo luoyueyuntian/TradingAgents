@@ -183,7 +183,9 @@ def test_ensure_schema_creates_auth_tables_and_enables_wal(tmp_path):
     assert set(EXPECTED_SCHEMA).issubset(table_names)
     assert journal_mode == "wal"
     for table_name, expected_columns in EXPECTED_SCHEMA.items():
-        assert _table_columns(db_path, table_name) == expected_columns
+        assert _table_columns(db_path, table_name) == expected_columns + (
+            {"users": ["account_id"], "sessions": ["active_tenant_id"]}.get(table_name, [])
+        )
     assert _table_info_by_column(db_path, "users")["tenant_id"][3] == 1
 
 
@@ -348,7 +350,7 @@ def test_soft_deleted_user_still_blocks_reuse_in_same_tenant(tmp_path):
 
     store.delete_user(user.id)
 
-    with pytest.raises(ValueError, match="username already exists"):
+    with pytest.raises(ValueError, match="username.*already exists"):
         _create_user(
             store,
             username="reused",
@@ -392,7 +394,7 @@ def test_create_user_rejects_duplicate_username_and_email_case_insensitively(tmp
             email="alice2@example.com",
         )
 
-    with pytest.raises(ValueError, match="email"):
+    with pytest.raises(ValueError, match="username|email"):
         _create_user(
             store,
             username="alice2",
@@ -510,7 +512,7 @@ def test_create_and_update_user_reject_malformed_or_naive_expiry(tmp_path):
         store.update_user(user.id, expires_at="not-a-timestamp")
 
 
-def test_delete_user_soft_deletes_user_and_removes_only_their_sessions(
+def test_delete_member_preserves_account_session_without_tenant(
     monkeypatch,
     tmp_path,
 ):
@@ -539,8 +541,9 @@ def test_delete_user_soft_deletes_user_and_removes_only_their_sessions(
     assert deleted.updated_at == int(deleted_at.timestamp() * 1000)
     assert store.get_user(alice.id) == deleted
     assert store.get_user(bob.id) == bob
-    assert store.get_session(alice_raw_one) is None
-    assert store.get_session(alice_raw_two) is None
+    assert store.get_session(alice_raw_one) is not None
+    assert store.get_session(alice_raw_two) is not None
+    assert store.get_session_user(alice_raw_one).tenant_id == ""
     assert store.get_session(bob_raw) == bob_session
 
 
@@ -591,7 +594,7 @@ def test_create_session_hashes_raw_session_id_and_rejects_expired_sessions(
     assert store.get_session("expired-session-id") is None
 
 
-def test_create_session_rejects_disabled_or_expired_users(tmp_path):
+def test_create_session_allows_disabled_or_expired_memberships(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     disabled = _create_user(
         store,
@@ -606,13 +609,13 @@ def test_create_session_rejects_disabled_or_expired_users(tmp_path):
         expires_at="2000-01-01T00:00:00+00:00",
     )
 
-    with pytest.raises(ValueError, match="user not active"):
-        store.create_session(disabled.id)
-    with pytest.raises(ValueError, match="user not active"):
-        store.create_session(expired.id)
+    for member in (disabled, expired):
+        raw, session = store.create_session(member.id)
+        assert session.user_id == member.account_id
+        assert store.get_session_user(raw).tenant_id == ""
 
 
-def test_get_and_touch_session_return_none_when_linked_user_disabled_or_expired(
+def test_account_session_survives_disabled_or_expired_membership(
     monkeypatch,
     tmp_path,
 ):
@@ -644,10 +647,12 @@ def test_get_and_touch_session_return_none_when_linked_user_disabled_or_expired(
             ("2000-01-01T00:00:00+00:00", expired_user.id),
         )
 
-    assert store.get_session(disabled_raw_session_id) is None
-    assert store.touch_session(disabled_raw_session_id) is None
-    assert store.get_session(expired_raw_session_id) is None
-    assert store.touch_session(expired_raw_session_id) is None
+    assert store.get_session(disabled_raw_session_id) is not None
+    assert store.get_session_user(disabled_raw_session_id).tenant_id == ""
+    assert store.touch_session(disabled_raw_session_id) is not None
+    assert store.get_session(expired_raw_session_id) is not None
+    assert store.get_session_user(expired_raw_session_id).tenant_id == ""
+    assert store.touch_session(expired_raw_session_id) is not None
 
 
 def test_delete_session_and_delete_sessions_for_user(monkeypatch, tmp_path):
@@ -675,7 +680,7 @@ def test_delete_session_and_delete_sessions_for_user(monkeypatch, tmp_path):
     assert store.get_session(bob_raw) == bob_session
 
 
-def test_update_user_disabled_invalidates_sessions(monkeypatch, tmp_path):
+def test_disable_member_preserves_identity_session(monkeypatch, tmp_path):
     store = UserStore(tmp_path / "auth.db")
     user = _create_user(store)
     monkeypatch.setattr(
@@ -689,7 +694,8 @@ def test_update_user_disabled_invalidates_sessions(monkeypatch, tmp_path):
     updated = store.update_user(user.id, disabled=True)
 
     assert updated.disabled is True
-    assert store.get_session(raw_session_id) is None
+    assert store.get_session(raw_session_id) is not None
+    assert store.get_session_user(raw_session_id).tenant_id == ""
 
 
 def test_update_user_and_delete_sessions_updates_password_and_invalidates_sessions(
@@ -840,7 +846,7 @@ def test_password_reset_tokens_track_attempts_used_at_and_expiry(tmp_path):
     assert store.get_password_reset_token(expired.id) is None
 
 
-def test_create_password_reset_token_rejects_disabled_or_expired_users(tmp_path):
+def test_password_recovery_allows_disabled_or_expired_memberships(tmp_path):
     store = UserStore(tmp_path / "auth.db")
     disabled = _create_user(
         store,
@@ -855,13 +861,17 @@ def test_create_password_reset_token_rejects_disabled_or_expired_users(tmp_path)
         expires_at="2000-01-01T00:00:00+00:00",
     )
 
-    with pytest.raises(ValueError, match="user not active"):
-        store.create_password_reset_token(disabled.id, "disabled-code-hash")
-    with pytest.raises(ValueError, match="user not active"):
-        store.create_password_reset_token(expired.id, "expired-code-hash")
+    assert (
+        store.create_password_reset_token(disabled.id, "disabled-code-hash").user_id
+        == disabled.account_id
+    )
+    assert (
+        store.create_password_reset_token(expired.id, "expired-code-hash").user_id
+        == expired.account_id
+    )
 
 
-def test_password_reset_token_becomes_unusable_when_user_is_disabled_or_expired(
+def test_password_reset_token_survives_disabled_or_expired_membership(
     tmp_path,
 ):
     db_path = tmp_path / "auth.db"
@@ -892,16 +902,10 @@ def test_password_reset_token_becomes_unusable_when_user_is_disabled_or_expired(
             ("2000-01-01T00:00:00+00:00", expired_user.id),
         )
 
-    assert store.get_password_reset_token(disabled_token.id) is None
-    assert store.get_password_reset_token(expired_token.id) is None
-    with pytest.raises(ValueError, match="user not active"):
-        store.increment_password_reset_attempts(disabled_token.id)
-    with pytest.raises(ValueError, match="user not active"):
-        store.increment_password_reset_attempts(expired_token.id)
-    with pytest.raises(ValueError, match="user not active"):
-        store.mark_password_reset_token_used(disabled_token.id)
-    with pytest.raises(ValueError, match="user not active"):
-        store.mark_password_reset_token_used(expired_token.id)
+    for token in (disabled_token, expired_token):
+        assert store.get_password_reset_token(token.id) is not None
+        assert store.increment_password_reset_attempts(token.id).attempt_count == 1
+        assert store.mark_password_reset_token_used(token.id).used_at is not None
 
 
 def test_used_password_reset_token_is_not_publicly_retrievable_or_reusable(tmp_path):
@@ -1038,10 +1042,15 @@ def test_deleted_admin_no_longer_counts_toward_last_admin_guard(tmp_path):
     [
         ({"disabled": True}, "Cannot remove the last active admin from tenant"),
         ({"role": "viewer"}, "Cannot remove the last active admin from tenant"),
-        ({"expires_at": "2000-01-01T00:00:00+00:00"}, "Cannot remove the last active admin from tenant"),
+        (
+            {"expires_at": "2000-01-01T00:00:00+00:00"},
+            "Cannot remove the last active admin from tenant",
+        ),
     ],
 )
-def test_update_user_transactionally_protects_last_active_admin(tmp_path, updates, expected_message):
+def test_update_user_transactionally_protects_last_active_admin(
+    tmp_path, updates, expected_message
+):
     store = UserStore(tmp_path / "auth.db")
     sole_admin = _create_user(
         store,
@@ -1274,7 +1283,9 @@ def test_update_tenant_transactionally_protects_last_login_capable_admin_tenant(
     )
     store.update_tenant("tenant-a", disabled=True)
 
-    with pytest.raises(ValueError, match="Cannot disable or expire the last tenant with a login-capable admin"):
+    with pytest.raises(
+        ValueError, match="Cannot disable or expire the last tenant with a login-capable admin"
+    ):
         store.update_tenant("tenant-b", disabled=True)
 
     tenant_b = store.get_tenant("tenant-b")

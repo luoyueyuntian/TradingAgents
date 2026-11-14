@@ -59,6 +59,7 @@ describe('page registry', () => {
       'tenants',
       'tenant-detail',
       'users',
+      'profile',
       'login',
       'change-password',
     ]);
@@ -71,7 +72,7 @@ describe('page registry', () => {
     expect(routes.find((route) => route.path === '/tenants')?.meta?.minRole).toBe('admin');
     expect(routes.find((route) => route.path === '/tenants/:tenantId')?.meta?.minRole).toBe('admin');
     expect(routes.find((route) => route.path === '/users')?.meta?.minRole).toBe('admin');
-    expect(routes.filter((route) => route.meta?.requiresAuth).length).toBe(16);
+    expect(routes.filter((route) => route.meta?.requiresAuth).length).toBe(17);
   });
 
   it('keeps tenant route modules lazy-loadable until used', async () => {

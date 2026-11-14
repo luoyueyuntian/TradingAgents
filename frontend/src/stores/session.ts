@@ -4,6 +4,7 @@ import {
   apiGet,
   apiPost,
   registerApiAuthInvalidationHandler,
+  registerSessionTenantContext,
   type ApiContext,
   type ApiRequestError,
 } from '../services/api';
@@ -21,6 +22,8 @@ type PasswordResetAvailability = {
 };
 
 type AuthUser = {
+  account_id?: string;
+  member_id?: string | null;
   id: string;
   username: string;
   email: string;
@@ -31,7 +34,15 @@ type AuthUser = {
   must_change_password: boolean;
 };
 
+export type TenantMembership = {
+  tenant_id: string;
+  display_name: string;
+  role: string;
+  member_id: string;
+};
+
 type AuthSessionResponse = {
+  tenants?: TenantMembership[];
   user: AuthUser;
   session_expires_at: number;
   password_reset: PasswordResetAvailability;
@@ -42,6 +53,7 @@ type PasswordResetConfirmResult = {
 };
 
 type SessionState = {
+  tenants: TenantMembership[];
   tenantId: string;
   apiToken: string;
   currentMemberId: string;
@@ -79,6 +91,7 @@ function defaultPasswordReset(): PasswordResetAvailability {
 }
 
 const state = reactive<SessionState>({
+  tenants: [],
   tenantId: readStorage(TENANT_STORAGE_KEY),
   apiToken: readStorage(API_TOKEN_STORAGE_KEY),
   currentMemberId: readStorage(CURRENT_MEMBER_STORAGE_KEY),
@@ -88,6 +101,28 @@ const state = reactive<SessionState>({
   loading: false,
   error: '',
 });
+
+const SESSION_SWITCH_KEY = 'tradingagents.sessionSwitch';
+registerSessionTenantContext(
+  () => state.currentUser ? state.currentUser.tenant_id : undefined,
+  () => window.location.assign('/'),
+);
+window.addEventListener('storage', (event) => {
+  if (event.key === SESSION_SWITCH_KEY && state.currentUser) window.location.assign('/');
+});
+async function revalidateTabTenant(): Promise<void> {
+  if (!state.currentUser) return;
+  const expectedTenant = state.currentUser.tenant_id;
+  try {
+    const payload = await apiGet<AuthSessionResponse>('/api/auth/me', {});
+    if (payload.user.tenant_id !== expectedTenant) window.location.assign('/');
+  } catch {
+    // Authentication failures are handled by the API invalidation handler.
+  }
+}
+window.addEventListener('focus', () => { void revalidateTabTenant(); });
+window.addEventListener('pageshow', () => { void revalidateTabTenant(); });
+
 
 let authInvalidationHandlerRegistered = false;
 
@@ -112,6 +147,7 @@ function clearCurrentMemberId() {
 
 function applyAuthSession(payload: AuthSessionResponse) {
   state.currentUser = payload.user;
+  state.tenants = payload.tenants ?? [];
   state.sessionExpiresAt = payload.session_expires_at;
   state.passwordReset = {
     available: payload.password_reset.available,
@@ -119,11 +155,12 @@ function applyAuthSession(payload: AuthSessionResponse) {
     detail: payload.password_reset.detail ?? null,
   };
   state.error = '';
-  setCurrentMemberId(payload.user.id);
+  setCurrentMemberId(payload.user.member_id === null ? '' : payload.user.member_id ?? payload.user.id);
 }
 
 function clearAuthSession() {
   state.currentUser = null;
+  state.tenants = [];
   state.sessionExpiresAt = 0;
   state.passwordReset = defaultPasswordReset();
   state.error = '';
@@ -148,17 +185,6 @@ function isUnauthorizedError(error: unknown): error is ApiRequestError {
   return requestError.status === 401 || /unauthorized/i.test(error.message);
 }
 
-function isTenantUnavailableSessionError(error: unknown): error is ApiRequestError {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const requestError = error as Partial<ApiRequestError>;
-  if (requestError.status !== 403) {
-    return false;
-  }
-  return /tenant (is disabled|has expired)/i.test(error.message);
-}
-
 async function withLoading<T>(operation: () => Promise<T>): Promise<T> {
   state.loading = true;
   try {
@@ -174,8 +200,9 @@ export function useSession() {
   const authApiContext: ApiContext = {};
   const apiContext = computed<ApiContext>(() => {
     const context: ApiContext = {};
-    if (state.tenantId) {
-      context.tenantId = state.tenantId;
+    const tenantId = state.currentUser ? state.currentUser.tenant_id : state.tenantId;
+    if (tenantId) {
+      context.tenantId = tenantId;
     }
     if (state.apiToken) {
       context.apiToken = state.apiToken;
@@ -191,7 +218,7 @@ export function useSession() {
         applyAuthSession(payload);
         return payload;
       } catch (error) {
-        if (isUnauthorizedError(error) || isTenantUnavailableSessionError(error)) {
+        if (isUnauthorizedError(error)) {
           clearAuthSession();
         } else if (error instanceof Error) {
           state.error = error.message;
@@ -201,12 +228,11 @@ export function useSession() {
     });
   }
 
-  async function login(tenantId: string, identifier: string, password: string): Promise<AuthSessionResponse> {
+  async function login(identifier: string, password: string): Promise<AuthSessionResponse> {
     state.error = '';
     return withLoading(async () => {
       try {
         const payload = await apiPost<AuthSessionResponse>('/api/auth/login', {
-          tenant_id: tenantId.trim(),
           identifier: identifier.trim(),
           password,
         }, authApiContext);
@@ -216,6 +242,23 @@ export function useSession() {
         if (error instanceof Error) {
           state.error = error.message;
         }
+        throw error;
+      }
+    });
+  }
+
+  async function switchTenant(tenantId: string): Promise<AuthSessionResponse> {
+    state.error = '';
+    return withLoading(async () => {
+      try {
+        const payload = await apiPost<AuthSessionResponse>('/api/auth/switch-tenant', {
+          tenant_id: tenantId,
+        }, authApiContext);
+        applyAuthSession(payload);
+        writeStorage(SESSION_SWITCH_KEY, `${Date.now()}:${Math.random()}`);
+        return payload;
+      } catch (error) {
+        state.error = error instanceof Error ? error.message : String(error);
         throw error;
       }
     });
@@ -232,12 +275,11 @@ export function useSession() {
     });
   }
 
-  async function changePassword(oldPassword: string, newPassword: string): Promise<AuthSessionResponse> {
+  async function changePassword(newPassword: string): Promise<AuthSessionResponse> {
     state.error = '';
     return withLoading(async () => {
       try {
         const payload = await apiPost<AuthSessionResponse>('/api/auth/change-password', {
-          old_password: oldPassword,
           new_password: newPassword,
         }, authApiContext);
         applyAuthSession(payload);
@@ -302,6 +344,7 @@ export function useSession() {
     setCurrentMemberId,
     loadCurrentUser,
     login,
+    switchTenant,
     logout,
     changePassword,
     requestPasswordReset,

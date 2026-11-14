@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from tradingagents.service.web_state import (
@@ -33,6 +33,7 @@ from .permissions import (
     is_public_path,
     required_role_for_request,
 )
+from .profile_routes import router as profile_router
 from .routes import router
 from .runner import (
     ensure_worker_started,
@@ -86,9 +87,26 @@ app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
 # Include API routes
 app.include_router(auth_router)
+app.include_router(profile_router)
 app.include_router(admin_tenant_router)
 app.include_router(admin_user_router)
 app.include_router(router)
+
+
+@app.middleware("http")
+async def _redirect_legacy_spa_pages(request, call_next):
+    # Old clients used the asset base as the history base. Redirect only page
+    # paths, leaving actual static files and missing assets to StaticFiles.
+    prefix = "/static/spa/"
+    if request.method in {"GET", "HEAD"} and request.url.path.startswith(prefix):
+        page = request.url.path[len(prefix):]
+        first = page.split("/", 1)[0]
+        if first in {"", "login", "change-password", "analysis", "runs", "portfolio", "workspace", "automations", "settings", "tenants", "users", "profile"}:
+            target = "/" + page
+            if request.url.query:
+                target += "?" + request.url.query
+            return RedirectResponse(target, status_code=307, headers={"Cache-Control": "no-cache"})
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -112,18 +130,21 @@ async def _resolve_request_auth(request, call_next):
         return await call_next(request)
 
     if session_user is not None:
-        try:
-            _ensure_tenant_allows_access(UserStore(get_web_auth_db_path()), session_user.tenant_id)
-        except HTTPException as exc:
-            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         if session_user.must_change_password and not is_password_change_allowed_path(path, method):
             return JSONResponse(
-                {
-                    "code": "password_change_required",
-                    "detail": "Password change required",
-                },
+                {"code": "password_change_required", "detail": "Password change required"},
                 status_code=403,
             )
+        if not is_auth_path(path, method):
+            marker = request.headers.get("X-TradingAgents-Session-Tenant") or request.headers.get("X-TradingAgents-Tenant") or request.query_params.get("tenant_id")
+            if marker is not None and marker != session_user.tenant_id:
+                return JSONResponse({"code": "tenant_context_mismatch", "detail": "Tenant context changed; reload required"}, status_code=409)
+            if not session_user.tenant_id:
+                return JSONResponse({"detail": "No accessible tenant membership"}, status_code=403)
+            try:
+                _ensure_tenant_allows_access(UserStore(get_web_auth_db_path()), session_user.tenant_id)
+            except HTTPException as exc:
+                return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         required_role = required_role_for_request(path, method)
         if not has_required_role(session_user.role, required_role):
             return JSONResponse({"detail": "Forbidden"}, status_code=403)

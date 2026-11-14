@@ -1,9 +1,7 @@
-const CACHE_NAME = 'tradingagents-spa-v1';
+const CACHE_NAME = 'tradingagents-spa-v2';
 const APP_SHELL_ASSETS = [
     '/',
     '/static/spa/index.html',
-    '/static/spa/assets/app.js',
-    '/static/spa/assets/index.css',
     '/static/app.webmanifest',
     '/static/icons/app-icon.svg',
 ];
@@ -25,7 +23,7 @@ self.addEventListener('activate', (event) => {
 });
 
 function fetchAndCache(request) {
-    return fetch(request).then((response) => {
+    return fetch(request, { cache: 'no-cache' }).then((response) => {
         if (!response || response.status !== 200 || response.type === 'opaque') {
             return response;
         }
@@ -50,7 +48,7 @@ self.addEventListener('fetch', (event) => {
 
     if (request.mode === 'navigate') {
         event.respondWith(
-            fetch(request).catch(async () => {
+            fetch(request, { cache: 'no-cache' }).catch(async () => {
                 const cache = await caches.open(CACHE_NAME);
                 return cache.match('/') || Response.error();
             })

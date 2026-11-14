@@ -60,6 +60,12 @@ class UserRecord:
     created_at: int
     updated_at: int
     last_login_at: int | None
+    account_id: str = ""
+    requires_password_reset: bool = False
+
+    @property
+    def member_id(self) -> str:
+        return self.id if self.tenant_id else ""
 
 
 @dataclass(frozen=True)
@@ -69,6 +75,7 @@ class SessionRecord:
     created_at: int
     last_seen_at: int
     expires_at: int
+    active_tenant_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -226,6 +233,7 @@ def _user_from_row(row: sqlite3.Row) -> UserRecord:
         created_at=coerce_timestamp_ms(row["created_at"]) or 0,
         updated_at=coerce_timestamp_ms(row["updated_at"]) or 0,
         last_login_at=coerce_timestamp_ms(row["last_login_at"]),
+        account_id=row["account_id"] if "account_id" in row.keys() else row["id"],
     )
 
 
@@ -244,6 +252,7 @@ def _tenant_from_row(row: sqlite3.Row) -> TenantRecord:
 
 def _session_from_row(row: sqlite3.Row) -> SessionRecord:
     return SessionRecord(
+        active_tenant_id=row["active_tenant_id"] if "active_tenant_id" in row.keys() else None,
         id_hash=row["id_hash"],
         user_id=row["user_id"],
         created_at=coerce_timestamp_ms(row["created_at"]) or 0,
@@ -281,7 +290,10 @@ def user_is_expired(user: UserRecord) -> bool:
     return user.expires_at is not None and _is_expired(user.expires_at)
 
 
-class UserStore:
+from web.account_store import AccountStoreMixin
+
+
+class UserStore(AccountStoreMixin):
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
 
@@ -302,8 +314,16 @@ class UserStore:
 
     def ensure_schema(self) -> None:
         with self._connect() as conn:
+            if conn.execute("PRAGMA user_version").fetchone()[0] == 1:
+                return
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute("PRAGMA user_version").fetchone()[0] == 1:
+                return
             self._ensure_auth_schema(conn)
             self._backfill_tenants_if_needed(conn)
+            self._ensure_accounts(conn)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_users_account_tenant ON users(account_id,tenant_id)")
+            conn.execute("PRAGMA user_version=1")
 
     def _ensure_auth_schema(self, conn: sqlite3.Connection) -> None:
         conn.execute(
@@ -804,6 +824,7 @@ class UserStore:
             except sqlite3.IntegrityError as exc:
                 raise ValueError("username or email already exists") from exc
 
+            self._ensure_accounts(conn)
             return (
                 self._get_tenant_by_tenant_id(conn, normalized_tenant_id),
                 self._get_user_by_id(conn, resolved_user_id),
@@ -927,6 +948,19 @@ class UserStore:
         resolved_user_id = user_id or uuid.uuid4().hex
 
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            existing = next((r for r in conn.execute("SELECT * FROM accounts") if r["email"].casefold() == normalized_email.casefold()), None)
+            if existing:
+                normalized_username = existing["username"]
+                normalized_email = existing["email"]
+                normalized_display_name = existing["display_name"]
+                normalized_password_hash = existing["password_hash"]
+                normalized_password_salt = existing["password_salt"]
+                normalized_password_updated_at = existing["password_updated_at"]
+                must_change_password = bool(existing["must_change_password"])
+            else:
+                if any(normalized_username.casefold() in (r["username"].casefold(), r["email"].casefold()) or normalized_email.casefold() == r["username"].casefold() for r in conn.execute("SELECT * FROM accounts")):
+                    raise ValueError("username or email already exists")
             self._get_tenant_by_tenant_id(conn, normalized_tenant_id)
             self._raise_for_duplicate_user_field(
                 conn,
@@ -983,6 +1017,10 @@ class UserStore:
                 )
             except sqlite3.IntegrityError as exc:
                 raise ValueError("username or email already exists") from exc
+            if existing:
+                conn.execute("UPDATE users SET account_id=? WHERE id=?", (existing["id"], resolved_user_id))
+            else:
+                self._ensure_accounts(conn)
             return self._get_user_by_id(conn, resolved_user_id)
 
     def get_user(self, user_id: str) -> UserRecord | None:
@@ -1094,6 +1132,9 @@ class UserStore:
         self.ensure_schema()
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            shared = {k:v for k,v in fields.items() if k in ("username", "email", "display_name", "password_hash", "password_salt", "password_updated_at", "must_change_password", "last_login_at")}
+            if shared:
+                self._update_account_in_connection(conn, self._resolve_account_id(conn, user_id), shared)
             self._update_user_in_transaction(conn, user_id, fields)
             return self._get_user_by_id(conn, user_id)
 
@@ -1125,7 +1166,6 @@ class UserStore:
                 """,
                 (_utc_now(), _utc_now(), user_id),
             )
-            conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
             return self._get_user_by_id(conn, user_id)
 
     def _get_user_by_id(self, conn: sqlite3.Connection, user_id: str) -> UserRecord:
@@ -1221,8 +1261,11 @@ class UserStore:
             f"UPDATE users SET {assignments} WHERE id = ?",
             (*updates.values(), user_id),
         )
-        if delete_sessions or updates.get("disabled") == 1:
-            conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        shared = {k:v for k,v in updates.items() if k in ("username", "email", "display_name", "password_hash", "password_salt", "password_updated_at", "must_change_password", "last_login_at")}
+        if shared:
+            self._update_account_in_connection(conn, self._resolve_account_id(conn, user_id), shared)
+        if delete_sessions:
+            conn.execute("DELETE FROM sessions WHERE user_id = ?", (self._resolve_account_id(conn, user_id),))
 
     def _would_remove_last_active_admin_in_connection(
         self,
@@ -1483,7 +1526,7 @@ class UserStore:
             )
         return event_id
 
-    def create_session(
+    def _legacy_create_session(
         self,
         user_id: str,
         *,
@@ -1533,7 +1576,7 @@ class UserStore:
             if row is None or _is_expired(row["expires_at"]):
                 return None
             user = conn.execute(
-                "SELECT * FROM users WHERE id = ?",
+                "SELECT * FROM accounts WHERE id = ?",
                 (row["user_id"],),
             ).fetchone()
             if user is None or not _user_row_is_active(user):
@@ -1557,7 +1600,7 @@ class UserStore:
             if row is None or _is_expired(row["expires_at"]):
                 return None
             user = conn.execute(
-                "SELECT * FROM users WHERE id = ?",
+                "SELECT * FROM accounts WHERE id = ?",
                 (row["user_id"],),
             ).fetchone()
             if user is None or not _user_row_is_active(user):
@@ -1590,6 +1633,7 @@ class UserStore:
     def delete_sessions_for_user(self, user_id: str) -> int:
         self.ensure_schema()
         with self._connect() as conn:
+            user_id = self._resolve_account_id(conn, user_id)
             cursor = conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
         return int(cursor.rowcount)
 
@@ -1607,7 +1651,12 @@ class UserStore:
         expires_at = created_at + timedelta(seconds=ttl_seconds)
 
         with self._connect() as conn:
-            self._get_active_user_row_by_id(conn, user_id)
+            user_id = self._resolve_account_id(conn, user_id)
+            account = conn.execute("SELECT * FROM accounts WHERE id=?", (user_id,)).fetchone()
+            if account is None:
+                raise ValueError("account not found")
+            if not _user_row_is_active(account):
+                raise ValueError("account not active")
             conn.execute(
                 """
                 INSERT INTO password_reset_tokens (
@@ -1648,7 +1697,7 @@ class UserStore:
             ):
                 return None
             user = conn.execute(
-                "SELECT * FROM users WHERE id = ?",
+                "SELECT * FROM accounts WHERE id = ?",
                 (row["user_id"],),
             ).fetchone()
             if user is None or not _user_row_is_active(user):
@@ -1664,7 +1713,8 @@ class UserStore:
             token = self._get_password_reset_token_by_id(conn, token_id)
             if _is_expired(token.expires_at):
                 raise ValueError("password reset token expired")
-            self._get_active_user_row_by_id(conn, token.user_id)
+            if conn.execute("SELECT id FROM accounts WHERE id=?", (token.user_id,)).fetchone() is None:
+                raise ValueError("account not found")
             if token.used_at is not None:
                 raise ValueError("password reset token already used")
             if token.attempt_count >= PASSWORD_RESET_MAX_ATTEMPTS:
@@ -1693,7 +1743,8 @@ class UserStore:
             token = self._get_password_reset_token_by_id(conn, token_id)
             if _is_expired(token.expires_at):
                 raise ValueError("password reset token expired")
-            self._get_active_user_row_by_id(conn, token.user_id)
+            if conn.execute("SELECT id FROM accounts WHERE id=?", (token.user_id,)).fetchone() is None:
+                raise ValueError("account not found")
             if token.used_at is not None:
                 raise ValueError("password reset token already used")
             if token.attempt_count >= PASSWORD_RESET_MAX_ATTEMPTS:

@@ -454,6 +454,22 @@ class AdminManagedUserCreate(BaseModel):
         return _normalize_blank_optional_string(value)
 
 
+class AdminMembershipCreate(BaseModel):
+    email: str = Field(..., min_length=1)
+    role: str = Field(..., min_length=1)
+    expires_at: OptionalTimestampMs = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _email(cls, value: str) -> str:
+        return _normalize_email(value)
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def _role(cls, value: str) -> str:
+        return _normalize_role(value)
+
+
 class AdminUserUpdate(BaseModel):
     display_name: str | None = None
     email: str | None = None
@@ -2941,17 +2957,8 @@ class ArtifactContent(BaseModel):
 
 
 class AuthLoginRequest(BaseModel):
-    tenant_id: str | None = None
     identifier: str = Field(..., min_length=1)
     password: str = Field(..., min_length=1)
-
-    @field_validator("tenant_id", mode="before")
-    @classmethod
-    def _strip_optional_tenant_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        trimmed = value.strip()
-        return trimmed or None
 
     @field_validator("identifier", "password")
     @classmethod
@@ -2963,6 +2970,8 @@ class AuthLoginRequest(BaseModel):
 
 
 class AuthUser(BaseModel):
+    account_id: str = ""
+    member_id: str | None = None
     id: str
     username: str
     email: str
@@ -2979,17 +2988,28 @@ class PasswordResetAvailability(BaseModel):
     detail: str | None = None
 
 
+class AuthTenantMembership(BaseModel):
+    tenant_id: str
+    display_name: str
+    role: str
+    member_id: str
+
+
+class SwitchTenantRequest(BaseModel):
+    tenant_id: str = Field(..., min_length=1, max_length=64)
+
+
 class AuthMeResponse(BaseModel):
+    tenants: list[AuthTenantMembership] = Field(default_factory=list)
     user: AuthUser
     session_expires_at: TimestampMs
     password_reset: PasswordResetAvailability
 
 
 class ChangePasswordRequest(BaseModel):
-    old_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=1)
 
-    @field_validator("old_password", "new_password")
+    @field_validator("new_password")
     @classmethod
     def _strip_required_password_fields(cls, value: str) -> str:
         trimmed = value.strip()

@@ -2,13 +2,13 @@
   <Dialog
     :visible="visible"
     modal
-    :header="mode === 'create' ? t('users.createUser') : t('common.edit')"
+    :header="existingAccount ? t('users.addExistingAccount') : mode === 'create' ? t('users.createUser') : t('common.edit')"
     :style="{ width: 'min(640px, 94vw)' }"
     @update:visible="emit('update:visible', $event)"
   >
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <div class="uno-grid uno-gap-4">
-      <label class="uno-grid uno-gap-[0.35rem]">
+      <label v-if="!existingAccount" class="uno-grid uno-gap-[0.35rem]">
         <span class="uno-text-[#6f8183]">{{ t('users.username') }}</span>
         <InputText
           v-model="form.username"
@@ -18,11 +18,12 @@
         />
       </label>
 
-      <label class="uno-grid uno-gap-[0.35rem]">
+      <label v-if="!existingAccount" class="uno-grid uno-gap-[0.35rem]">
         <span class="uno-text-[#6f8183]">{{ t('users.displayName') }}</span>
         <InputText
           v-model="form.display_name"
           data-testid="user-form-display-name"
+          :readonly="mode === 'edit'"
           :disabled="loading"
         />
       </label>
@@ -32,6 +33,7 @@
         <InputText
           v-model="form.email"
           data-testid="user-form-email"
+          :readonly="mode === 'edit'"
           type="email"
           :disabled="loading"
         />
@@ -98,6 +100,7 @@ type UserFormValue = {
 const props = withDefaults(defineProps<{
   visible: boolean;
   mode: 'create' | 'edit';
+  existingAccount?: boolean;
   loading?: boolean;
   error?: string;
   user?: Partial<UserFormValue> | null;

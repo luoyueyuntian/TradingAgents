@@ -14,6 +14,7 @@ from .auth import get_request_user
 from .passwords import hash_password, validate_password_policy
 from .schemas import (
     AdminManagedUserCreate,
+    AdminMembershipCreate,
     AdminUserBulkDeleteFailure,
     AdminUserBulkDeleteRequest,
     AdminUserBulkDeleteResult,
@@ -116,6 +117,7 @@ def create_managed_user_for_tenant(
     tenant_id: str,
     payload: AdminManagedUserCreate,
 ) -> AdminUserCredentialResult:
+    existing = store.get_account_by_identifier(payload.email)
     temporary_password = _generate_temporary_password(username=payload.username, email=payload.email)
     password_record = hash_password(temporary_password)
     try:
@@ -135,7 +137,7 @@ def create_managed_user_for_tenant(
         raise _map_store_error(exc) from exc
     return AdminUserCredentialResult(
         user=_build_user_response(user),
-        temporary_password=temporary_password,
+        temporary_password="" if existing else temporary_password,
     )
 
 
@@ -188,21 +190,16 @@ def update_user_for_tenant(
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
 
+    # Tenant admins manage memberships; shared identity belongs to the account.
+    for field in ("email", "display_name"):
+        if field in updates:
+            if updates[field] != getattr(target_user, field):
+                raise HTTPException(status_code=403, detail="Account identity must be changed by its owner")
+            updates.pop(field)
     if "password" in updates:
-        try:
-            validate_password_policy(
-                payload.password or "",
-                username=target_user.username,
-                email=target_user.email,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        password_record = hash_password(payload.password or "")
-        updates.pop("password")
-        updates["password_hash"] = password_record.encoded_hash
-        updates["password_salt"] = password_record.salt
-        updates["password_updated_at"] = current_timestamp_ms(datetime.now(UTC))
-        updates["must_change_password"] = True
+        raise HTTPException(status_code=403, detail="Account password must be changed by its owner")
+    if not updates:
+        return {"user": _build_user_response(target_user)}
 
     if "password_hash" in updates:
         try:
@@ -259,6 +256,28 @@ def create_user(payload: AdminManagedUserCreate, request: Request) -> AdminUserC
     return create_managed_user_for_tenant(store, admin_user.tenant_id, payload)
 
 
+def add_existing_membership(store: UserStore, tenant_id: str, payload: AdminMembershipCreate) -> AdminUserCredentialResult:
+    account = store.get_account_by_identifier(payload.email)
+    if account is None or account.email.casefold() != payload.email.casefold():
+        raise HTTPException(status_code=404, detail="Account not found")
+    try:
+        member = store.create_user(
+            username=account.username, email=account.email, display_name=account.display_name,
+            role=payload.role, tenant_id=tenant_id, expires_at=payload.expires_at,
+            password_hash=account.password_hash, password_salt=account.password_salt,
+            must_change_password=account.must_change_password,
+        )
+    except ValueError as exc:
+        raise _map_store_error(exc) from exc
+    return AdminUserCredentialResult(user=_build_user_response(member), temporary_password="")
+
+
+@router.post("/memberships", status_code=201, response_model=AdminUserCredentialResult)
+def add_member(payload: AdminMembershipCreate, request: Request):
+    user = _require_admin_user(request)
+    return add_existing_membership(_get_store(), user.tenant_id, payload)
+
+
 @router.patch("/{user_id}", response_model=dict[str, AdminUserResponse])
 def update_user(
     user_id: str,
@@ -272,28 +291,7 @@ def update_user(
 
 @router.post("/{user_id}/reset-password", response_model=AdminUserCredentialResult)
 def reset_user_password(user_id: str, request: Request) -> AdminUserCredentialResult:
-    admin_user = _require_admin_user(request)
-    store = _get_store()
-    target_user = _get_tenant_user(store, admin_user.tenant_id, user_id)
-    temporary_password = _generate_temporary_password(
-        username=target_user.username,
-        email=target_user.email,
-    )
-    password_record = hash_password(temporary_password)
-    try:
-        updated_user = store.update_user_and_delete_sessions(
-            user_id,
-            password_hash=password_record.encoded_hash,
-            password_salt=password_record.salt,
-            password_updated_at=current_timestamp_ms(datetime.now(UTC)),
-            must_change_password=True,
-        )
-    except ValueError as exc:
-        raise _map_store_error(exc) from exc
-    return AdminUserCredentialResult(
-        user=_build_user_response(updated_user),
-        temporary_password=temporary_password,
-    )
+    raise HTTPException(status_code=403, detail="Account password must be changed by its owner")
 
 
 @router.delete("/{user_id}", response_model=dict[str, AdminUserResponse])

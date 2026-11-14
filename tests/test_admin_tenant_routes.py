@@ -392,7 +392,7 @@ def test_tenant_scoped_user_list_returns_only_target_tenant_users(monkeypatch, t
         tenant_id="tenant-c",
         must_change_password=False,
     )
-    _login(client)
+    _login(client, identifier="tenant-b-admin", tenant_id="tenant-b")
 
     response = client.get("/api/admin/tenants/tenant-b/users")
 
@@ -405,9 +405,8 @@ def test_tenant_scoped_user_list_returns_only_target_tenant_users(monkeypatch, t
 
 def test_tenant_scoped_user_create_writes_to_target_tenant(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
-    _create_user(store, role="admin", must_change_password=False)
-    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
-    _login(client)
+    _create_user(store, role="admin", tenant_id="tenant-b", must_change_password=False)
+    _login(client, tenant_id="tenant-b")
 
     response = client.post(
         "/api/admin/tenants/tenant-b/users",
@@ -453,8 +452,8 @@ def test_tenant_scoped_user_create_rejects_disabled_tenant(monkeypatch, tmp_path
         },
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Disabled tenants are read-only"
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Membership management requires the active tenant"
     assert store.get_user_by_identifier("disabled-user") is None
 
 
@@ -470,7 +469,7 @@ def test_tenant_scoped_user_delete_protects_last_active_admin(monkeypatch, tmp_p
         tenant_id="tenant-b",
         must_change_password=False,
     )
-    _login(client)
+    _login(client, identifier="tenant-b-admin", tenant_id="tenant-b")
 
     response = client.delete(f"/api/admin/tenants/tenant-b/users/{sole_tenant_b_admin.id}")
 
@@ -498,8 +497,8 @@ def test_tenant_scoped_user_update_rejects_expired_tenant(monkeypatch, tmp_path)
         json={"role": "analyst"},
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Expired tenants are read-only"
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Membership management requires the active tenant"
     refreshed = store.get_user(expired_user.id)
     assert refreshed is not None
     assert refreshed.role == "viewer"
@@ -522,15 +521,14 @@ def test_tenant_scoped_user_delete_rejects_expired_tenant(monkeypatch, tmp_path)
 
     response = client.delete(f"/api/admin/tenants/tenant-b/users/{expired_user.id}")
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Expired tenants are read-only"
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Membership management requires the active tenant"
     assert store.get_user(expired_user.id) is not None
 
 
 def test_tenant_scoped_user_update_and_delete_reject_out_of_tenant_user_ids(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
-    _create_user(store, role="admin", must_change_password=False)
-    _create_tenant(store, tenant_id="tenant-b", display_name="Tenant B")
+    _create_user(store, role="admin", tenant_id="tenant-b", must_change_password=False)
     other_tenant_user = _create_user(
         store,
         username="tenant-c-user",
@@ -540,7 +538,7 @@ def test_tenant_scoped_user_update_and_delete_reject_out_of_tenant_user_ids(monk
         tenant_id="tenant-c",
         must_change_password=False,
     )
-    _login(client)
+    _login(client, tenant_id="tenant-b")
 
     update_response = client.patch(
         f"/api/admin/tenants/tenant-b/users/{other_tenant_user.id}",
@@ -568,3 +566,19 @@ def test_malformed_tenant_id_returns_400(monkeypatch, tmp_path, method: str):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "tenant_id must be 1-64 chars using letters, numbers, dot, dash, or underscore"
+
+
+@pytest.mark.parametrize('method,path,payload', [
+    ('get', '/users', None),
+    ('post', '/users', {'username': 'intruder', 'email': 'intruder@example.com', 'role': 'admin', 'display_name': 'Intruder', 'password': 'StrongPass123!'}),
+    ('post', '/users/memberships', {'email': 'alice@example.com', 'role': 'admin', 'username': 'alice'}),
+    ('patch', '/users/target', {'role': 'admin'}),
+    ('delete', '/users/target', None),
+])
+def test_admin_cannot_manage_other_tenant_memberships(monkeypatch, tmp_path, method, path, payload):
+    client, store = _auth_client(monkeypatch, tmp_path)
+    _create_user(store)
+    _create_tenant(store, 'tenant-b')
+    _login(client)
+    response = client.request(method, '/api/admin/tenants/tenant-b' + path, json=payload)
+    assert response.status_code == 403

@@ -77,15 +77,15 @@ describe('router auth guards', () => {
     expect(router.currentRoute.value.fullPath).toBe('/login');
   });
 
-  it('strips the deployed SPA base from the initial browser location', async () => {
+  it('keeps page routes at the root even when assets use a SPA base', async () => {
     vi.stubEnv('BASE_URL', '/static/spa/');
-    window.history.replaceState({}, '', '/static/spa/');
+    window.history.replaceState({}, '', '/settings');
 
     const { createAppRouter } = await loadRouterModule();
     const router = createAppRouter();
 
-    expect(router.options.history.location).toBe('/');
-    expect(router.options.history.createHref('/analysis')).toBe('/static/spa/analysis');
+    expect(router.options.history.location).toBe('/settings');
+    expect(router.options.history.createHref('/analysis')).toBe('/analysis');
   });
 
   it('bootstraps authenticated cold starts on /login and redirects to /', async () => {
@@ -155,14 +155,14 @@ describe('router auth guards', () => {
     expect(router.currentRoute.value.fullPath).toBe('/change-password');
   });
 
-  it('redirects authenticated users without a password change requirement away from /change-password', async () => {
+  it('allows authenticated users to voluntarily visit /change-password', async () => {
     sessionState.currentUser = makeUser({ must_change_password: false });
     const { createAppRouter } = await loadRouterModule();
     const router = createAppRouter(createMemoryHistory());
 
     await router.push('/change-password');
 
-    expect(router.currentRoute.value.fullPath).toBe('/');
+    expect(router.currentRoute.value.fullPath).toBe('/profile#password');
   });
 
   it.each(['/settings', '/tenants', '/users'])('blocks non-admin users from navigating to %s', async (path) => {

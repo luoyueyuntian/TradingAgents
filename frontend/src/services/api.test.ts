@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { apiGet, buildApiUrl, createApiError, registerApiAuthInvalidationHandler } from './api';
+import { apiGet, buildApiUrl, createApiError, registerApiAuthInvalidationHandler, registerSessionTenantContext } from './api';
 
 describe('api service', () => {
   it('adds tenant and token query parameters for browser APIs that cannot send headers', () => {
@@ -86,7 +86,7 @@ describe('api service', () => {
   it.each([
     'Tenant is disabled',
     'Tenant has expired',
-  ])('runs auth invalidation handlers for own-session tenant-state 403 responses: %s', async (detail) => {
+  ])('preserves identity for own-session tenant-state 403 responses: %s', async (detail) => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ detail }), {
         status: 403,
@@ -102,7 +102,7 @@ describe('api service', () => {
         message: detail,
         status: 403,
       });
-      expect(invalidationHandler).toHaveBeenCalledTimes(1);
+      expect(invalidationHandler).not.toHaveBeenCalled();
     } finally {
       unregister();
     }
@@ -199,4 +199,23 @@ describe('api service', () => {
       },
     });
   });
+});
+
+
+it('injects per-tab session tenant without explicit context and recovers stale calls', async () => {
+  const recover = vi.fn();
+  registerSessionTenantContext(() => 'tenant-a', recover);
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: 'Tenant context changed; reload required' }), { status: 409 }));
+  vi.stubGlobal('fetch', fetchMock);
+  try {
+    await expect(apiGet('/api/admin/users')).rejects.toThrow('Tenant context changed');
+    expect(fetchMock.mock.calls[0]?.[1].headers['X-TradingAgents-Session-Tenant']).toBe('tenant-a');
+    expect(recover).toHaveBeenCalledOnce();
+    fetchMock.mockResolvedValue(new Response('{}'));
+    await apiGet('/api/auth/me');
+    expect(fetchMock.mock.calls[1]?.[1].headers['X-TradingAgents-Session-Tenant']).toBeUndefined();
+  } finally {
+    registerSessionTenantContext(() => undefined, () => undefined);
+    vi.unstubAllGlobals();
+  }
 });

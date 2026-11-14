@@ -56,7 +56,6 @@
                 <th class="uno-px-3 uno-py-2">{{ t('users.role') }}</th>
                 <th class="uno-px-3 uno-py-2">{{ t('users.expiresAt') }}</th>
                 <th class="uno-px-3 uno-py-2">{{ t('users.status') }}</th>
-                <th class="uno-px-3 uno-py-2">{{ t('users.resetPassword') }}</th>
                 <th class="uno-px-3 uno-py-2">{{ t('users.actions') }}</th>
               </tr>
             </thead>
@@ -66,7 +65,7 @@
                   <div class="uno-grid uno-gap-1">
                     <strong class="uno-break-words uno-text-[#132a2d]">{{ user.username }}</strong>
                     <span class="uno-break-words">{{ user.email }}</span>
-                    <InputText v-model="user.draftDisplayName" :disabled="readOnly" />
+                    <InputText v-model="user.draftDisplayName" readonly :disabled="readOnly" />
                   </div>
                 </td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">
@@ -88,19 +87,7 @@
                     <span>{{ user.draftDisabled ? t('users.disabled') : t('users.active') }}</span>
                   </label>
                 </td>
-                <td class="uno-px-3 uno-py-3 uno-align-top">
-                  <div v-if="!readOnly" class="uno-grid uno-gap-2">
-                    <InputText v-model="user.resetPassword" type="password" :placeholder="t('users.newPasswordPlaceholder')" />
-                    <Button
-                      :data-testid="`reset-password-${user.id}`"
-                      icon="pi pi-key"
-                      :label="t('users.resetPassword')"
-                      severity="secondary"
-                      :disabled="!user.resetPassword.trim()"
-                      @click="resetPassword(user)"
-                    />
-                  </div>
-                </td>
+
                 <td class="uno-px-3 uno-py-3 uno-align-top">
                   <div v-if="!readOnly" class="uno-grid uno-gap-2">
                     <Button
@@ -281,7 +268,6 @@ async function updateUser(user: ManagedUser) {
   notice.value = '';
   try {
     const payload = await apiPatch<{ user: AdminUserResponse }>(props.updatePath(user.id), {
-      display_name: user.draftDisplayName.trim(),
       role: user.draftRole,
       expires_at: toApiDateTime(user.draftExpiresAt),
       disabled: user.draftDisabled,
@@ -290,23 +276,6 @@ async function updateUser(user: ManagedUser) {
     await loadUsers();
   } catch (exc) {
     user.error = exc instanceof Error ? exc.message : t('users.updateError');
-  } finally {
-    user.saving = false;
-  }
-}
-
-async function resetPassword(user: ManagedUser) {
-  user.saving = true;
-  user.error = '';
-  notice.value = '';
-  try {
-    const payload = await apiPatch<{ user: AdminUserResponse }>(props.updatePath(user.id), {
-      password: user.resetPassword,
-    });
-    notice.value = t('users.passwordResetNotice', { username: payload.user.username });
-    await loadUsers();
-  } catch (exc) {
-    user.error = exc instanceof Error ? exc.message : t('users.resetError');
   } finally {
     user.saving = false;
   }

@@ -70,8 +70,8 @@ def test_static_pwa_assets_are_served_without_checked_in_spa_bundle():
     assert manifest.status_code == 200
     assert '"display": "standalone"' in manifest.text
     assert service_worker.status_code == 200
-    assert "tradingagents-spa-v1" in service_worker.text
-    assert "/static/spa/assets/app.js" in service_worker.text
+    assert "tradingagents-spa-v2" in service_worker.text
+    assert "/static/spa/assets/app.js" not in service_worker.text
     assert "url.pathname.startsWith('/static/spa/')" in service_worker.text
     assert "fetchAndCache(request)" in service_worker.text
     assert "/static/app.js" not in service_worker.text
@@ -100,6 +100,7 @@ def test_vue_router_splits_primary_workflows_into_pages():
         "tenant-detail": ("/tenants/:tenantId", "TenantDetailPage.vue"),
         "users": ("/users", "UserManagementPage.vue"),
         "login": ("/login", "LoginPage.vue"),
+        "profile": ("/profile", "ProfilePage.vue"),
         "change-password": ("/change-password", "ForcePasswordChangePage.vue"),
     }
 
@@ -213,7 +214,7 @@ def test_app_layout_exposes_page_navigation_and_session_context():
     assert "session.state.currentUser?.tenant_id" in layout_source
     assert 'data-testid="user-menu"' in layout_source
     assert "@mouseenter=\"userMenuOpen = true\"" in layout_source
-    assert "visibleNavigationGroups" in layout_source
+    assert "visibleNavigationSections" in layout_source
     assert "session.isAdmin.value" in layout_source
     assert "handleLogout" in layout_source
     assert "t('topbar.workspaceSearch')" in layout_source

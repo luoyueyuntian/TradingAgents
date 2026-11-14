@@ -127,7 +127,7 @@ describe('UserCrudManager', () => {
     expect(apiGet).toHaveBeenLastCalledWith('/api/admin/users?status=all&deleted_scope=active&name=alice');
   });
 
-  it('shows generated password results after create and reset password', async () => {
+  it('shows a temporary password for new accounts without offering account password resets', async () => {
     apiGet.mockResolvedValue({ users: [makeUser()] });
     apiPost
       .mockResolvedValueOnce({
@@ -151,11 +151,23 @@ describe('UserCrudManager', () => {
 
     expect(wrapper.text()).toContain('TempCreate123!');
 
-    await wrapper.get('[data-testid="reset-password-user-1"]').trigger('click');
-    await wrapper.get('[data-testid="confirm-reset-password"]').trigger('click');
-    await flushPromises();
+    expect(wrapper.find('[data-testid="reset-password-user-1"]').exists()).toBe(false);
+  });
 
-    expect(wrapper.text()).toContain('TempReset123!');
+  it('adds an existing account by email without showing a temporary password', async () => {
+    apiGet.mockResolvedValue({ users: [] });
+    apiPost.mockResolvedValue({ user: makeUser(), temporary_password: '' });
+    const wrapper = mountComponent();
+    await flushPromises();
+    await wrapper.get('[data-testid="open-add-member"]').trigger('click');
+    expect(wrapper.find('[data-testid="user-form-username"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="user-form-email"]').setValue('alice@example.com');
+    await wrapper.get('[data-testid="submit-user-form"]').trigger('click');
+    await flushPromises();
+    expect(apiPost).toHaveBeenCalledWith('/api/admin/users/memberships', {
+      email: 'alice@example.com', role: 'viewer', expires_at: null,
+    });
+    expect(wrapper.text()).not.toContain('TempCreate123!');
   });
 
   it('sends partial bulk delete requests and refreshes the list', async () => {
