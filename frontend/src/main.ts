@@ -1,18 +1,19 @@
 import 'virtual:uno.css';
 import 'primeicons/primeicons.css';
+import './theme/global.css';
 
-import Aura from '@primeuix/themes/aura';
 import PrimeVue from 'primevue/config';
 import { createApp } from 'vue';
 
 import App from './App.vue';
 import { router } from './router';
+import { tradingAgentsPreset } from './theme/preset';
 
 createApp(App)
   .use(router)
   .use(PrimeVue, {
     theme: {
-      preset: Aura,
+      preset: tradingAgentsPreset,
       options: {
         darkModeSelector: '.ta-dark',
       },

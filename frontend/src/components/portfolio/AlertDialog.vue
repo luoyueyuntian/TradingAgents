@@ -16,7 +16,7 @@
       v-model:stockMarket="stockMarket"
       :disabled="saving"
     />
-    <div v-else class="uno-font-700 uno-text-[#14363a]">{{ currentTicker }}</div>
+    <div v-else class="uno-font-700 uno-text-[#262626]">{{ currentTicker }}</div>
 
     <Select v-model="field" :options="fieldOptions" option-label="label" option-value="value" />
     <InputText v-model="value" :placeholder="t('portfolio.valuePlaceholder')" />

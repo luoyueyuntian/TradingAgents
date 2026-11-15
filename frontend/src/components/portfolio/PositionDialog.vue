@@ -16,15 +16,15 @@
       v-model:stockMarket="stockMarket"
       :disabled="saving"
     />
-    <div v-else class="uno-font-700 uno-text-[#14363a]">{{ currentTicker }}</div>
+    <div v-else class="uno-font-700 uno-text-[#262626]">{{ currentTicker }}</div>
 
     <label class="uno-grid uno-gap-1">
-      <span class="uno-text-[#6f8183]">{{ t('portfolio.quantity') }}</span>
+      <span class="uno-text-[#737373]">{{ t('portfolio.quantity') }}</span>
       <InputText v-model="quantity" type="number" />
     </label>
 
     <label class="uno-grid uno-gap-1">
-      <span class="uno-text-[#6f8183]">{{ t('portfolio.averageCost') }}</span>
+      <span class="uno-text-[#737373]">{{ t('portfolio.averageCost') }}</span>
       <InputText v-model="averageCost" type="number" />
     </label>
   </PortfolioDialog>

@@ -1,15 +1,15 @@
 <template>
   <section>
-    <nav data-testid="run-detail-breadcrumb" class="uno-mb-3 uno-flex uno-items-center uno-gap-2 uno-text-sm uno-text-[#607174]">
+    <nav data-testid="run-detail-breadcrumb" class="uno-mb-3 uno-flex uno-items-center uno-gap-2 uno-text-sm uno-text-[#737373]">
       <button
         type="button"
-        class="uno-inline-flex uno-cursor-pointer uno-items-center uno-gap-1 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#304345] hover:uno-text-[#132a2d]"
+        class="uno-inline-flex uno-cursor-pointer uno-items-center uno-gap-1 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#404040] hover:uno-text-[#262626]"
         @click="goBack"
       >
         <i class="pi pi-angle-left uno-text-xs" />
         <span>{{ t('common.back') }}</span>
       </button>
-      <span class="uno-text-[#9ab0b1]">/</span>
+      <span class="uno-text-[#a3a3a3]">/</span>
       <span>{{ t('runs.runDetail') }}</span>
     </nav>
 
@@ -32,9 +32,9 @@
           <div
             v-if="historyPickerOpen"
             data-testid="run-detail-history-panel"
-            class="uno-absolute uno-right-0 uno-top-[calc(100%+0.45rem)] uno-z-20 uno-grid uno-gap-3 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3 uno-shadow-lg"
+            class="uno-absolute uno-right-0 uno-top-[calc(100%+0.45rem)] uno-z-20 uno-grid uno-gap-3 uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3 uno-shadow-lg"
           >
-            <span class="uno-text-sm uno-text-[#607174]">{{ t('runs.historySelectDate') }}</span>
+            <span class="uno-text-sm uno-text-[#737373]">{{ t('runs.historySelectDate') }}</span>
             <DatePicker
               :model-value="historyPickerValue"
               inline
@@ -62,31 +62,31 @@
 
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
 
-    <details v-if="selectedRun" data-testid="run-detail-pinned-action-card" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+    <details v-if="selectedRun" data-testid="run-detail-pinned-action-card" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-4 uno-py-[0.85rem]">
       <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.pinnedAction') }}</summary>
       <div class="uno-mt-3 uno-grid uno-grid-cols-[repeat(auto-fit,minmax(180px,1fr))] uno-gap-[0.8rem]">
         <label class="uno-grid uno-gap-[0.35rem]">
-          <span class="uno-text-[#6f8183]">{{ t('runs.pinCategory') }}</span>
+          <span class="uno-text-[#737373]">{{ t('runs.pinCategory') }}</span>
           <Select v-model="pinForm.category" :options="categoryOptions" option-label="label" option-value="value" :disabled="!canWrite" />
         </label>
         <label class="uno-grid uno-gap-[0.35rem]">
-          <span class="uno-text-[#6f8183]">{{ t('runs.pinPriority') }}</span>
+          <span class="uno-text-[#737373]">{{ t('runs.pinPriority') }}</span>
           <Select v-model="pinForm.priority" :options="priorityOptions" option-label="label" option-value="value" :disabled="!canWrite" />
         </label>
         <label class="uno-grid uno-gap-[0.35rem]">
-          <span class="uno-text-[#6f8183]">{{ t('runs.pinStatus') }}</span>
+          <span class="uno-text-[#737373]">{{ t('runs.pinStatus') }}</span>
           <Select v-model="pinForm.action_status" :options="actionStatusOptions" option-label="label" option-value="value" :disabled="!canWrite" />
         </label>
         <label class="uno-grid uno-gap-[0.35rem]">
-          <span class="uno-text-[#6f8183]">{{ t('runs.pinAssignee') }}</span>
+          <span class="uno-text-[#737373]">{{ t('runs.pinAssignee') }}</span>
           <Select v-model="pinForm.assignee" :options="memberOptions" option-label="label" option-value="value" :placeholder="t('common.optional')" :disabled="!canWrite" />
         </label>
         <label class="uno-grid uno-gap-[0.35rem]">
-          <span class="uno-text-[#6f8183]">{{ t('runs.pinNextAction') }}</span>
+          <span class="uno-text-[#737373]">{{ t('runs.pinNextAction') }}</span>
           <InputText v-model="pinForm.next_action" :placeholder="t('runs.pinNextAction')" :disabled="!canWrite" />
         </label>
         <label class="uno-grid uno-gap-[0.35rem]">
-          <span class="uno-text-[#6f8183]">{{ t('runs.pinDueDate') }}</span>
+          <span class="uno-text-[#737373]">{{ t('runs.pinDueDate') }}</span>
           <DateTimeInput v-model="pinForm.due_date" :disabled="!canWrite" />
         </label>
       </div>
@@ -101,40 +101,40 @@
       <template #title>{{ t('runs.runDetail') }}</template>
       <template #content>
         <div class="uno-grid uno-gap-4">
-          <div class="uno-grid uno-gap-[0.9rem] uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-[#fbfdfd] uno-p-4">
+          <div class="uno-grid uno-gap-[0.9rem] uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-[#ffffff] uno-p-4">
             <div class="uno-flex uno-items-start uno-justify-between uno-gap-4">
               <div>
-                <p class="uno-m-0 uno-text-xs uno-font-700 uno-uppercase uno-text-[#6f8183]">{{ t('runs.summary') }}</p>
-                <h2 class="uno-mb-0 uno-mt-[0.15rem] uno-text-[1.2rem] uno-tracking-normal uno-text-[#132a2d]">{{ runIdentityLabel }} · {{ selectedRun.date }}</h2>
+                <p class="uno-m-0 uno-text-xs uno-font-700 uno-uppercase uno-text-[#737373]">{{ t('runs.summary') }}</p>
+                <h2 class="uno-mb-0 uno-mt-[0.15rem] uno-text-[1.2rem] uno-tracking-normal uno-text-[#262626]">{{ runIdentityLabel }} · {{ selectedRun.date }}</h2>
               </div>
               <Tag :value="selectedRun.signal || selectedRun.status" :severity="signalSeverity(selectedRun.signal || selectedRun.status)" />
             </div>
             <MetricGrid :items="detailMetrics" />
             <div class="uno-grid uno-grid-cols-4 max-[1100px]:uno-grid-cols-2 max-[640px]:uno-grid-cols-1 uno-gap-[0.65rem]">
-              <div v-for="item in decisionItems" :key="item.label" class="uno-grid uno-min-w-0 uno-gap-1 uno-rounded-lg uno-border uno-border-[#dbe6e6] uno-bg-white uno-p-3">
-                <span class="uno-text-[0.78rem] uno-text-[#607174]">{{ item.label }}</span>
-                <strong class="uno-min-w-0 uno-break-words uno-text-[#132a2d]">{{ item.value }}</strong>
+              <div v-for="item in decisionItems" :key="item.label" class="uno-grid uno-min-w-0 uno-gap-1 uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
+                <span class="uno-text-[0.78rem] uno-text-[#737373]">{{ item.label }}</span>
+                <strong class="uno-min-w-0 uno-break-words uno-text-[#262626]">{{ item.value }}</strong>
               </div>
             </div>
-            <p class="uno-m-0 uno-leading-[1.55] uno-text-[#304345]">{{ decisionSummary }}</p>
+            <p class="uno-m-0 uno-leading-[1.55] uno-text-[#404040]">{{ decisionSummary }}</p>
           </div>
 
           <div data-testid="run-detail-insight-panels" class="uno-grid uno-gap-3">
-            <div v-for="panel in insightPanels" :key="panel.key" class="uno-min-w-0 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-[0.85rem]">
-              <span class="uno-text-[#6f8183]">{{ insightTitle(panel.key) }}</span>
-              <ul v-if="panel.items.length" class="uno-mb-0 uno-mt-[0.55rem] uno-grid uno-gap-[0.45rem] uno-pl-[1.1rem] uno-leading-[1.45] uno-text-[#304345]">
+            <div v-for="panel in insightPanels" :key="panel.key" class="uno-min-w-0 uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-[0.85rem]">
+              <span class="uno-text-[#737373]">{{ insightTitle(panel.key) }}</span>
+              <ul v-if="panel.items.length" class="uno-mb-0 uno-mt-[0.55rem] uno-grid uno-gap-[0.45rem] uno-pl-[1.1rem] uno-leading-[1.45] uno-text-[#404040]">
                 <li v-for="item in panel.items" :key="item">{{ item }}</li>
               </ul>
-              <p v-else class="uno-text-[#6f8183]">{{ t('runs.noInsight') }}</p>
+              <p v-else class="uno-text-[#737373]">{{ t('runs.noInsight') }}</p>
             </div>
           </div>
 
           <Card v-if="dataFetches.length" data-testid="run-detail-data-sources-card">
             <template #title>{{ t('runs.dataSources') }}</template>
             <template #content>
-              <div v-if="dataWarnings.length" data-testid="run-detail-data-warnings" class="uno-mb-4 uno-rounded-lg uno-border uno-border-[#f1d38a] uno-bg-[#fff8e6] uno-p-3">
-                <p class="uno-m-0 uno-font-700 uno-text-[#7b5b12]">{{ t('runs.dataWarnings') }}</p>
-                <ul class="uno-mb-0 uno-mt-2 uno-grid uno-gap-1 uno-pl-[1.1rem] uno-text-[#7b5b12]">
+              <div v-if="dataWarnings.length" data-testid="run-detail-data-warnings" class="uno-mb-4 uno-rounded-lg uno-border uno-border-[#f6cabc] uno-bg-[#fff0eb] uno-p-3">
+                <p class="uno-m-0 uno-font-700 uno-text-[#92351f]">{{ t('runs.dataWarnings') }}</p>
+                <ul class="uno-mb-0 uno-mt-2 uno-grid uno-gap-1 uno-pl-[1.1rem] uno-text-[#92351f]">
                   <li v-for="warning in dataWarnings" :key="String(warning.key || warning.message || '')">{{ warning.message }}</li>
                 </ul>
               </div>
@@ -143,33 +143,33 @@
                 <div
                   v-for="entry in dataFetches"
                   :key="String(entry.key || '')"
-                  class="uno-grid uno-gap-2 uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3"
+                  class="uno-grid uno-gap-2 uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3"
                 >
                   <div class="uno-flex uno-flex-wrap uno-items-start uno-justify-between uno-gap-3">
                     <div class="uno-grid uno-gap-1">
-                      <strong class="uno-text-[#132a2d]">{{ dataFetchItemLabel(entry) }}</strong>
-                      <small class="uno-text-[#6f8183]">{{ String(entry.request_label || '') }}</small>
+                      <strong class="uno-text-[#262626]">{{ dataFetchItemLabel(entry) }}</strong>
+                      <small class="uno-text-[#737373]">{{ String(entry.request_label || '') }}</small>
                     </div>
                     <Tag :value="dataFetchStatusLabel(entry)" :severity="dataFetchStatusSeverity(entry)" />
                   </div>
                   <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-2">
                     <div class="uno-grid uno-gap-1">
-                      <span class="uno-text-[0.78rem] uno-text-[#6f8183]">{{ t('runs.actualSource') }}</span>
-                      <strong class="uno-text-[#132a2d]">{{ dataFetchSourceLabel(entry.actual_source, entry.status) }}</strong>
+                      <span class="uno-text-[0.78rem] uno-text-[#737373]">{{ t('runs.actualSource') }}</span>
+                      <strong class="uno-text-[#262626]">{{ dataFetchSourceLabel(entry.actual_source, entry.status) }}</strong>
                     </div>
                     <div class="uno-grid uno-gap-1">
-                      <span class="uno-text-[0.78rem] uno-text-[#6f8183]">{{ t('runs.configuredSources') }}</span>
-                      <span class="uno-text-[#304345]">{{ dataFetchSourceList(entry.configured_sources) }}</span>
+                      <span class="uno-text-[0.78rem] uno-text-[#737373]">{{ t('runs.configuredSources') }}</span>
+                      <span class="uno-text-[#404040]">{{ dataFetchSourceList(entry.configured_sources) }}</span>
                     </div>
                     <div class="uno-grid uno-gap-1">
-                      <span class="uno-text-[0.78rem] uno-text-[#6f8183]">{{ t('runs.attemptedSources') }}</span>
-                      <span class="uno-text-[#304345]">{{ dataFetchSourceList(entry.attempted_sources) }}</span>
+                      <span class="uno-text-[0.78rem] uno-text-[#737373]">{{ t('runs.attemptedSources') }}</span>
+                      <span class="uno-text-[#404040]">{{ dataFetchSourceList(entry.attempted_sources) }}</span>
                     </div>
                   </div>
-                  <p v-if="String(entry.detail || '').trim()" class="uno-m-0 uno-text-[#304345]">{{ entry.detail }}</p>
+                  <p v-if="String(entry.detail || '').trim()" class="uno-m-0 uno-text-[#404040]">{{ entry.detail }}</p>
                   <div v-if="String(entry.result_preview || '').trim()" class="uno-grid uno-gap-1">
-                    <span class="uno-text-[0.78rem] uno-text-[#6f8183]">{{ t('runs.resultPreview') }}</span>
-                    <pre class="uno-m-0 uno-max-h-[180px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#f8fbfb] uno-p-3 uno-text-[#304345]">{{ String(entry.result_preview || '') }}</pre>
+                    <span class="uno-text-[0.78rem] uno-text-[#737373]">{{ t('runs.resultPreview') }}</span>
+                    <pre class="uno-m-0 uno-max-h-[180px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#fafafa] uno-p-3 uno-text-[#404040]">{{ String(entry.result_preview || '') }}</pre>
                   </div>
                 </div>
               </div>
@@ -178,7 +178,7 @@
 
           <div
             data-testid="run-detail-section-tabs"
-            class="uno-sticky uno-top-[76px] uno-z-[6] uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white/95 uno-p-1.5 uno-shadow-sm uno-backdrop-blur-md max-[900px]:uno-top-[128px]"
+            class="uno-sticky uno-top-[76px] uno-z-[6] uno-rounded-xl uno-border uno-border-[#e5e5e5] uno-bg-white/95 uno-p-1.5 uno-shadow-sm uno-backdrop-blur-md max-[900px]:uno-top-[128px]"
           >
             <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
               <div class="uno-flex uno-flex-wrap uno-gap-1" role="tablist" :aria-label="t('runs.reportSections')">
@@ -191,8 +191,8 @@
                   :class="[
                     'uno-min-h-10 uno-cursor-pointer uno-rounded-lg uno-border-b-2 uno-border-transparent uno-px-3 uno-py-[0.55rem] uno-text-sm uno-font-600',
                     selectedSectionKey === section.value
-                      ? 'uno-bg-[#162326] uno-text-white uno-shadow-sm'
-                      : 'uno-bg-transparent uno-text-[#304345] hover:uno-bg-[#f4f8f8] hover:uno-text-[#132a2d]',
+                      ? 'uno-bg-[#262626] uno-text-white uno-shadow-sm'
+                      : 'uno-bg-transparent uno-text-[#404040] hover:uno-bg-[#fafafa] hover:uno-text-[#262626]',
                   ]"
                   @click="selectedSectionKey = section.value"
                 >
@@ -225,12 +225,12 @@
                   <Button icon="pi pi-comment" :label="t('runs.addComment')" severity="secondary" :disabled="!canWrite" @click="addRunComment" />
                 </div>
                 <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
-                  <div v-for="comment in comments" :key="comment.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+                  <div v-for="comment in comments" :key="comment.id" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
                     <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                       <span>{{ comment.author }}</span>
                       <Tag :value="comment.resolved ? t('common.completed') : t('common.pending')" :severity="comment.resolved ? 'success' : 'warn'" />
                     </div>
-                    <small class="uno-text-[#6f8183]">{{ formatDateTime(comment.created_at) }}</small>
+                    <small class="uno-text-[#737373]">{{ formatDateTime(comment.created_at) }}</small>
                     <p class="uno-mb-0 uno-mt-2">{{ comment.content }}</p>
                     <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                       <Button
@@ -243,7 +243,7 @@
                       <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined :disabled="!canWrite" @click="deleteRunComment(comment.id)" />
                     </div>
                   </div>
-                  <p v-if="!comments.length" class="uno-text-[#6f8183]">{{ t('runs.noComments') }}</p>
+                  <p v-if="!comments.length" class="uno-text-[#737373]">{{ t('runs.noComments') }}</p>
                 </div>
               </template>
             </Card>
@@ -253,11 +253,11 @@
               <template #content>
                 <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(180px,1fr))] uno-gap-[0.8rem]">
                   <label class="uno-grid uno-gap-[0.35rem]">
-                    <span class="uno-text-[#6f8183]">{{ t('runs.shareTitle') }}</span>
+                    <span class="uno-text-[#737373]">{{ t('runs.shareTitle') }}</span>
                     <InputText v-model="shareForm.share_title" :placeholder="t('common.optional')" :disabled="!canWrite" />
                   </label>
                   <label class="uno-grid uno-gap-[0.35rem]">
-                    <span class="uno-text-[#6f8183]">{{ t('runs.shareExpiryDays') }}</span>
+                    <span class="uno-text-[#737373]">{{ t('runs.shareExpiryDays') }}</span>
                     <InputText v-model="shareForm.expires_in_days" type="number" :placeholder="t('common.optional')" :disabled="!canWrite" />
                   </label>
                 </div>
@@ -274,30 +274,30 @@
                   <Button v-if="currentPublicShare" icon="pi pi-trash" :label="t('runs.deletePublicShare')" severity="danger" outlined :disabled="!canWrite" @click="deletePublicShare" />
                 </div>
                 <div v-if="currentPublicShare" class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
-                  <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+                  <div class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
                     <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                       <span class="uno-break-all">{{ currentPublicShare.url }}</span>
                       <Tag :value="String(currentPublicShare.view_count || 0)" severity="info" />
                     </div>
-                    <small class="uno-text-[#6f8183]">{{ formatDateTime(currentPublicShare.expires_at) }}</small>
+                    <small class="uno-text-[#737373]">{{ formatDateTime(currentPublicShare.expires_at) }}</small>
                   </div>
                 </div>
               </template>
             </Card>
           </div>
 
-          <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+          <details class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-4 uno-py-[0.85rem]">
             <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.terminalOutput') }}</summary>
-            <pre class="uno-m-0 uno-mt-3 uno-max-h-[460px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#101b1d] uno-p-[0.85rem] uno-text-[#d8f3ee]">{{ terminalOutput || t('runs.noTerminalOutput') }}</pre>
+            <pre class="uno-m-0 uno-mt-3 uno-max-h-[460px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#171717] uno-p-[0.85rem] uno-text-[#e5e5e5]">{{ terminalOutput || t('runs.noTerminalOutput') }}</pre>
           </details>
 
-          <details data-testid="run-detail-timeline-card" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+          <details data-testid="run-detail-timeline-card" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-4 uno-py-[0.85rem]">
             <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.timeline') }}</summary>
             <div v-if="timelineDisplayEvents.length" class="uno-mt-3 uno-grid uno-gap-3">
-              <div class="uno-grid uno-gap-2 uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3">
+              <div class="uno-grid uno-gap-2 uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-[#ffffff] uno-p-3">
                 <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
-                  <strong class="uno-text-[#132a2d]">{{ t('runs.timelineSummary') }}</strong>
-                  <span class="uno-text-sm uno-text-[#607174]">{{ t('runs.timelineCount', { count: timelineDisplayEvents.length }) }}</span>
+                  <strong class="uno-text-[#262626]">{{ t('runs.timelineSummary') }}</strong>
+                  <span class="uno-text-sm uno-text-[#737373]">{{ t('runs.timelineCount', { count: timelineDisplayEvents.length }) }}</span>
                 </div>
                 <div class="uno-flex uno-flex-wrap uno-gap-2">
                   <Tag
@@ -312,25 +312,25 @@
               <details
                 v-for="event in timelineDisplayEvents"
                 :key="String(event.timestamp || '') + ':' + String(event.event || '')"
-                class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3"
+                class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-[#ffffff] uno-p-3"
               >
                 <summary class="uno-flex uno-cursor-pointer uno-list-none uno-flex-wrap uno-items-start uno-justify-between uno-gap-3">
                   <div class="uno-grid uno-min-w-0 uno-gap-1">
-                    <strong class="uno-text-[#132a2d]">{{ timelineEventLabel(event) }}</strong>
-                    <p class="uno-m-0 uno-break-words uno-text-[#304345]">{{ timelineEventSummary(event) }}</p>
+                    <strong class="uno-text-[#262626]">{{ timelineEventLabel(event) }}</strong>
+                    <p class="uno-m-0 uno-break-words uno-text-[#404040]">{{ timelineEventSummary(event) }}</p>
                   </div>
                   <div class="uno-grid uno-justify-items-end uno-gap-1">
                     <Tag :value="timelineEventLabel(event)" :severity="timelineEventSeverity(event)" />
-                    <small class="uno-text-[#6f8183]">{{ formatDateTime(event.timestamp) }}</small>
+                    <small class="uno-text-[#737373]">{{ formatDateTime(event.timestamp) }}</small>
                   </div>
                 </summary>
-                <pre class="uno-m-0 uno-mt-3 uno-max-h-[240px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#304345]">{{ timelineEventDetailText(event) }}</pre>
+                <pre class="uno-m-0 uno-mt-3 uno-max-h-[240px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#404040]">{{ timelineEventDetailText(event) }}</pre>
               </details>
             </div>
-            <p v-else class="uno-m-0 uno-mt-3 uno-text-[#6f8183]">{{ t('runs.noTimeline') }}</p>
+            <p v-else class="uno-m-0 uno-mt-3 uno-text-[#737373]">{{ t('runs.noTimeline') }}</p>
           </details>
 
-          <details data-testid="run-detail-debates-card" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+          <details data-testid="run-detail-debates-card" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-4 uno-py-[0.85rem]">
             <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.debates') }}</summary>
             <div v-if="debateTranscripts.length" class="uno-mt-3 uno-grid uno-gap-3">
               <div class="uno-flex uno-flex-wrap uno-gap-2">
@@ -341,8 +341,8 @@
                   :class="[
                     'uno-min-h-9 uno-cursor-pointer uno-rounded-lg uno-border uno-px-3 uno-py-1.5 uno-text-sm',
                     selectedDebateTranscript?.name === transcript.name
-                      ? 'uno-border-[#162326] uno-bg-[#162326] uno-text-white'
-                      : 'uno-border-[#d5e2e2] uno-bg-white uno-text-[#304345] hover:uno-border-[#90a9aa]',
+                      ? 'uno-border-[#262626] uno-bg-[#262626] uno-text-white'
+                      : 'uno-border-[#e5e5e5] uno-bg-white uno-text-[#404040] hover:uno-border-[#a3a3a3]',
                   ]"
                   @click="selectedDebateName = transcript.name"
                 >
@@ -351,10 +351,10 @@
               </div>
 
               <div v-if="selectedDebateTranscript" class="uno-grid uno-gap-3">
-                <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3">
+                <div class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-[#ffffff] uno-p-3">
                   <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
-                    <strong class="uno-text-[#132a2d]">{{ selectedDebateTranscript.label }}</strong>
-                    <span class="uno-text-sm uno-text-[#607174]">{{ t('runs.debateTurnCount', { count: selectedDebateTurns.length || 1 }) }}</span>
+                    <strong class="uno-text-[#262626]">{{ selectedDebateTranscript.label }}</strong>
+                    <span class="uno-text-sm uno-text-[#737373]">{{ t('runs.debateTurnCount', { count: selectedDebateTurns.length || 1 }) }}</span>
                   </div>
                 </div>
 
@@ -362,46 +362,46 @@
                   <div
                     v-for="(turn, index) in selectedDebateTurns"
                     :key="`${selectedDebateTranscript.name}-${index}`"
-                    class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3"
+                    class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-[#ffffff] uno-p-3"
                   >
                     <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
                       <Tag :value="turn.speaker" severity="contrast" />
-                      <small class="uno-text-[#6f8183]">{{ t('runs.debateTurnLabel', { count: index + 1 }) }}</small>
+                      <small class="uno-text-[#737373]">{{ t('runs.debateTurnLabel', { count: index + 1 }) }}</small>
                     </div>
-                    <p class="uno-m-0 uno-mt-2 uno-whitespace-pre-wrap uno-break-words uno-text-[#304345]">{{ turn.content }}</p>
+                    <p class="uno-m-0 uno-mt-2 uno-whitespace-pre-wrap uno-break-words uno-text-[#404040]">{{ turn.content }}</p>
                   </div>
                 </div>
-                <pre v-else class="uno-m-0 uno-max-h-[360px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#fbfdfd] uno-p-3 uno-text-[#304345]">{{ selectedDebateTranscript.content }}</pre>
+                <pre v-else class="uno-m-0 uno-max-h-[360px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#ffffff] uno-p-3 uno-text-[#404040]">{{ selectedDebateTranscript.content }}</pre>
               </div>
             </div>
-            <p v-else class="uno-m-0 uno-mt-3 uno-text-[#6f8183]">{{ t('runs.noDebates') }}</p>
+            <p v-else class="uno-m-0 uno-mt-3 uno-text-[#737373]">{{ t('runs.noDebates') }}</p>
           </details>
 
-          <details data-testid="run-detail-debug-card" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+          <details data-testid="run-detail-debug-card" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-4 uno-py-[0.85rem]">
             <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.debugData') }}</summary>
             <div class="uno-mt-3 uno-grid uno-gap-3">
-              <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3">
-                <strong class="uno-text-[#132a2d]">{{ t('runs.usageSummary') }}</strong>
-                <pre class="uno-m-0 uno-mt-2 uno-max-h-[280px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#304345]">{{ usageSummaryText || t('runs.noUsageSummary') }}</pre>
+              <div class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-[#ffffff] uno-p-3">
+                <strong class="uno-text-[#262626]">{{ t('runs.usageSummary') }}</strong>
+                <pre class="uno-m-0 uno-mt-2 uno-max-h-[280px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#404040]">{{ usageSummaryText || t('runs.noUsageSummary') }}</pre>
               </div>
-              <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3">
-                <strong class="uno-text-[#132a2d]">{{ t('runs.debugConfig') }}</strong>
-                <pre class="uno-m-0 uno-mt-2 uno-max-h-[360px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#304345]">{{ debugConfigText || t('runs.noDebugConfig') }}</pre>
+              <div class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-[#ffffff] uno-p-3">
+                <strong class="uno-text-[#262626]">{{ t('runs.debugConfig') }}</strong>
+                <pre class="uno-m-0 uno-mt-2 uno-max-h-[360px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#404040]">{{ debugConfigText || t('runs.noDebugConfig') }}</pre>
               </div>
-              <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3">
-                <strong class="uno-text-[#132a2d]">{{ t('runs.fullState') }}</strong>
-                <pre class="uno-m-0 uno-mt-2 uno-max-h-[420px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#304345]">{{ fullStateContent || t('runs.noFullState') }}</pre>
+              <div class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-[#ffffff] uno-p-3">
+                <strong class="uno-text-[#262626]">{{ t('runs.fullState') }}</strong>
+                <pre class="uno-m-0 uno-mt-2 uno-max-h-[420px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-white uno-p-3 uno-text-[#404040]">{{ fullStateContent || t('runs.noFullState') }}</pre>
               </div>
             </div>
           </details>
 
-          <details v-if="artifacts.length" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+          <details v-if="artifacts.length" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-4 uno-py-[0.85rem]">
             <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.artifacts') }}</summary>
             <div class="uno-mt-3 uno-flex uno-flex-wrap uno-gap-2">
               <a
                 v-for="artifact in artifacts"
                 :key="artifactName(artifact)"
-                class="uno-inline-flex uno-min-h-[34px] uno-items-center uno-rounded-lg uno-border uno-border-[#d5e2e2] uno-px-[0.65rem] uno-py-1.5 uno-text-[#162326] uno-no-underline hover:uno-border-[#90a9aa] hover:uno-bg-[#f4f8f8]"
+                class="uno-inline-flex uno-min-h-[34px] uno-items-center uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-px-[0.65rem] uno-py-1.5 uno-text-[#262626] uno-no-underline hover:uno-border-[#a3a3a3] hover:uno-bg-[#fafafa]"
                 :href="artifact.download_url"
               >{{ artifact.label }}</a>
             </div>

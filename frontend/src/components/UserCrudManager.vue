@@ -8,17 +8,17 @@
       <template #content>
         <div class="uno-grid uno-gap-3 md:uno-grid-cols-4">
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('users.filterName') }}</span>
+            <span class="uno-text-[#737373]">{{ t('users.filterName') }}</span>
             <InputText v-model="filters.name" data-testid="filter-name" />
           </label>
 
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('users.filterEmail') }}</span>
+            <span class="uno-text-[#737373]">{{ t('users.filterEmail') }}</span>
             <InputText v-model="filters.email" data-testid="filter-email" />
           </label>
 
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('users.role') }}</span>
+            <span class="uno-text-[#737373]">{{ t('users.role') }}</span>
             <Select
               v-model="filters.role"
               data-testid="filter-role"
@@ -29,7 +29,7 @@
           </label>
 
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('users.status') }}</span>
+            <span class="uno-text-[#737373]">{{ t('users.status') }}</span>
             <Select
               v-model="filters.status"
               data-testid="filter-status"
@@ -77,7 +77,7 @@
         <div class="uno-overflow-x-auto">
           <table class="uno-min-w-full uno-border-collapse uno-text-sm">
             <thead>
-              <tr class="uno-border-b uno-border-[#dce7e7] uno-text-left uno-text-[#6f8183]">
+              <tr class="uno-border-b uno-border-[#e5e5e5] uno-text-left uno-text-[#737373]">
                 <th class="uno-px-3 uno-py-2"></th>
                 <th class="uno-px-3 uno-py-2">{{ t('users.username') }}</th>
                 <th class="uno-px-3 uno-py-2">{{ t('users.displayName') }}</th>
@@ -89,7 +89,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="user in users" :key="user.id" :data-testid="`user-row-${user.id}`" class="uno-border-b uno-border-[#eef4f4]">
+              <tr v-for="user in users" :key="user.id" :data-testid="`user-row-${user.id}`" class="uno-border-b uno-border-[#f5f5f5]">
                 <td class="uno-px-3 uno-py-3">
                   <input
                     :checked="selectedIds.includes(user.id)"

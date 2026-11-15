@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import analyzePageSource from './AnalyzePage.vue?raw';
 import automationsPageSource from './AutomationsPage.vue?raw';
-import dashboardPageSource from './DashboardPage.vue?raw';
+import notificationsPageSource from './NotificationsPage.vue?raw';
 import portfolioAlertsPageSource from './PortfolioAlertsPage.vue?raw';
 import portfolioPageSource from './PortfolioPage.vue?raw';
 import portfolioPositionsPageSource from './PortfolioPositionsPage.vue?raw';
@@ -16,7 +16,7 @@ describe('viewer role gating', () => {
   it('ties write controls to session.canWrite on operational pages', () => {
     const expectations = [
       analyzePageSource,
-      dashboardPageSource,
+      notificationsPageSource,
       runDetailPageSource,
       portfolioPageSource,
       portfolioWatchlistPageSource,
@@ -35,7 +35,7 @@ describe('viewer role gating', () => {
   });
 
   it('disables newly recovered write controls for viewer sessions', () => {
-    expect(dashboardPageSource).toContain(":disabled=\"!canWrite\"");
+    expect(notificationsPageSource).toContain('!canWrite ||');
     expect(runDetailPageSource).toContain(":disabled=\"!canWrite\"");
     expect(workspacePageSource).toContain(":disabled=\"!canWrite\"");
   });

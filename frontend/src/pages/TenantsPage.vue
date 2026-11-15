@@ -18,15 +18,15 @@
       <template #content>
         <div class="uno-grid uno-gap-3 md:uno-grid-cols-[repeat(4,minmax(0,1fr))_auto]">
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('tenants.filterName') }}</span>
+            <span class="uno-text-[#737373]">{{ t('tenants.filterName') }}</span>
             <InputText v-model="filters.name" data-testid="tenant-filter-name" />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('common.status') }}</span>
+            <span class="uno-text-[#737373]">{{ t('common.status') }}</span>
             <select
               v-model="filters.status"
               data-testid="tenant-filter-status"
-              class="uno-rounded-md uno-border uno-border-[#dce7e7] uno-bg-white uno-px-3 uno-py-2"
+              class="uno-rounded-md uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-3 uno-py-2"
             >
               <option value="">{{ t('common.all') }}</option>
               <option value="active">{{ t('common.active') }}</option>
@@ -35,14 +35,14 @@
             </select>
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('tenants.createdFrom') }}</span>
+            <span class="uno-text-[#737373]">{{ t('tenants.createdFrom') }}</span>
             <DateTimeInput
               v-model="filters.createdFrom"
               data-testid="tenant-filter-created-from"
             />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('tenants.createdTo') }}</span>
+            <span class="uno-text-[#737373]">{{ t('tenants.createdTo') }}</span>
             <DateTimeInput
               v-model="filters.createdTo"
               data-testid="tenant-filter-created-to"
@@ -75,7 +75,7 @@
         <div class="uno-overflow-x-auto">
           <table class="uno-min-w-full uno-border-collapse uno-text-sm">
             <thead>
-              <tr class="uno-border-b uno-border-[#dce7e7] uno-text-left uno-text-[#6f8183]">
+              <tr class="uno-border-b uno-border-[#e5e5e5] uno-text-left uno-text-[#737373]">
                 <th class="uno-w-10 uno-px-3 uno-py-2">
                   <input
                     type="checkbox"
@@ -95,7 +95,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="tenant in tenants" :key="tenant.id" class="uno-border-b uno-border-[#eef4f4]">
+              <tr v-for="tenant in tenants" :key="tenant.id" class="uno-border-b uno-border-[#f5f5f5]">
                 <td class="uno-px-3 uno-py-3 uno-align-top">
                   <input
                     :data-testid="`tenant-select-${tenant.tenant_id}`"
@@ -108,7 +108,7 @@
                 <td class="uno-px-3 uno-py-3 uno-align-top">
                   <button
                     type="button"
-                    class="uno-font-semibold uno-text-[#132a2d] uno-underline-offset-2 hover:uno-underline"
+                    class="uno-font-semibold uno-text-[#262626] uno-underline-offset-2 hover:uno-underline"
                     @click="openTenant(tenant.tenant_id)"
                   >
                     {{ tenant.tenant_id }}
@@ -150,11 +150,11 @@
     <Dialog v-model:visible="dialogOpen" modal :header="dialogTitle" :style="{ width: '32rem' }">
       <div class="uno-grid uno-gap-3">
         <label class="uno-grid uno-gap-[0.35rem]">
-          <span class="uno-text-[#6f8183]">{{ t('tenants.displayName') }}</span>
+          <span class="uno-text-[#737373]">{{ t('tenants.displayName') }}</span>
           <InputText v-model="tenantForm.display_name" data-testid="tenant-form-display-name" />
         </label>
         <label class="uno-grid uno-gap-[0.35rem]">
-          <span class="uno-text-[#6f8183]">{{ t('users.expiresAt') }}</span>
+          <span class="uno-text-[#737373]">{{ t('users.expiresAt') }}</span>
           <DateTimeInput v-model="tenantForm.expires_at" data-testid="tenant-form-expires-at" mode="datetime" />
         </label>
         <Message v-if="dialogError" severity="error" :closable="false">{{ dialogError }}</Message>

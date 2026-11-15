@@ -5,11 +5,11 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0b1220",
-  "theme_color": "#4fd1c5",
+  "background_color": "#162326",
+  "theme_color": "#111111",
   "icons": [
     {
-      "src": "/static/icons/app-icon.svg",
+      "src": "/static/icons/tradingagents-ta-vermilion-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

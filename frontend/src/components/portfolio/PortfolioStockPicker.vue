@@ -1,7 +1,7 @@
 <template>
   <div class="uno-grid uno-gap-3">
     <label class="uno-grid uno-gap-1">
-      <span class="uno-text-[#6f8183]">{{ t('analysis.stockMarket') }}</span>
+      <span class="uno-text-[#737373]">{{ t('analysis.stockMarket') }}</span>
       <Select
         v-model="stockMarket"
         :options="marketOptions"
@@ -13,7 +13,7 @@
     </label>
 
     <label class="uno-grid uno-gap-1">
-      <span class="uno-text-[#6f8183]">{{ t('common.ticker') }}</span>
+      <span class="uno-text-[#737373]">{{ t('common.ticker') }}</span>
       <AutoComplete
         v-model="selectedStock"
         :suggestions="stockOptions"
@@ -31,7 +31,7 @@
         <template #option="{ option }">
           <div class="uno-grid uno-gap-0.5">
             <strong>{{ option.symbol }}</strong>
-            <small class="uno-text-[#6f8183]">{{ [option.name, option.exchange].filter(Boolean).join(' · ') }}</small>
+            <small class="uno-text-[#737373]">{{ [option.name, option.exchange].filter(Boolean).join(' · ') }}</small>
           </div>
         </template>
       </AutoComplete>

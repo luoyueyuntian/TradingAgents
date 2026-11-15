@@ -19,10 +19,10 @@
         v-for="section in sections"
         :key="section.to"
         :to="section.to"
-        class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white uno-p-4 uno-no-underline"
+        class="uno-rounded-xl uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-4 uno-no-underline"
       >
-        <div class="uno-text-sm uno-font-700 uno-uppercase uno-tracking-[0.12em] uno-text-[#5f7376]">{{ section.label }}</div>
-        <div class="uno-mt-2 uno-text-2xl uno-font-800 uno-text-[#14363a]">{{ section.count }}</div>
+        <div class="uno-text-sm uno-font-700 uno-uppercase uno-tracking-[0.12em] uno-text-[#737373]">{{ section.label }}</div>
+        <div class="uno-mt-2 uno-text-2xl uno-font-800 uno-text-[#262626]">{{ section.count }}</div>
       </RouterLink>
     </div>
 

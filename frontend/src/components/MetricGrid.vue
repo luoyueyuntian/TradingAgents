@@ -6,9 +6,9 @@
       :pt="{ body: { class: 'uno-p-[0.9rem]' }, content: { class: 'uno-grid uno-gap-1 uno-p-0' } }"
     >
       <template #content>
-        <span class="uno-text-[0.78rem] uno-text-[#607174]">{{ item.label }}</span>
-        <strong class="uno-text-xl uno-text-[#132a2d]">{{ item.value }}</strong>
-        <small v-if="item.detail" class="uno-text-[#6f8183]">{{ item.detail }}</small>
+        <span class="uno-text-[0.78rem] uno-text-[#737373]">{{ item.label }}</span>
+        <strong class="uno-text-xl uno-text-[#262626]">{{ item.value }}</strong>
+        <small v-if="item.detail" class="uno-text-[#737373]">{{ item.detail }}</small>
       </template>
     </Card>
   </div>

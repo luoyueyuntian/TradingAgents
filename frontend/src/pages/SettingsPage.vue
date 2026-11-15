@@ -6,7 +6,7 @@
       :description="t('settings.description')"
     >
       <template #actions>
-        <Button icon="pi pi-refresh" :label="t('common.reload')" severity="secondary" @click="loadSettings" />
+        <Button icon="pi pi-refresh" :label="t('common.reload')" severity="secondary" :loading="refreshingModels" :disabled="refreshingModels" @click="reloadSettings" />
         <Button v-if="canManageSettings" icon="pi pi-save" :label="t('common.save')" @click="saveSettings" />
       </template>
     </PageHeader>
@@ -14,13 +14,15 @@
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <Message v-if="notice" severity="success" :closable="false">{{ notice }}</Message>
 
+    <Message v-if="modelRefreshWarning" severity="warn" :closable="false">{{ modelRefreshWarning }}</Message>
+
     <div class="uno-grid uno-gap-4">
       <Card>
         <template #title>{{ t('settings.llmConfiguration') }}</template>
         <template #content>
           <div data-testid="llm-settings-grid" class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] uno-gap-[0.8rem]">
             <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('common.provider') }}</span>
+              <span class="uno-text-[#737373]">{{ t('common.provider') }}</span>
               <Select
                 v-model="form.llm.provider"
                 :options="providerOptions"
@@ -31,7 +33,7 @@
               />
             </label>
             <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.quickModel') }}</span>
+              <span class="uno-text-[#737373]">{{ t('analysis.quickModel') }}</span>
               <Select
                 v-model="quickModelSelectValue"
                 :options="quickModelOptions"
@@ -42,11 +44,11 @@
               />
             </label>
             <label v-if="showQuickCustomModelInput" data-testid="settings-quick-custom-model-input" class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.quickCustomModelId') }}</span>
+              <span class="uno-text-[#737373]">{{ t('analysis.quickCustomModelId') }}</span>
               <InputText v-model="form.llm.quick_think_model" class="uno-w-full" />
             </label>
             <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.deepModel') }}</span>
+              <span class="uno-text-[#737373]">{{ t('analysis.deepModel') }}</span>
               <Select
                 v-model="deepModelSelectValue"
                 :options="deepModelOptions"
@@ -57,23 +59,23 @@
               />
             </label>
             <label v-if="showDeepCustomModelInput" data-testid="settings-deep-custom-model-input" class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.deepCustomModelId') }}</span>
+              <span class="uno-text-[#737373]">{{ t('analysis.deepCustomModelId') }}</span>
               <InputText v-model="form.llm.deep_think_model" class="uno-w-full" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('settings.temperature') }}</span>
+              <span class="uno-text-[#737373]">{{ t('settings.temperature') }}</span>
               <InputText v-model="form.llm.temperature" type="number" :placeholder="t('common.default')" class="uno-w-full" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('settings.backendUrl') }}</span>
+              <span class="uno-text-[#737373]">{{ t('settings.backendUrl') }}</span>
               <InputText v-model="form.llm.backend_url" :placeholder="t('common.providerDefault')" class="uno-w-full" />
             </label>
             <label v-if="currentProviderApiKeyEnv" data-testid="provider-api-key-field" class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('settings.providerApiKey', { env: currentProviderApiKeyEnv }) }}</span>
+              <span class="uno-text-[#737373]">{{ t('settings.providerApiKey', { env: currentProviderApiKeyEnv }) }}</span>
               <InputText v-model="currentProviderApiKey" type="password" :placeholder="t('common.notSet')" class="uno-w-full" />
             </label>
           </div>
-          <p v-if="!currentProviderApiKeyEnv" data-testid="provider-api-key-empty" class="uno-mt-3 uno-text-sm uno-text-[#6f8183]">
+          <p v-if="!currentProviderApiKeyEnv" data-testid="provider-api-key-empty" class="uno-mt-3 uno-text-sm uno-text-[#737373]">
             {{ t('settings.noProviderApiKeyRequired') }}
           </p>
         </template>
@@ -84,27 +86,27 @@
         <template #content>
           <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
             <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('settings.defaultUiLanguage') }}</span>
+              <span class="uno-text-[#737373]">{{ t('settings.defaultUiLanguage') }}</span>
               <Select v-model="form.workspace.default_ui_language" :options="uiLanguageOptions" option-label="label" option-value="value" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('common.language') }}</span>
+              <span class="uno-text-[#737373]">{{ t('common.language') }}</span>
               <Select v-model="form.analysis.output_language" :options="languageOptions" option-label="label" option-value="value" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.marketProfile') }}</span>
+              <span class="uno-text-[#737373]">{{ t('analysis.marketProfile') }}</span>
               <Select v-model="form.analysis.market_profile" :options="marketProfileOptions" option-label="label" option-value="value" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('settings.researchDepth') }}</span>
+              <span class="uno-text-[#737373]">{{ t('settings.researchDepth') }}</span>
               <InputText v-model="form.analysis.research_depth" type="number" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('settings.riskRounds') }}</span>
+              <span class="uno-text-[#737373]">{{ t('settings.riskRounds') }}</span>
               <InputText v-model="form.analysis.max_risk_discuss_rounds" type="number" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('settings.benchmarkTicker') }}</span>
+              <span class="uno-text-[#737373]">{{ t('settings.benchmarkTicker') }}</span>
               <InputText v-model="form.analysis.benchmark_ticker" :placeholder="t('common.auto')" />
             </label>
             <label class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
@@ -120,12 +122,12 @@
         <template #content>
           <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
             <label v-for="field in vendorFields" :key="field.key" class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ field.label }}</span>
+              <span class="uno-text-[#737373]">{{ field.label }}</span>
               <InputText v-model="form.data.data_vendors[field.key]" :placeholder="t('settings.vendorPlaceholder')" />
             </label>
           </div>
           <label class="uno-mt-3 uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('settings.globalNewsQueries') }}</span>
+            <span class="uno-text-[#737373]">{{ t('settings.globalNewsQueries') }}</span>
             <Textarea v-model="globalNewsQueriesText" rows="4" auto-resize />
           </label>
         </template>
@@ -136,15 +138,15 @@
         <template #content>
           <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
             <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('settings.tenantApiToken') }}</span>
+              <span class="uno-text-[#737373]">{{ t('settings.tenantApiToken') }}</span>
               <InputText v-model="form.security.web_api_token" type="password" :placeholder="t('common.optional')" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('settings.webhookUrl') }}</span>
+              <span class="uno-text-[#737373]">{{ t('settings.webhookUrl') }}</span>
               <InputText v-model="form.integrations.webhook.url" placeholder="https://example.com/webhook" />
             </label>
             <label class="uno-grid uno-gap-[0.35rem]">
-              <span class="uno-text-[#6f8183]">{{ t('settings.webhookBearerToken') }}</span>
+              <span class="uno-text-[#737373]">{{ t('settings.webhookBearerToken') }}</span>
               <InputText v-model="form.integrations.webhook.bearer_token" type="password" :placeholder="t('common.optional')" />
             </label>
             <label class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
@@ -169,7 +171,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import PageHeader from '../components/PageHeader.vue';
 import { locales as uiLocales, setDefaultLocale, useI18n, type Locale } from '../i18n';
-import { apiGet, apiPut } from '../services/api';
+import { apiGet, apiPost, apiPut } from '../services/api';
 import { useSession } from '../stores/session';
 import type { JsonRecord } from '../utils/format';
 import {
@@ -183,6 +185,8 @@ const canManageSettings = computed(() => session.isAdmin.value);
 const providers = ref<JsonRecord[]>([]);
 const error = ref('');
 const notice = ref('');
+const refreshingModels = ref(false);
+const modelRefreshWarning = ref('');
 const { t } = useI18n();
 const vendorFields = computed(() => [
   { key: 'core_stock_apis', label: t('settings.coreStockApis') },
@@ -343,6 +347,30 @@ function mergeSettings(payload: JsonRecord) {
   };
 }
 
+async function reloadSettings() {
+  if (refreshingModels.value) return;
+  refreshingModels.value = true;
+  modelRefreshWarning.value = '';
+  error.value = '';
+  notice.value = '';
+  try {
+    const items = await apiPost<JsonRecord[]>('/api/settings/models/refresh', {}, session.apiContext.value);
+    await loadSettings();
+    providers.value = items;
+    syncProviderFields();
+    const failed = items.filter((item) => item.model_refresh_error);
+    if (failed.length) {
+      modelRefreshWarning.value = t('settings.modelRefreshPartial') + ' ' + failed.map((item) => `${item.display_name}: ${item.model_refresh_error}`).join('; ');
+    } else {
+      notice.value = t('settings.modelsRefreshed');
+    }
+  } catch (exc) {
+    error.value = exc instanceof Error ? exc.message : t('settings.loadError');
+  } finally {
+    refreshingModels.value = false;
+  }
+}
+
 async function loadSettings() {
   error.value = '';
   notice.value = '';
@@ -370,7 +398,7 @@ watch(() => form.llm.provider, (provider, previousProvider) => {
     return;
   }
   syncProviderFields(true);
-});
+}, { flush: 'sync' });
 
 function cleanMasked(value: unknown) {
   return value === '***' ? undefined : value;
@@ -408,8 +436,8 @@ async function saveSettings() {
       },
     }, session.apiContext.value);
     setDefaultLocale(String(form.workspace.default_ui_language || 'zh-CN') as Locale);
-    notice.value = t('settings.saved');
     await loadSettings();
+    if (!error.value) notice.value = t('settings.saved');
   } catch (exc) {
     error.value = exc instanceof Error ? exc.message : t('settings.saveError');
   }

@@ -11,7 +11,7 @@
     @submit="save"
   >
     <label class="uno-grid uno-gap-1">
-      <span class="uno-text-[#6f8183]">{{ t('portfolio.stockGroupName') }}</span>
+      <span class="uno-text-[#737373]">{{ t('portfolio.stockGroupName') }}</span>
       <InputText v-model="name" />
     </label>
 
@@ -29,7 +29,7 @@
         <span
           v-for="ticker in tickers"
           :key="ticker"
-          class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
+          class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#f5f5f5] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#404040]"
         >
           {{ companyNames[ticker] || ticker }}
           <button type="button" class="uno-bg-transparent uno-p-0" @click="removeTicker(ticker)">x</button>

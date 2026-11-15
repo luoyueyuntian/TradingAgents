@@ -14,7 +14,7 @@
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <MetricGrid :items="metrics" />
 
-    <DataTable :value="groups" size="small" class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white">
+    <DataTable :value="groups" size="small" class="uno-rounded-xl uno-border uno-border-[#e5e5e5] uno-bg-white">
       <Column field="name" :header="t('portfolio.stockGroupName')" />
       <Column :header="t('portfolio.stockGroupTickers')">
         <template #body="{ data }">

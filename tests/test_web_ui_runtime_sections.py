@@ -70,7 +70,7 @@ def test_static_pwa_assets_are_served_without_checked_in_spa_bundle():
     assert manifest.status_code == 200
     assert '"display": "standalone"' in manifest.text
     assert service_worker.status_code == 200
-    assert "tradingagents-spa-v2" in service_worker.text
+    assert "tradingagents-spa-v5" in service_worker.text
     assert "/static/spa/assets/app.js" not in service_worker.text
     assert "url.pathname.startsWith('/static/spa/')" in service_worker.text
     assert "fetchAndCache(request)" in service_worker.text
@@ -101,6 +101,7 @@ def test_vue_router_splits_primary_workflows_into_pages():
         "users": ("/users", "UserManagementPage.vue"),
         "login": ("/login", "LoginPage.vue"),
         "profile": ("/profile", "ProfilePage.vue"),
+        "notifications": ("/notifications", "NotificationsPage.vue"),
         "change-password": ("/change-password", "ForcePasswordChangePage.vue"),
     }
 
@@ -132,7 +133,7 @@ def test_vue_i18n_sources_include_english_and_chinese_copy():
 
 def test_page_components_keep_existing_backend_api_boundaries():
     page_expectations = {
-        "DashboardPage.vue": ["/api/dashboard", "/api/briefing/daily", "/api/notifications"],
+        "DashboardPage.vue": ["/api/dashboard", "/api/briefing/daily", "/api/analytics"],
         "AnalyzePage.vue": ["/api/providers", "/api/runs", "/api/runs/ticker-history", "/cancel", "/api/stocks", "buildStockSearchPath"],
         "RunsPage.vue": ["/api/runs/company-groups"],
         "RunDetailPage.vue": ["/api/runs", "/artifacts", "/retry", "/cancel", "/terminal-output"],

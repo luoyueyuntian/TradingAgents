@@ -38,8 +38,8 @@
             </label>
             <Button icon="pi pi-save" :label="t('automations.saveAutomation')" :disabled="!canWrite" @click="saveRule" />
           </div>
-          <details class="uno-mt-3 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3">
-            <summary class="uno-cursor-pointer uno-font-700 uno-text-[#243a3d]">{{ t('automations.analysisConfig') }}</summary>
+          <details class="uno-mt-3 uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
+            <summary class="uno-cursor-pointer uno-font-700 uno-text-[#404040]">{{ t('automations.analysisConfig') }}</summary>
             <div class="uno-mt-3 uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
               <Select v-model="form.llm_provider" :options="providerOptions" option-label="label" option-value="value" :disabled="!canWrite" @change="syncProviderModels" />
               <InputText v-model="form.quick_think_model" :placeholder="t('analysis.quickModel')" :disabled="!canWrite" />
@@ -68,12 +68,12 @@
         <template #title>{{ t('automations.rules') }}</template>
         <template #content>
           <div class="uno-grid uno-gap-[0.65rem]">
-            <div v-for="rule in rules" :key="rule.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+            <div v-for="rule in rules" :key="rule.id" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ rule.name }}</span>
                 <Tag :value="rule.enabled ? t('common.enabled') : t('common.paused')" :severity="rule.enabled ? 'success' : 'warn'" />
               </div>
-              <small class="uno-text-[#6f8183]">{{ rule.source }} · {{ rule.cadence }} · {{ rule.time_of_day || t('common.na') }} · {{ t('automations.nextRun', { time: rule.next_run_at || t('common.na') }) }}</small>
+              <small class="uno-text-[#737373]">{{ rule.source }} · {{ rule.cadence }} · {{ rule.time_of_day || t('common.na') }} · {{ t('automations.nextRun', { time: rule.next_run_at || t('common.na') }) }}</small>
               <div class="uno-mt-[0.6rem] uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                 <Button icon="pi pi-bolt" :label="t('automations.runNow')" severity="secondary" :disabled="!canWrite" @click="runNow(rule.id)" />
                 <Button :icon="rule.enabled ? 'pi pi-pause' : 'pi pi-play'" :label="rule.enabled ? t('common.pause') : t('common.enable')" severity="secondary" :disabled="!canWrite" @click="toggleRule(rule)" />
@@ -81,18 +81,18 @@
               </div>
             </div>
           </div>
-          <p v-if="!rules.length" class="uno-text-[#6f8183]">{{ t('automations.noRules') }}</p>
+          <p v-if="!rules.length" class="uno-text-[#737373]">{{ t('automations.noRules') }}</p>
         </template>
       </Card>
 
       <Card>
         <template #title>{{ t('automations.oneTimeTitle') }}</template>
         <template #content>
-          <p class="uno-mb-3 uno-text-[#6f8183]">{{ t('automations.oneTimeDescription') }}</p>
+          <p class="uno-mb-3 uno-text-[#737373]">{{ t('automations.oneTimeDescription') }}</p>
           <div data-testid="one-time-task-builder" class="uno-grid uno-gap-4">
             <section
               data-testid="one-time-section-basics"
-              class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3"
+              class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3"
             >
               <div class="uno-mb-2 uno-font-700">Basics</div>
               <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
@@ -130,7 +130,7 @@
 
             <section
               data-testid="one-time-section-manual-stocks"
-              class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3"
+              class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3"
             >
               <div class="uno-mb-2 uno-font-700">{{ t('automations.manualStocks') }}</div>
               <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
@@ -163,11 +163,11 @@
                 <div
                   v-for="stock in oneTimeForm.manualStocks"
                   :key="stock.symbol"
-                  class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#f7faf9] uno-p-3"
+                  class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-[#fafafa] uno-p-3"
                 >
                   <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-2">
                     <span data-testid="manual-stock-symbol" class="uno-font-700">{{ stock.symbol }}</span>
-                    <small class="uno-text-[#6f8183]">{{ stock.name || stock.exchange || stock.market }}</small>
+                    <small class="uno-text-[#737373]">{{ stock.name || stock.exchange || stock.market }}</small>
                   </div>
                   <Button
                     icon="pi pi-times"
@@ -178,13 +178,13 @@
                     @click="removeManualStockItem(stock.symbol)"
                   />
                 </div>
-                <p v-if="!oneTimeForm.manualStocks.length" class="uno-text-[#6f8183]">No manual stocks selected.</p>
+                <p v-if="!oneTimeForm.manualStocks.length" class="uno-text-[#737373]">No manual stocks selected.</p>
               </div>
             </section>
 
             <section
               data-testid="one-time-section-groups-watchlist"
-              class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3"
+              class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3"
             >
               <div class="uno-mb-2 uno-font-700">{{ t('automations.stockGroups') }}</div>
               <div class="uno-grid uno-gap-[0.65rem]">
@@ -201,22 +201,22 @@
                     @change="toggleSelectedGroup(group.id, ($event.target as HTMLInputElement).checked)"
                   >
                   <span>{{ group.name }}</span>
-                  <small class="uno-text-[#6f8183]">{{ group.tickers.join(', ') }}</small>
+                  <small class="uno-text-[#737373]">{{ group.tickers.join(', ') }}</small>
                 </label>
-                <p v-if="!stockGroups.length" class="uno-text-[#6f8183]">No stock groups available yet.</p>
+                <p v-if="!stockGroups.length" class="uno-text-[#737373]">No stock groups available yet.</p>
               </div>
               <div v-if="selectedGroups.length" class="uno-mt-3 uno-flex uno-flex-wrap uno-gap-2">
                 <span
                   v-for="group in selectedGroups"
                   :key="group.id"
                   :data-testid="`selected-group-chip-${group.id}`"
-                  class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
+                  class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#f5f5f5] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#404040]"
                 >
                   {{ group.name }}
                   <button
                     type="button"
                     :data-testid="`remove-selected-group-${group.id}`"
-                    class="uno-bg-transparent uno-p-0 uno-text-[#5f7376]"
+                    class="uno-bg-transparent uno-p-0 uno-text-[#737373]"
                     :disabled="!canWrite"
                     @click="removeSelectedGroup(group.id)"
                   >
@@ -232,30 +232,30 @@
                   :disabled="!canWrite"
                 >
                 <span>{{ t('automations.includeWatchlist') }}</span>
-                <small class="uno-text-[#6f8183]">{{ watchlistTickers.join(', ') || t('common.na') }}</small>
+                <small class="uno-text-[#737373]">{{ watchlistTickers.join(', ') || t('common.na') }}</small>
               </label>
             </section>
 
             <section
               data-testid="one-time-section-resolved-universe"
-              class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3"
+              class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3"
             >
               <div class="uno-mb-2 uno-flex uno-items-center uno-justify-between uno-gap-3">
                 <span class="uno-font-700">{{ t('automations.resolvedUniverse') }}</span>
-                <span class="uno-text-sm uno-font-700 uno-text-[#5f7376]">{{ resolvedUniverseCountLabel }}</span>
+                <span class="uno-text-sm uno-font-700 uno-text-[#737373]">{{ resolvedUniverseCountLabel }}</span>
               </div>
               <div class="uno-flex uno-flex-wrap uno-gap-2">
                 <span
                   v-for="ticker in visibleResolvedTickers"
                   :key="ticker"
                   :data-testid="`resolved-ticker-${ticker}`"
-                  class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
+                  class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#f5f5f5] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#404040]"
                 >
                   {{ ticker }}
                   <button
                     type="button"
                     :data-testid="`remove-resolved-ticker-${ticker}`"
-                    class="uno-bg-transparent uno-p-0 uno-text-[#5f7376]"
+                    class="uno-bg-transparent uno-p-0 uno-text-[#737373]"
                     :disabled="!canWrite"
                     @click="removeResolvedTicker(ticker)"
                   >
@@ -263,16 +263,16 @@
                   </button>
                 </span>
               </div>
-              <p v-if="!visibleResolvedTickers.length" class="uno-mt-2 uno-text-[#6f8183]">No stocks resolved yet.</p>
+              <p v-if="!visibleResolvedTickers.length" class="uno-mt-2 uno-text-[#737373]">No stocks resolved yet.</p>
             </section>
 
             <section
               data-testid="one-time-section-save"
-              class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3"
+              class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3"
             >
               <div class="uno-mb-2 uno-font-700">{{ t('common.save') }}</div>
-              <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3">
-                <summary class="uno-cursor-pointer uno-font-700 uno-text-[#243a3d]">{{ t('automations.analysisConfig') }}</summary>
+              <details class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
+                <summary class="uno-cursor-pointer uno-font-700 uno-text-[#404040]">{{ t('automations.analysisConfig') }}</summary>
                 <div class="uno-mt-3 uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
                   <Select v-model="oneTimeForm.llm_provider" data-testid="one-time-llm-provider" :options="providerOptions" option-label="label" option-value="value" :disabled="!canWrite" @change="syncProviderModels" />
                   <InputText v-model="oneTimeForm.quick_think_model" data-testid="one-time-quick-model" :placeholder="t('analysis.quickModel')" :disabled="!canWrite" />
@@ -315,23 +315,23 @@
             <div
               v-for="task in oneTimeTasks"
               :key="String(task.id)"
-              class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3"
+              class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3"
             >
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ task.name }}</span>
                 <Tag :value="formatOneTimeTaskStatus(task.status)" severity="info" />
               </div>
-              <small class="uno-text-[#6f8183]">
+              <small class="uno-text-[#737373]">
                 {{ task.scheduled_for || t('common.na') }} · {{ task.analysis_date || t('common.na') }}
               </small>
-              <div class="uno-mt-2 uno-text-sm uno-text-[#5f7376]">
+              <div class="uno-mt-2 uno-text-sm uno-text-[#737373]">
                 {{ oneTimeTaskSourceSummary(task) }} · {{ oneTimeTaskFinalCount(task) }} stocks
               </div>
               <div class="uno-mt-2 uno-flex uno-flex-wrap uno-gap-2">
                 <span
                   v-for="ticker in oneTimeTaskTickers(task)"
                   :key="ticker"
-                  class="uno-rounded-full uno-bg-[#edf4f2] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
+                  class="uno-rounded-full uno-bg-[#f5f5f5] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#404040]"
                 >
                   {{ ticker }}
                 </span>
@@ -367,14 +367,14 @@
                   :key="runId"
                   :data-testid="`completed-task-run-${runId}`"
                   :href="`/runs/${encodeURIComponent(runId)}`"
-                  class="uno-rounded-full uno-border uno-border-[#dce7e7] uno-bg-white uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#243a3d]"
+                  class="uno-rounded-full uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#404040]"
                 >
                   {{ runId }}
                 </a>
               </div>
             </div>
           </div>
-          <p v-if="!oneTimeTasks.length" class="uno-text-[#6f8183]">No one-time tasks yet.</p>
+          <p v-if="!oneTimeTasks.length" class="uno-text-[#737373]">No one-time tasks yet.</p>
         </template>
       </Card>
     </div>

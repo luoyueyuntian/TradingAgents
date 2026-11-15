@@ -1,5 +1,5 @@
 <template>
-  <section :class="embedded ? '' : 'uno-flex uno-min-h-screen uno-items-center uno-justify-center uno-bg-[#f6f7f7] uno-p-5'">
+  <section :class="embedded ? '' : 'uno-flex uno-min-h-screen uno-items-center uno-justify-center uno-bg-[#fafafa] uno-p-5'">
     <Card :class="embedded ? 'uno-w-full' : 'uno-w-full uno-max-w-[460px]'">
       <template #title>{{ t('auth.changePasswordTitle') }}</template>
       <template #content>

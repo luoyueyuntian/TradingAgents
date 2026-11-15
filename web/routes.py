@@ -68,6 +68,7 @@ from .automation import (
     run_automation_rule_now,
     update_automation_rule_enabled,
 )
+from .model_catalog_refresh import load_cache, refresh_catalogs
 from .one_time_tasks import (
     cancel_one_time_task,
     create_one_time_task,
@@ -2503,6 +2504,8 @@ def _build_notification_center_response(
     member: str | None = None,
     kind: str | None = None,
     severity: str | None = None,
+    offset: int = 0,
+    limit: int | None = 30,
 ) -> NotificationCenterResponse:
     reads = _load_notification_reads(tenant_id)
     runs = list_runs(tenant_id)
@@ -2667,7 +2670,10 @@ def _build_notification_center_response(
         member_filter=member_filter,
         kind_filter=kind_filter,
         severity_filter=severity_filter,
-        items=visible_items[:30],
+        items=visible_items[offset:] if limit is None else visible_items[offset:offset + limit],
+        filtered_count=len(visible_items),
+        offset=offset,
+        limit=limit or len(visible_items),
     )
 
 
@@ -3565,18 +3571,30 @@ async def refresh_stocks(payload: StockCatalogRefreshRequest):
 
 
 @router.get("/api/providers", response_model=list[ProviderInfo])
-async def list_providers():
+async def list_providers(request: Request):
+    return _provider_infos(load_cache(get_web_state_dir(_request_tenant_id(request))))
+
+
+@router.post("/api/settings/models/refresh", response_model=list[ProviderInfo])
+async def refresh_provider_models(request: Request):
+    tenant_id = _request_tenant_id(request)
+    settings = load_settings(path=get_web_settings_path(tenant_id))
+    models, errors = await refresh_catalogs(get_web_state_dir(tenant_id), settings)
+    return _provider_infos(models, errors)
+
+
+def _provider_infos(cached: dict, errors: dict | None = None):
     """Return available LLM providers and their model catalogs."""
     providers = []
-    for provider_key, modes in MODEL_OPTIONS.items():
+    for provider_key, modes in {**MODEL_OPTIONS, "openrouter": MODEL_OPTIONS.get("openrouter", {})}.items():
         provider_spec = OPENAI_COMPATIBLE_PROVIDERS.get(provider_key)
         quick = [
             ProviderModel(label=label, value=value)
-            for label, value in modes.get("quick", [])
+            for label, value in (cached[provider_key] + [("Custom model ID", "custom")] if provider_key in cached else modes.get("quick", [("Custom model ID", "custom")]))
         ]
         deep = [
             ProviderModel(label=label, value=value)
-            for label, value in modes.get("deep", [])
+            for label, value in (cached[provider_key] + [("Custom model ID", "custom")] if provider_key in cached else modes.get("deep", [("Custom model ID", "custom")]))
         ]
         providers.append(ProviderInfo(
             provider=provider_key,
@@ -3585,6 +3603,7 @@ async def list_providers():
             deep_models=deep,
             backend_url=provider_spec.base_url if provider_spec else None,
             api_key_env=PROVIDER_API_KEY_MAP.get(provider_key),
+            model_refresh_error=(errors or {}).get(provider_key),
         ))
     return providers
 
@@ -4109,6 +4128,8 @@ async def get_notification_center(
     member: str | None = None,
     kind: str | None = None,
     severity: str | None = None,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(30, ge=1, le=100),
 ):
     """Return tenant-scoped in-app notifications derived from workspace activity."""
     tenant_id = _request_tenant_id(request)
@@ -4118,6 +4139,8 @@ async def get_notification_center(
         member=member,
         kind=kind,
         severity=severity,
+        offset=offset,
+        limit=limit,
     )
 
 
@@ -4128,9 +4151,9 @@ async def mark_all_notifications_read(
     kind: str | None = None,
     severity: str | None = None,
 ):
-    """Mark all currently visible notifications as read."""
+    """Mark all notifications matching the selected filters as read."""
     tenant_id = _request_tenant_id(request)
-    center = _build_notification_center_response(tenant_id, member=member, kind=kind, severity=severity)
+    center = _build_notification_center_response(tenant_id, member=member, kind=kind, severity=severity, limit=None)
     unread = [item.id for item in center.items if not item.is_read]
     reads = _load_notification_reads(tenant_id)
     read_at = _now_ts()
@@ -4145,7 +4168,7 @@ async def mark_all_notifications_read(
 async def mark_notification_read(notification_id: str, request: Request):
     """Mark one notification as read."""
     tenant_id = _request_tenant_id(request)
-    center = _build_notification_center_response(tenant_id)
+    center = _build_notification_center_response(tenant_id, limit=None)
     if not any(item.id == notification_id for item in center.items):
         raise HTTPException(status_code=404, detail="Notification not found")
 

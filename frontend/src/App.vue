@@ -1,5 +1,5 @@
 <template>
-  <div v-if="bootstrapping" class="uno-flex uno-min-h-screen uno-items-center uno-justify-center uno-bg-[#f6f7f7] uno-text-[#486164]">
+  <div v-if="bootstrapping" class="uno-flex uno-min-h-screen uno-items-center uno-justify-center uno-bg-[#fafafa] uno-text-[#525252]">
     {{ t('auth.loadingSession') }}
   </div>
   <AppLayout v-else-if="session.state.currentUser && !session.mustChangePassword.value" />

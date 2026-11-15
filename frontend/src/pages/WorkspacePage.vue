@@ -42,12 +42,12 @@
             <Button icon="pi pi-search" :label="t('common.search')" @click="runSearch" />
           </div>
           <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
-            <div v-for="item in asArray(searchResults?.results)" :key="`${item.kind}-${item.entity_id}`" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+            <div v-for="item in asArray(searchResults?.results)" :key="`${item.kind}-${item.entity_id}`" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ item.title }}</span>
                 <Tag :value="item.kind" severity="info" />
               </div>
-              <small class="uno-text-[#6f8183]">{{ item.subtitle }} · {{ item.excerpt }}</small>
+              <small class="uno-text-[#737373]">{{ item.subtitle }} · {{ item.excerpt }}</small>
             </div>
           </div>
         </template>
@@ -63,10 +63,10 @@
           <Textarea v-model="note.content" rows="4" auto-resize :placeholder="t('workspace.notePlaceholder')" class="uno-mt-3 uno-w-full" :disabled="!canWrite" />
           <Button icon="pi pi-save" :label="t('workspace.saveNote')" class="uno-mt-3" :disabled="!canWrite" @click="saveNote" />
           <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
-            <div v-for="item in notes" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+            <div v-for="item in notes" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ item.ticker || item.run_id || t('workspace.workspaceFallback') }}</span>
-                <small class="uno-text-[#6f8183]">{{ formatDateTime(item.updated_at) }}</small>
+                <small class="uno-text-[#737373]">{{ formatDateTime(item.updated_at) }}</small>
               </div>
               <p>{{ item.content }}</p>
             </div>
@@ -83,7 +83,7 @@
             <Button icon="pi pi-user-plus" :label="t('common.add')" :disabled="!canWrite" @click="saveMember" />
           </div>
           <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
-            <div v-for="item in members" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+            <div v-for="item in members" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ item.name }}</span>
                 <Tag :value="item.role || t('workspace.member')" severity="secondary" />
@@ -107,42 +107,42 @@
             />
           </div>
           <div v-if="memberWorkspace" class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
-            <div class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+            <div class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ memberWorkspace.member.name }}</span>
                 <Tag :value="memberWorkspace.member.role || t('workspace.member')" severity="secondary" />
               </div>
-              <small class="uno-text-[#6f8183]">
+              <small class="uno-text-[#737373]">
                 {{ t('workspace.assignedActions') }}: {{ memberWorkspace.summary.assigned_action_count }} ·
                 {{ t('workspace.pendingReviews') }}: {{ memberWorkspace.summary.pending_review_count }} ·
                 {{ t('workspace.mentions') }}: {{ memberWorkspace.summary.mention_count }}
               </small>
             </div>
             <div class="uno-grid uno-gap-[0.65rem]">
-              <div v-for="item in memberWorkspace.assigned_actions" :key="item.run_id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div v-for="item in memberWorkspace.assigned_actions" :key="item.run_id" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
                 <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                   <span>{{ item.ticker || item.run_id }}</span>
                   <Tag :value="item.action_status || t('common.pending')" severity="info" />
                 </div>
-                <small class="uno-text-[#6f8183]">{{ item.next_action || item.note || t('workspace.noMemberWorkspace') }}</small>
+                <small class="uno-text-[#737373]">{{ item.next_action || item.note || t('workspace.noMemberWorkspace') }}</small>
               </div>
-              <div v-for="item in memberWorkspace.pending_reviews" :key="item.run_id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div v-for="item in memberWorkspace.pending_reviews" :key="item.run_id" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
                 <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                   <span>{{ item.run_id }}</span>
                   <Tag :value="item.status" severity="warn" />
                 </div>
-                <small class="uno-text-[#6f8183]">{{ item.note || t('workspace.noMemberWorkspace') }}</small>
+                <small class="uno-text-[#737373]">{{ item.note || t('workspace.noMemberWorkspace') }}</small>
               </div>
-              <div v-for="item in memberWorkspace.recent_comments" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+              <div v-for="item in memberWorkspace.recent_comments" :key="item.id" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
                 <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                   <span>{{ item.author }}</span>
-                  <small class="uno-text-[#6f8183]">{{ formatDateTime(item.created_at) }}</small>
+                  <small class="uno-text-[#737373]">{{ formatDateTime(item.created_at) }}</small>
                 </div>
-                <small class="uno-text-[#6f8183]">{{ item.content }}</small>
+                <small class="uno-text-[#737373]">{{ item.content }}</small>
               </div>
             </div>
           </div>
-          <p v-else class="uno-mt-3 uno-text-[#6f8183]">{{ t('workspace.noMemberWorkspace') }}</p>
+          <p v-else class="uno-mt-3 uno-text-[#737373]">{{ t('workspace.noMemberWorkspace') }}</p>
         </template>
       </Card>
 
@@ -162,12 +162,12 @@
         <template #title>{{ t('workspace.timeline') }}</template>
         <template #content>
           <div class="uno-grid uno-gap-[0.65rem]">
-            <div v-for="event in asArray(timeline?.events).slice(0, 12)" :key="event.id || `${event.kind}-${event.occurred_at}`" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+            <div v-for="event in asArray(timeline?.events).slice(0, 12)" :key="event.id || `${event.kind}-${event.occurred_at}`" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ event.title }}</span>
                 <Tag :value="event.kind" />
               </div>
-              <small class="uno-text-[#6f8183]">{{ formatDateTime(event.occurred_at) }} · {{ event.subtitle || event.description }}</small>
+              <small class="uno-text-[#737373]">{{ formatDateTime(event.occurred_at) }} · {{ event.subtitle || event.description }}</small>
             </div>
           </div>
         </template>
@@ -177,12 +177,12 @@
         <template #title>{{ t('workspace.calendar') }}</template>
         <template #content>
           <div class="uno-grid uno-gap-[0.65rem]">
-            <div v-for="day in asArray(calendar?.days).slice(0, 7)" :key="day.date" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+            <div v-for="day in asArray(calendar?.days).slice(0, 7)" :key="day.date" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ day.date }}</span>
                 <Tag :value="String(asArray(day.events).length)" severity="info" />
               </div>
-              <small class="uno-text-[#6f8183]">{{ asArray(day.events).map((event) => event.title).join(' · ') || t('workspace.noCalendarEvents') }}</small>
+              <small class="uno-text-[#737373]">{{ asArray(day.events).map((event) => event.title).join(' · ') || t('workspace.noCalendarEvents') }}</small>
             </div>
           </div>
         </template>
@@ -192,18 +192,18 @@
         <template #title>{{ t('workspace.actionBoard') }}</template>
         <template #content>
           <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-4">
-            <div v-for="column in actionBoardColumns" :key="column.key" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+            <div v-for="column in actionBoardColumns" :key="column.key" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ column.label }}</span>
                 <Tag :value="String(column.items.length)" severity="info" />
               </div>
               <div class="uno-mt-3 uno-grid uno-gap-[0.65rem]">
-                <div v-for="item in column.items" :key="item.run_id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-[#fbfdfd] uno-p-3">
+                <div v-for="item in column.items" :key="item.run_id" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-[#ffffff] uno-p-3">
                   <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                     <span>{{ item.ticker || item.run_id }}</span>
                     <Tag :value="item.priority || t('common.na')" severity="secondary" />
                   </div>
-                  <small class="uno-text-[#6f8183]">{{ item.next_action || item.note || t('workspace.noActionBoard') }}</small>
+                  <small class="uno-text-[#737373]">{{ item.next_action || item.note || t('workspace.noActionBoard') }}</small>
                   <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                     <Select
                       :model-value="item.action_status"
@@ -224,7 +224,7 @@
                     />
                   </div>
                 </div>
-                <p v-if="!column.items.length" class="uno-text-[#6f8183]">{{ t('workspace.noActionBoard') }}</p>
+                <p v-if="!column.items.length" class="uno-text-[#737373]">{{ t('workspace.noActionBoard') }}</p>
               </div>
             </div>
           </div>
@@ -241,12 +241,12 @@
             <Button icon="pi pi-download" :label="t('workspace.exportPublicShares')" severity="secondary" @click="exportPublicShares" />
           </div>
           <div class="uno-grid uno-gap-[0.65rem]">
-            <div v-for="view in views" :key="view.id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+            <div v-for="view in views" :key="view.id" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ view.name }}</span>
                 <Tag :value="view.group || t('workspace.view')" severity="info" />
               </div>
-              <small class="uno-text-[#6f8183]">{{ view.url }}</small>
+              <small class="uno-text-[#737373]">{{ view.url }}</small>
               <div class="uno-mt-3 uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                 <Button icon="pi pi-copy" :label="t('workspace.duplicateView')" severity="secondary" :disabled="!canWrite" @click="duplicateView(view.id)" />
                   <Button
@@ -259,12 +259,12 @@
                 <Button icon="pi pi-trash" :label="t('common.delete')" severity="danger" outlined :disabled="!canWrite" @click="deleteView(view.id)" />
               </div>
             </div>
-            <div v-for="share in shares" :key="share.share_id" class="uno-rounded-lg uno-border uno-border-[#dde7e7] uno-bg-white uno-p-3">
+            <div v-for="share in shares" :key="share.share_id" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
               <div class="uno-flex uno-items-center uno-justify-between uno-gap-3 uno-font-700">
                 <span>{{ t('common.publicSnapshot', { ticker: share.ticker }) }}</span>
                 <a :href="share.url" target="_blank" rel="noopener">{{ t('common.open') }}</a>
               </div>
-              <small class="uno-text-[#6f8183]">{{ share.share_id }} · {{ share.status }}</small>
+              <small class="uno-text-[#737373]">{{ share.share_id }} · {{ share.status }}</small>
             </div>
           </div>
         </template>

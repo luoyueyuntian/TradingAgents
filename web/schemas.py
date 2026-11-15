@@ -2535,6 +2535,9 @@ class NotificationCenterResponse(BaseModel):
     generated_at: TimestampMs
     unread_count: int = 0
     total_count: int = 0
+    filtered_count: int = 0
+    offset: int = 0
+    limit: int = 30
     unread_only: bool = False
     member_filter: str | None = None
     kind_filter: str = "all"
@@ -2765,6 +2768,7 @@ class ProviderInfo(BaseModel):
     deep_models: list[ProviderModel]
     backend_url: str | None = None
     api_key_env: str | None = None
+    model_refresh_error: str | None = None
 
 
 class TenantInfo(BaseModel):

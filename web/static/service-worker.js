@@ -1,9 +1,9 @@
-const CACHE_NAME = 'tradingagents-spa-v2';
+const CACHE_NAME = 'tradingagents-spa-v5';
 const APP_SHELL_ASSETS = [
     '/',
     '/static/spa/index.html',
-    '/static/app.webmanifest',
-    '/static/icons/app-icon.svg',
+    '/static/app.webmanifest?v=ta-vermilion-1',
+    '/static/icons/tradingagents-ta-vermilion-icon.svg',
 ];
 
 self.addEventListener('install', (event) => {

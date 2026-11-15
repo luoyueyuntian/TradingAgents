@@ -3,13 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SettingsPage from './SettingsPage.vue';
 
-const { apiGet, apiPut } = vi.hoisted(() => ({
+const { apiGet, apiPost, apiPut } = vi.hoisted(() => ({
   apiGet: vi.fn(),
   apiPut: vi.fn(),
+  apiPost: vi.fn(),
 }));
 
 vi.mock('../services/api', () => ({
   apiGet,
+  apiPost,
   apiPut,
 }));
 
@@ -108,6 +110,50 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     apiGet.mockReset();
     apiPut.mockReset();
+    apiPost.mockReset();
+  });
+
+  it('reloads every provider model catalog and reports partial failures', async () => {
+    const providers = [
+      { provider: 'openai', display_name: 'OpenAI', quick_models: [{ label: 'Old', value: 'old' }], deep_models: [] },
+      { provider: 'google', display_name: 'Google', quick_models: [], deep_models: [] },
+    ];
+    apiGet.mockImplementation(async (path: string) => path === '/api/providers' ? providers : { llm: { provider: 'openai', quick_think_model: 'old' } });
+    apiPost.mockResolvedValue([
+      { ...providers[0], quick_models: [{ label: 'New', value: 'new' }, { label: 'Custom', value: 'custom' }], deep_models: [] },
+      { ...providers[1], model_refresh_error: 'API key not configured' },
+    ]);
+    const wrapper = mountPage();
+    await flushPromises();
+    await wrapper.findAll('button')[0]!.trigger('click');
+    await flushPromises();
+    expect(apiPost).toHaveBeenCalledWith('/api/settings/models/refresh', {}, session.apiContext.value);
+    expect(llmFields(wrapper).quick?.text()).toContain('New');
+    expect(llmFields(wrapper).quick?.text()).not.toContain('Old');
+    expect(wrapper.text()).toContain('Google: API key not configured');
+  });
+
+  it('preserves saved non-default provider models and endpoint after save and re-entry', async () => {
+    const saved = { provider: 'mimo', quick_think_model: 'mimo-v2.6-flash', deep_think_model: 'mimo-v2.6-pro', backend_url: 'https://custom.example/v1', temperature: 0.4 };
+    apiGet.mockImplementation(async (path: string) => path === '/api/settings'
+      ? { llm: saved }
+      : [{ provider: 'mimo', backend_url: 'https://api.xiaomimimo.com/v1', quick_models: [{ label: 'Default', value: 'mimo-default' }, { label: 'Saved', value: 'mimo-v2.6-flash' }], deep_models: [{ label: 'Default', value: 'mimo-default' }, { label: 'Saved', value: 'mimo-v2.6-pro' }] }]);
+    apiPut.mockResolvedValue({});
+    let wrapper = mountPage();
+    await flushPromises();
+    expect(llmFields(wrapper).quick?.element.value).toBe(saved.quick_think_model);
+    expect(llmFields(wrapper).deep?.element.value).toBe(saved.deep_think_model);
+    expect(llmFields(wrapper).backendUrl?.element.value).toBe(saved.backend_url);
+    await wrapper.findAll('button')[1]!.trigger('click');
+    await flushPromises();
+    expect(apiPut).toHaveBeenCalledWith('/api/settings', expect.objectContaining({ llm: expect.objectContaining(saved) }), session.apiContext.value);
+    expect(wrapper.text()).toMatch(/Settings saved|设置已保存/);
+    wrapper.unmount();
+    wrapper = mountPage();
+    await flushPromises();
+    expect(llmFields(wrapper).quick?.element.value).toBe(saved.quick_think_model);
+    expect(llmFields(wrapper).deep?.element.value).toBe(saved.deep_think_model);
+    expect(llmFields(wrapper).backendUrl?.element.value).toBe(saved.backend_url);
   });
 
   it('shows provider-supported model dropdowns and resets them when the provider changes', async () => {

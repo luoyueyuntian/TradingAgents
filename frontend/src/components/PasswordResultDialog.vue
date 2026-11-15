@@ -7,8 +7,8 @@
     @update:visible="emit('update:visible', $event)"
   >
     <div class="uno-grid uno-gap-4">
-      <p class="uno-text-sm uno-text-[#4c6265]">{{ description }}</p>
-      <code data-testid="password-result" class="uno-rounded-lg uno-bg-[#f4f7f7] uno-px-3 uno-py-2 uno-font-mono">
+      <p class="uno-text-sm uno-text-[#525252]">{{ description }}</p>
+      <code data-testid="password-result" class="uno-rounded-lg uno-bg-[#fafafa] uno-px-3 uno-py-2 uno-font-mono">
         {{ password }}
       </code>
     </div>

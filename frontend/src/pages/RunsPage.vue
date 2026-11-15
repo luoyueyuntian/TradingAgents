@@ -16,15 +16,15 @@
       <template #content>
         <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(220px,1fr))] uno-gap-[0.8rem]">
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('common.search') }}</span>
+            <span class="uno-text-[#737373]">{{ t('common.search') }}</span>
             <InputText v-model="filters.q" :placeholder="t('runs.searchPlaceholder')" @input="resetToFirstPageAndReload" />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('common.status') }}</span>
+            <span class="uno-text-[#737373]">{{ t('common.status') }}</span>
             <Select v-model="filters.status" :options="statusOptions" option-label="label" option-value="value" @change="resetToFirstPageAndReload" />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('runs.library') }}</span>
+            <span class="uno-text-[#737373]">{{ t('runs.library') }}</span>
             <Select v-model="filters.archived" :options="archiveOptions" option-label="label" option-value="value" @change="resetToFirstPageAndReload" />
           </label>
         </div>
@@ -40,12 +40,12 @@
         <template #title>
           <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
             <div class="uno-grid uno-gap-1">
-              <strong class="uno-text-[#132a2d]">{{ group.company_name }}</strong>
-              <small class="uno-text-[#6f8183]">{{ group.tickers.join(' · ') || t('common.na') }}</small>
+              <strong class="uno-text-[#262626]">{{ group.company_name }}</strong>
+              <small class="uno-text-[#737373]">{{ group.tickers.join(' · ') || t('common.na') }}</small>
             </div>
             <div class="uno-grid uno-justify-items-end uno-gap-1">
               <Tag :value="t('runs.companyRunCount', { count: group.run_count })" severity="info" />
-              <small class="uno-text-[#6f8183]">{{ formatDateTime(group.latest_created_at) }}</small>
+              <small class="uno-text-[#737373]">{{ formatDateTime(group.latest_created_at) }}</small>
             </div>
           </div>
         </template>

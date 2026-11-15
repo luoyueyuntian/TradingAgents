@@ -141,3 +141,48 @@ def test_search_stock_catalog_uses_same_day_cache_until_forced(tmp_path):
 
     assert [item.symbol for item in refreshed.markets["us"]] == ["MSFT"]
     assert calls == {"us": 2, "hk": 2, "cn_a": 2}
+
+
+def test_hk_catalog_uses_official_list_and_filters_non_main_board(monkeypatch):
+    import pandas as pd
+    import requests
+
+    from tradingagents.service.stock_catalog import fetch_hk_company_stocks
+    class Response:
+        content = b'xlsx'
+        def raise_for_status(self): pass
+    monkeypatch.setattr(requests, 'get', lambda *args, **kwargs: Response())
+    monkeypatch.setattr(pd, 'read_excel', lambda *args, **kwargs: pd.DataFrame([
+        {'股份代號':'00700','股份名稱':'騰訊控股','分類':'股本','次分類':'股本證券(主板)'},
+        {'股份代號':'09988','股份名稱':'阿里巴巴－Ｗ','分類':'股本','次分類':'股本證券(主板)'},
+        {'股份代號':'02800','股份名稱':'盈富基金','分類':'交易所買賣產品','次分類':'基金'},
+        {'股份代號':'08001','股份名稱':'創業板公司','分類':'股本','次分類':'股本證券(GEM)'},
+    ]))
+    assert [s.symbol for s in fetch_hk_company_stocks()] == ['0700.HK','9988.HK']
+
+
+def test_empty_refresh_preserves_last_good_market(tmp_path):
+    path = tmp_path/'catalog.json'
+    fetchers = {'us':lambda:[StockCatalogItem('us','AAPL','Apple','US')], 'hk':lambda:[StockCatalogItem('hk','0700.HK','腾讯控股','HKEX')], 'cn_a':lambda:[]}
+    refresh_stock_catalog(cache_path=path,fetchers=fetchers,force=True)
+    fetchers['hk']=lambda:[]
+    snapshot=refresh_stock_catalog(cache_path=path,fetchers=fetchers,force=True)
+    assert snapshot.counts['hk']==1
+    assert 'hk' in snapshot.errors
+
+
+def test_incomplete_today_cache_retries_missing_market_after_backoff(tmp_path):
+    import os
+    import time
+
+    from tradingagents.service.stock_catalog import stock_catalog_needs_refresh
+    path=tmp_path/'catalog.json'
+    fetchers={'us':lambda:[StockCatalogItem('us','AAPL','Apple','US')], 'hk':lambda:[], 'cn_a':lambda:[StockCatalogItem('cn_a','600519.SS','贵州茅台','SSE')]}
+    refresh_stock_catalog(cache_path=path,fetchers=fetchers,force=True)
+    assert not stock_catalog_needs_refresh(cache_path=path)
+    os.utime(path,(time.time()-301,time.time()-301))
+    assert stock_catalog_needs_refresh(cache_path=path)
+    fetchers['hk']=lambda:[StockCatalogItem('hk','0700.HK','腾讯控股','HKEX')]
+    fetchers['us']=lambda:(_ for _ in ()).throw(AssertionError('should keep successful market'))
+    snapshot=refresh_stock_catalog(cache_path=path,fetchers=fetchers)
+    assert snapshot.counts=={'us':1,'hk':1,'cn_a':1}

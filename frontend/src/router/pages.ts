@@ -215,6 +215,12 @@ export const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/notifications',
+    name: 'notifications',
+    component: () => import('../pages/NotificationsPage.vue'),
+    meta: requiresAuth,
+  },
+  {
     path: '/profile',
     name: 'profile',
     component: () => import('../pages/ProfilePage.vue'),

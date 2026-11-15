@@ -8,27 +8,27 @@
       <template #content>
         <div class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(180px,1fr))] uno-gap-3">
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('users.username') }}</span>
+            <span class="uno-text-[#737373]">{{ t('users.username') }}</span>
             <InputText v-model="createForm.username" />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('users.email') }}</span>
+            <span class="uno-text-[#737373]">{{ t('users.email') }}</span>
             <InputText v-model="createForm.email" type="email" />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('users.displayName') }}</span>
+            <span class="uno-text-[#737373]">{{ t('users.displayName') }}</span>
             <InputText v-model="createForm.display_name" />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('users.role') }}</span>
+            <span class="uno-text-[#737373]">{{ t('users.role') }}</span>
             <Select v-model="createForm.role" :options="roleOptions" option-label="label" option-value="value" />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('users.tempPassword') }}</span>
+            <span class="uno-text-[#737373]">{{ t('users.tempPassword') }}</span>
             <InputText v-model="createForm.password" type="password" />
           </label>
           <label class="uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('users.expiresAt') }}</span>
+            <span class="uno-text-[#737373]">{{ t('users.expiresAt') }}</span>
             <DateTimeInput v-model="createForm.expires_at" mode="datetime" />
           </label>
         </div>
@@ -51,7 +51,7 @@
         <div class="uno-overflow-x-auto">
           <table class="uno-min-w-full uno-border-collapse uno-text-sm">
             <thead>
-              <tr class="uno-border-b uno-border-[#dce7e7] uno-text-left uno-text-[#6f8183]">
+              <tr class="uno-border-b uno-border-[#e5e5e5] uno-text-left uno-text-[#737373]">
                 <th class="uno-px-3 uno-py-2">{{ t('users.user') }}</th>
                 <th class="uno-px-3 uno-py-2">{{ t('users.role') }}</th>
                 <th class="uno-px-3 uno-py-2">{{ t('users.expiresAt') }}</th>
@@ -60,10 +60,10 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="user in users" :key="user.id" class="uno-border-b uno-border-[#eef4f4]">
+              <tr v-for="user in users" :key="user.id" class="uno-border-b uno-border-[#f5f5f5]">
                 <td class="uno-px-3 uno-py-3 uno-align-top">
                   <div class="uno-grid uno-gap-1">
-                    <strong class="uno-break-words uno-text-[#132a2d]">{{ user.username }}</strong>
+                    <strong class="uno-break-words uno-text-[#262626]">{{ user.username }}</strong>
                     <span class="uno-break-words">{{ user.email }}</span>
                     <InputText v-model="user.draftDisplayName" readonly :disabled="readOnly" />
                   </div>

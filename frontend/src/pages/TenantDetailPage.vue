@@ -19,35 +19,35 @@
         <div class="uno-grid uno-gap-4 md:uno-grid-cols-[minmax(0,1fr)_auto]">
           <dl class="uno-grid uno-gap-3 sm:uno-grid-cols-2">
             <div>
-              <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('tenants.tenantId') }}</dt>
-              <dd class="uno-mt-1 uno-font-semibold uno-text-[#132a2d]">{{ tenant.tenant_id }}</dd>
+              <dt class="uno-text-sm uno-text-[#737373]">{{ t('tenants.tenantId') }}</dt>
+              <dd class="uno-mt-1 uno-font-semibold uno-text-[#262626]">{{ tenant.tenant_id }}</dd>
             </div>
             <div>
-              <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('tenants.displayName') }}</dt>
+              <dt class="uno-text-sm uno-text-[#737373]">{{ t('tenants.displayName') }}</dt>
               <dd class="uno-mt-1">{{ tenant.display_name }}</dd>
             </div>
             <div>
-              <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('common.status') }}</dt>
+              <dt class="uno-text-sm uno-text-[#737373]">{{ t('common.status') }}</dt>
               <dd class="uno-mt-1">{{ tenantStatusLabel(tenant) }}</dd>
             </div>
             <div>
-              <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('tenants.userCount') }}</dt>
+              <dt class="uno-text-sm uno-text-[#737373]">{{ t('tenants.userCount') }}</dt>
               <dd class="uno-mt-1">{{ tenant.user_count }}</dd>
             </div>
             <div>
-              <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('tenants.activeAdminCount') }}</dt>
+              <dt class="uno-text-sm uno-text-[#737373]">{{ t('tenants.activeAdminCount') }}</dt>
               <dd class="uno-mt-1">{{ tenant.active_admin_count }}</dd>
             </div>
             <div>
-              <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('common.created') }}</dt>
+              <dt class="uno-text-sm uno-text-[#737373]">{{ t('common.created') }}</dt>
               <dd class="uno-mt-1">{{ formatDateTime(tenant.created_at) }}</dd>
             </div>
             <div>
-              <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('users.expiresAt') }}</dt>
+              <dt class="uno-text-sm uno-text-[#737373]">{{ t('users.expiresAt') }}</dt>
               <dd class="uno-mt-1">{{ formatDateTime(tenant.expires_at) }}</dd>
             </div>
             <div>
-              <dt class="uno-text-sm uno-text-[#6f8183]">{{ t('tenants.lastUpdated') }}</dt>
+              <dt class="uno-text-sm uno-text-[#737373]">{{ t('tenants.lastUpdated') }}</dt>
               <dd class="uno-mt-1">{{ formatDateTime(tenant.updated_at) }}</dd>
             </div>
           </dl>

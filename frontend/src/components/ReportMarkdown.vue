@@ -3,7 +3,7 @@
     v-if="blocks.length"
     :class="[
       props.constrainHeight ? 'uno-max-h-[680px] uno-overflow-auto' : '',
-      'uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-[1.05rem] uno-leading-[1.6] uno-text-[#162326]',
+      'uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-[1.05rem] uno-leading-[1.6] uno-text-[#262626]',
     ]"
   >
     <template v-for="(block, blockIndex) in blocks" :key="`${block.kind}-${blockIndex}`">
@@ -30,14 +30,14 @@
         </li>
       </ul>
 
-      <div v-else-if="block.kind === 'table'" class="uno-my-3 uno-mb-4 uno-overflow-x-auto uno-rounded-lg uno-border uno-border-[#d9e5e5]">
+      <div v-else-if="block.kind === 'table'" class="uno-my-3 uno-mb-4 uno-overflow-x-auto uno-rounded-lg uno-border uno-border-[#e5e5e5]">
         <table class="uno-w-full uno-min-w-[520px] uno-border-collapse uno-text-left uno-text-[0.92rem]">
           <thead>
             <tr>
               <th
                 v-for="(header, headerIndex) in block.headers"
                 :key="headerIndex"
-                class="uno-border-b uno-border-[#e5eeee] uno-bg-[#eef4f4] uno-px-3 uno-py-[0.65rem] uno-text-left uno-align-top uno-font-700 uno-text-[#243a3d]"
+                class="uno-border-b uno-border-[#e5e5e5] uno-bg-[#f5f5f5] uno-px-3 uno-py-[0.65rem] uno-text-left uno-align-top uno-font-700 uno-text-[#404040]"
               >
                 {{ header }}
               </th>
@@ -50,7 +50,7 @@
                 :key="cellIndex"
                 :class="[
                   'uno-px-3 uno-py-[0.65rem] uno-text-left uno-align-top',
-                  rowIndex === block.rows.length - 1 ? 'uno-border-b-0' : 'uno-border-b uno-border-[#e5eeee]',
+                  rowIndex === block.rows.length - 1 ? 'uno-border-b-0' : 'uno-border-b uno-border-[#e5e5e5]',
                 ]"
               >
                 {{ cell }}
@@ -60,10 +60,10 @@
         </table>
       </div>
 
-      <pre v-else-if="block.kind === 'code'" class="uno-mb-[0.85rem] uno-mt-0 uno-overflow-auto uno-rounded-lg uno-bg-[#101b1d] uno-p-3 uno-text-[#d8f3ee]">{{ block.text }}</pre>
+      <pre v-else-if="block.kind === 'code'" class="uno-mb-[0.85rem] uno-mt-0 uno-overflow-auto uno-rounded-lg uno-bg-[#171717] uno-p-3 uno-text-[#e5e5e5]">{{ block.text }}</pre>
     </template>
   </div>
-  <p v-else class="uno-text-[#6f8183]">{{ emptyText }}</p>
+  <p v-else class="uno-text-[#737373]">{{ emptyText }}</p>
 </template>
 
 <script setup lang="ts">
@@ -88,7 +88,7 @@ function headingClass(level?: number, index = 0) {
   const sizeClass = level === 2 ? 'uno-text-[1.2rem]' : level === 3 ? 'uno-text-[1.05rem]' : 'uno-text-[0.95rem]';
   return [
     index === 0 ? 'uno-mt-0' : 'uno-mt-[1.1rem]',
-    'uno-mb-[0.45rem] uno-text-[#102224] uno-tracking-normal',
+    'uno-mb-[0.45rem] uno-text-[#262626] uno-tracking-normal',
     sizeClass,
   ];
 }

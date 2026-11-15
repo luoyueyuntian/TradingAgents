@@ -23,7 +23,7 @@
               class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] uno-gap-[0.8rem]"
             >
               <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('analysis.stockMarket') }}</span>
+                <span class="uno-text-[#737373]">{{ t('analysis.stockMarket') }}</span>
                 <Select
                   v-model="form.stock_market"
                   :options="stockMarketOptions"
@@ -35,7 +35,7 @@
                 />
               </label>
               <label class="uno-grid uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('common.ticker') }}</span>
+                <span class="uno-text-[#737373]">{{ t('common.ticker') }}</span>
                 <AutoComplete
                   v-model="selectedStock"
                   :suggestions="stockOptions"
@@ -53,14 +53,14 @@
                 >
                   <template #option="{ option }">
                     <div class="uno-grid uno-min-w-0 uno-gap-0.5">
-                      <strong class="uno-truncate uno-text-[#132a2d]">{{ option.symbol }}</strong>
-                      <small class="uno-truncate uno-text-[#6f8183]">{{ [option.name, option.exchange].filter(Boolean).join(' · ') }}</small>
+                      <strong class="uno-truncate uno-text-[#262626]">{{ option.symbol }}</strong>
+                      <small class="uno-truncate uno-text-[#737373]">{{ [option.name, option.exchange].filter(Boolean).join(' · ') }}</small>
                     </div>
                   </template>
                 </AutoComplete>
               </label>
               <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('analysis.marketProfile') }}</span>
+                <span class="uno-text-[#737373]">{{ t('analysis.marketProfile') }}</span>
                 <Select
                   v-model="form.market_profile"
                   :options="marketProfileOptions"
@@ -71,7 +71,7 @@
                 />
               </label>
               <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('analysis.analysisDate') }}</span>
+                <span class="uno-text-[#737373]">{{ t('analysis.analysisDate') }}</span>
                 <DatePicker
                   v-model="analysisDate"
                   date-format="yy-mm-dd"
@@ -83,7 +83,7 @@
                 />
               </label>
               <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('common.language') }}</span>
+                <span class="uno-text-[#737373]">{{ t('common.language') }}</span>
                 <Select v-model="form.output_language" :options="languageOptions" option-label="label" option-value="value" class="uno-w-full uno-min-w-0" :pt="formSelectPt" />
               </label>
             </div>
@@ -93,7 +93,7 @@
               class="uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] uno-gap-[0.8rem]"
             >
               <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('common.provider') }}</span>
+                <span class="uno-text-[#737373]">{{ t('common.provider') }}</span>
                 <Select
                   v-model="form.llm_provider"
                   :options="providerOptions"
@@ -106,7 +106,7 @@
                 />
               </label>
               <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('analysis.quickModel') }}</span>
+                <span class="uno-text-[#737373]">{{ t('analysis.quickModel') }}</span>
                 <Select
                   v-model="quickModelSelectValue"
                   :options="quickModelOptions"
@@ -117,11 +117,11 @@
                 />
               </label>
               <label v-if="showQuickCustomModelInput" data-testid="analysis-quick-custom-model-input" class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('analysis.quickCustomModelId') }}</span>
+                <span class="uno-text-[#737373]">{{ t('analysis.quickCustomModelId') }}</span>
                 <InputText v-model="form.quick_think_model" class="uno-w-full uno-min-w-0" />
               </label>
               <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('analysis.deepModel') }}</span>
+                <span class="uno-text-[#737373]">{{ t('analysis.deepModel') }}</span>
                 <Select
                   v-model="deepModelSelectValue"
                   :options="deepModelOptions"
@@ -132,11 +132,11 @@
                 />
               </label>
               <label v-if="showDeepCustomModelInput" data-testid="analysis-deep-custom-model-input" class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('analysis.deepCustomModelId') }}</span>
+                <span class="uno-text-[#737373]">{{ t('analysis.deepCustomModelId') }}</span>
                 <InputText v-model="form.deep_think_model" class="uno-w-full uno-min-w-0" />
               </label>
               <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                <span class="uno-text-[#6f8183]">{{ t('analysis.depth') }}</span>
+                <span class="uno-text-[#737373]">{{ t('analysis.depth') }}</span>
                 <Select v-model="form.research_depth" :options="depthOptions" option-label="label" option-value="value" class="uno-w-full uno-min-w-0" :pt="formSelectPt" />
               </label>
             </div>
@@ -148,39 +148,39 @@
               <Button icon="pi pi-play" :label="t('analysis.startAnalysis')" :loading="submitting" :disabled="!canWrite" @click="startRun" />
             </div>
 
-            <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3">
-              <summary class="uno-cursor-pointer uno-font-700 uno-text-[#243a3d]">{{ t('analysis.advancedOverrides') }}</summary>
+            <details class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3">
+              <summary class="uno-cursor-pointer uno-font-700 uno-text-[#404040]">{{ t('analysis.advancedOverrides') }}</summary>
               <div class="uno-mt-3 uno-grid uno-grid-cols-[repeat(auto-fit,minmax(min(100%,220px),1fr))] uno-gap-[0.8rem]">
                 <label class="uno-grid uno-gap-[0.35rem]">
-                  <span class="uno-text-[#6f8183]">{{ t('settings.riskRounds') }}</span>
+                  <span class="uno-text-[#737373]">{{ t('settings.riskRounds') }}</span>
                   <InputText v-model="form.max_risk_discuss_rounds" type="number" class="uno-w-full" />
                 </label>
                 <label class="uno-grid uno-gap-[0.35rem]">
-                  <span class="uno-text-[#6f8183]">{{ t('settings.maxRecurLimit') }}</span>
+                  <span class="uno-text-[#737373]">{{ t('settings.maxRecurLimit') }}</span>
                   <InputText v-model="form.max_recur_limit" type="number" class="uno-w-full" />
                 </label>
                 <label class="uno-grid uno-gap-[0.35rem]">
-                  <span class="uno-text-[#6f8183]">{{ t('settings.benchmarkTicker') }}</span>
+                  <span class="uno-text-[#737373]">{{ t('settings.benchmarkTicker') }}</span>
                   <InputText v-model="form.benchmark_ticker" :placeholder="t('common.auto')" class="uno-w-full" />
                 </label>
                 <label class="uno-grid uno-gap-[0.35rem]">
-                  <span class="uno-text-[#6f8183]">{{ t('settings.temperature') }}</span>
+                  <span class="uno-text-[#737373]">{{ t('settings.temperature') }}</span>
                   <InputText v-model="form.temperature" type="number" :placeholder="t('common.default')" class="uno-w-full" />
                 </label>
                 <label class="uno-grid uno-gap-[0.35rem]">
-                  <span class="uno-text-[#6f8183]">{{ t('settings.backendUrl') }}</span>
+                  <span class="uno-text-[#737373]">{{ t('settings.backendUrl') }}</span>
                   <InputText v-model="form.backend_url" :placeholder="t('common.providerDefault')" class="uno-w-full" />
                 </label>
                 <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                  <span class="uno-text-[#6f8183]">{{ t('settings.googleThinkingLevel') }}</span>
+                  <span class="uno-text-[#737373]">{{ t('settings.googleThinkingLevel') }}</span>
                   <Select v-model="form.google_thinking_level" :options="googleThinkingOptions" option-label="label" option-value="value" class="uno-w-full uno-min-w-0" :pt="formSelectPt" />
                 </label>
                 <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                  <span class="uno-text-[#6f8183]">{{ t('settings.openaiReasoningEffort') }}</span>
+                  <span class="uno-text-[#737373]">{{ t('settings.openaiReasoningEffort') }}</span>
                   <Select v-model="form.openai_reasoning_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" class="uno-w-full uno-min-w-0" :pt="formSelectPt" />
                 </label>
                 <label class="uno-grid uno-min-w-0 uno-gap-[0.35rem]">
-                  <span class="uno-text-[#6f8183]">{{ t('settings.anthropicEffort') }}</span>
+                  <span class="uno-text-[#737373]">{{ t('settings.anthropicEffort') }}</span>
                   <Select v-model="form.anthropic_effort" :options="reasoningEffortOptions" option-label="label" option-value="value" class="uno-w-full uno-min-w-0" :pt="formSelectPt" />
                 </label>
                 <label class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
@@ -192,7 +192,7 @@
           </div>
 
           <div class="uno-mt-4 uno-grid uno-gap-[0.35rem]">
-            <span class="uno-text-[#6f8183]">{{ t('analysis.analysts') }}</span>
+            <span class="uno-text-[#737373]">{{ t('analysis.analysts') }}</span>
             <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
               <label v-for="item in analystOptions" :key="item.value" class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                 <input v-model="form.analysts" type="checkbox" :value="item.value">
@@ -214,23 +214,23 @@
           </div>
 
           <div v-if="agentProgress.length" class="uno-mb-[0.85rem] uno-grid uno-gap-2">
-            <div v-for="agent in agentProgress" :key="agent.name" class="uno-flex uno-min-h-[42px] uno-items-center uno-justify-between uno-gap-3 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-px-[0.7rem] uno-py-[0.55rem]">
-              <span class="uno-min-w-0 uno-break-words uno-font-semibold uno-text-[#243a3d]">{{ agent.name }}</span>
+            <div v-for="agent in agentProgress" :key="agent.name" class="uno-flex uno-min-h-[42px] uno-items-center uno-justify-between uno-gap-3 uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-[0.7rem] uno-py-[0.55rem]">
+              <span class="uno-min-w-0 uno-break-words uno-font-semibold uno-text-[#404040]">{{ agent.name }}</span>
               <Tag :value="agent.status" :severity="signalSeverity(agent.status)" />
             </div>
           </div>
 
           <div v-if="liveReportText" class="uno-mb-[0.85rem] uno-grid uno-gap-[0.65rem]">
             <div class="uno-flex uno-items-center uno-justify-between uno-gap-3">
-              <span class="uno-text-[#6f8183]">{{ t('analysis.liveReport') }}</span>
+              <span class="uno-text-[#737373]">{{ t('analysis.liveReport') }}</span>
               <Tag v-if="liveState.latestReportSection" :value="sectionLabel(liveState.latestReportSection)" severity="info" />
             </div>
             <ReportMarkdown :content="liveReportText" :empty-text="t('runs.noReport')" />
           </div>
 
-          <details class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-3" :open="!liveReportText && !agentProgress.length">
-            <summary class="uno-cursor-pointer uno-font-700 uno-text-[#243a3d]">{{ t('analysis.terminalOutput') }}</summary>
-            <pre class="uno-m-0 uno-mt-3 uno-max-h-[520px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#101b1d] uno-p-[0.85rem] uno-text-[#d8f3ee]">{{ logText || t('analysis.noActiveRun') }}</pre>
+          <details class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-3" :open="!liveReportText && !agentProgress.length">
+            <summary class="uno-cursor-pointer uno-font-700 uno-text-[#404040]">{{ t('analysis.terminalOutput') }}</summary>
+            <pre class="uno-m-0 uno-mt-3 uno-max-h-[520px] uno-overflow-auto uno-whitespace-pre-wrap uno-break-words uno-rounded-lg uno-bg-[#171717] uno-p-[0.85rem] uno-text-[#e5e5e5]">{{ logText || t('analysis.noActiveRun') }}</pre>
           </details>
         </template>
       </Card>

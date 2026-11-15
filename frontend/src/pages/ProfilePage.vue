@@ -37,7 +37,7 @@
           <Card>
             <template #title>{{ t('profile.emailTitle') }}</template>
             <template #content>
-              <p class="uno-mb-4 uno-text-sm uno-text-[#6f8183]">{{ t('profile.emailTip') }}</p>
+              <p class="uno-mb-4 uno-text-sm uno-text-[#737373]">{{ t('profile.emailTip') }}</p>
               <Message v-if="!profile.email_verification_available" severity="warn" :closable="false">{{ t('profile.mailUnavailable') }}</Message>
               <form class="uno-grid uno-gap-3" @submit.prevent="confirmEmail">
                 <label for="profile-email">{{ t('profile.newEmail') }}</label>
@@ -59,9 +59,9 @@
           <Card>
             <template #title>{{ t('profile.sessions') }}</template>
             <template #content>
-              <p class="uno-mb-4 uno-text-sm uno-text-[#6f8183]">{{ t('profile.sessionsTip') }}</p>
+              <p class="uno-mb-4 uno-text-sm uno-text-[#737373]">{{ t('profile.sessionsTip') }}</p>
               <ul class="uno-grid uno-gap-3">
-                <li v-for="(item, index) in profile.sessions" :key="index" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-p-3 uno-text-sm">
+                <li v-for="(item, index) in profile.sessions" :key="index" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-p-3 uno-text-sm">
                   <strong>{{ item.current ? t('profile.currentSession') : t('profile.otherSession') }}</strong>
                   <p>{{ t('profile.loginTime') }}：{{ formatDateTime(item.created_at) }}</p>
                   <p>{{ t('profile.lastSeen') }}：{{ formatDateTime(item.last_seen_at) }}</p>
@@ -80,7 +80,7 @@
                 {{ t('profile.language') }}
                 <Select id="profile-language" v-model="locale" :options="locales" option-label="label" option-value="value" />
               </label>
-              <p class="uno-mt-3 uno-text-sm uno-text-[#6f8183]">{{ t('profile.languageTip') }}</p>
+              <p class="uno-mt-3 uno-text-sm uno-text-[#737373]">{{ t('profile.languageTip') }}</p>
             </template>
           </Card>
         </TabPanel>

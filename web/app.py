@@ -101,7 +101,7 @@ async def _redirect_legacy_spa_pages(request, call_next):
     if request.method in {"GET", "HEAD"} and request.url.path.startswith(prefix):
         page = request.url.path[len(prefix):]
         first = page.split("/", 1)[0]
-        if first in {"", "login", "change-password", "analysis", "runs", "portfolio", "workspace", "automations", "settings", "tenants", "users", "profile"}:
+        if first in {"", "login", "change-password", "analysis", "runs", "portfolio", "workspace", "automations", "settings", "tenants", "users", "profile", "notifications"}:
             target = "/" + page
             if request.url.query:
                 target += "?" + request.url.query

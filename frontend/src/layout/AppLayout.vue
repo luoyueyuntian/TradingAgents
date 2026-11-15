@@ -1,11 +1,11 @@
 <template>
-  <div class="uno-grid uno-min-h-screen uno-min-w-[320px] uno-grid-cols-[260px_minmax(0,1fr)] uno-bg-[#f6f7f7] uno-font-sans uno-text-[15px] uno-text-[#162326] max-[900px]:uno-grid-cols-1">
+  <div class="uno-grid uno-min-h-screen uno-min-w-[320px] uno-grid-cols-[260px_minmax(0,1fr)] uno-bg-[#fafafa] uno-font-sans uno-text-[15px] uno-text-[#262626] max-[900px]:uno-grid-cols-1">
     <aside class="app-sidebar">
       <RouterLink class="uno-flex uno-items-center uno-gap-3 uno-px-[0.55rem] uno-pb-4 uno-pt-[0.65rem] uno-text-inherit uno-no-underline" to="/">
-        <span class="uno-grid uno-h-[42px] uno-w-[42px] uno-place-items-center uno-rounded-lg uno-bg-[#f4b740] uno-font-800 uno-text-[#2b2107]">TA</span>
+        <img :src="'/static/icons/tradingagents-ta-vermilion.svg'" alt="" aria-hidden="true" width="42" height="42" class="uno-shrink-0" />
         <span>
           <strong>TradingAgents</strong>
-          <small class="uno-block uno-text-[#b8c8c8]">{{ t('brand.subtitle') }}</small>
+          <small class="uno-block uno-text-[#737373]">{{ t('brand.subtitle') }}</small>
         </span>
       </RouterLink>
 
@@ -39,7 +39,7 @@
     </aside>
 
     <div class="uno-min-w-0">
-      <header class="uno-sticky uno-top-0 uno-z-10 uno-flex uno-min-h-[64px] uno-items-center uno-justify-between uno-gap-4 uno-border-b uno-border-[#dce7e7] uno-bg-white/90 uno-px-5 uno-py-3 uno-backdrop-blur-md max-[900px]:uno-flex-col max-[900px]:uno-items-stretch">
+      <header class="uno-sticky uno-top-0 uno-z-10 uno-flex uno-min-h-[64px] uno-items-center uno-justify-between uno-gap-4 uno-border-b uno-border-[#e5e5e5] uno-bg-white/90 uno-px-5 uno-py-3 uno-backdrop-blur-md max-[900px]:uno-flex-col max-[900px]:uno-items-stretch">
         <div data-testid="header-start" class="uno-min-w-0">
           <label class="uno-flex uno-items-center uno-gap-2 uno-text-sm">
             <span>{{ t('topbar.currentTenant') }}</span>
@@ -49,7 +49,7 @@
               :aria-label="t('topbar.switchTenant')"
               :value="session.state.currentUser?.tenant_id || ''"
               :disabled="switchingTenant"
-              class="uno-max-w-[260px] uno-rounded-md uno-border uno-border-[#dce7e7] uno-bg-white uno-px-3 uno-py-2"
+              class="uno-max-w-[260px] uno-rounded-md uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-3 uno-py-2"
               @change="handleTenantChange"
             >
               <option v-if="!session.state.currentUser?.tenant_id" value="" disabled>{{ t('topbar.chooseTenant') }}</option>
@@ -61,11 +61,12 @@
         </div>
         <div data-testid="header-actions" class="uno-flex uno-flex-wrap uno-items-center uno-justify-end uno-gap-[0.55rem] max-[900px]:uno-w-full">
           <Button icon="pi pi-search" text rounded :aria-label="t('topbar.workspaceSearch')" @click="router.push('/workspace')" />
+          <NotificationBell />
           <div ref="languageMenuRef" data-testid="language-menu" class="uno-relative">
             <button
               data-testid="language-trigger"
               type="button"
-              class="uno-inline-flex uno-min-h-10 uno-cursor-pointer uno-items-center uno-gap-1.5 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#243a3d] hover:uno-text-[#132a2d]"
+              class="uno-inline-flex uno-min-h-10 uno-cursor-pointer uno-items-center uno-gap-1.5 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#404040] hover:uno-text-[#262626]"
               :aria-expanded="languageMenuOpen"
               :aria-label="t('topbar.language')"
               @click="languageMenuOpen = !languageMenuOpen"
@@ -75,18 +76,18 @@
             </button>
             <div
               v-if="languageMenuOpen"
-              class="uno-absolute uno-right-0 uno-top-[calc(100%+0.35rem)] uno-z-20 uno-grid uno-min-w-[150px] uno-gap-1 uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-p-2 uno-shadow-lg"
+              class="uno-absolute uno-right-0 uno-top-[calc(100%+0.35rem)] uno-z-20 uno-grid uno-min-w-[150px] uno-gap-1 uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-2 uno-shadow-lg"
             >
               <button
                 v-for="option in locales"
                 :key="option.value"
                 type="button"
-                class="uno-flex uno-min-h-9 uno-cursor-pointer uno-items-center uno-justify-between uno-gap-3 uno-rounded-md uno-border-0 uno-bg-transparent uno-px-2 uno-py-1.5 uno-text-left uno-text-[#243a3d] hover:uno-bg-[#f1f6f6]"
+                class="uno-flex uno-min-h-9 uno-cursor-pointer uno-items-center uno-justify-between uno-gap-3 uno-rounded-md uno-border-0 uno-bg-transparent uno-px-2 uno-py-1.5 uno-text-left uno-text-[#404040] hover:uno-bg-[#f5f5f5]"
                 :data-testid="`language-option-${option.value}`"
                 @click="changeLocale(option.value)"
               >
                 <span>{{ option.label }}</span>
-                <i v-if="option.value === locale" class="pi pi-check uno-text-[#1c7f5f]" />
+                <i v-if="option.value === locale" class="pi pi-check uno-text-[#415846]" />
               </button>
             </div>
           </div>
@@ -101,7 +102,7 @@
             <button
               data-testid="user-menu-trigger"
               type="button"
-              class="uno-inline-flex uno-min-h-10 uno-cursor-pointer uno-items-center uno-gap-1.5 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#243a3d] hover:uno-text-[#132a2d]"
+              class="uno-inline-flex uno-min-h-10 uno-cursor-pointer uno-items-center uno-gap-1.5 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#404040] hover:uno-text-[#262626]"
               :aria-expanded="userMenuOpen"
             >
               <strong class="uno-max-w-[180px] uno-truncate">{{ currentUserName }}</strong>
@@ -109,21 +110,21 @@
             </button>
             <div
               v-if="userMenuOpen"
-              class="uno-absolute uno-right-0 uno-top-full uno-z-20 uno-min-w-[200px] uno-max-w-[280px] uno-rounded-lg uno-border uno-border-[#dce7e7] uno-bg-white uno-py-1 uno-shadow-lg"
+              class="uno-absolute uno-right-0 uno-top-full uno-z-20 uno-min-w-[200px] uno-max-w-[280px] uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-py-1 uno-shadow-lg"
             >
-              <div class="uno-min-w-0 uno-border-b uno-border-[#e8eeee] uno-px-3 uno-py-2">
+              <div class="uno-min-w-0 uno-border-b uno-border-[#e5e5e5] uno-px-3 uno-py-2">
                 <div class="uno-flex uno-items-center uno-gap-2 uno-text-[13px] uno-leading-5">
-                  <strong class="uno-min-w-0 uno-flex-1 uno-truncate uno-text-[#132a2d]">{{ currentUserName }}</strong>
-                  <span class="uno-shrink-0 uno-text-xs uno-text-[#6f8183]">{{ t(roleLabelKey) }}</span>
+                  <strong class="uno-min-w-0 uno-flex-1 uno-truncate uno-text-[#262626]">{{ currentUserName }}</strong>
+                  <span class="uno-shrink-0 uno-text-xs uno-text-[#737373]">{{ t(roleLabelKey) }}</span>
                 </div>
-                <p class="uno-m-0 uno-truncate uno-text-xs uno-leading-5 uno-text-[#6f8183]">
+                <p class="uno-m-0 uno-truncate uno-text-xs uno-leading-5 uno-text-[#737373]">
                   {{ t('topbar.tenantValue', { tenant: session.state.currentUser?.tenant_id || t('common.notSet') }) }}
                 </p>
               </div>
               <nav class="uno-py-1" :aria-label="t('profile.title')">
                 <RouterLink
                   to="/profile"
-                  class="uno-flex uno-min-h-[32px] uno-items-center uno-gap-2 uno-px-3 uno-py-1 uno-text-[13px] uno-text-[#243a3d] uno-no-underline hover:uno-bg-[#f1f5f5] focus-visible:uno-bg-[#f1f5f5]"
+                  class="uno-flex uno-min-h-[32px] uno-items-center uno-gap-2 uno-px-3 uno-py-1 uno-text-[13px] uno-text-[#404040] uno-no-underline hover:uno-bg-[#f5f5f5] focus-visible:uno-bg-[#f5f5f5]"
                   @click="userMenuOpen = false"
                 >
                   <i class="pi pi-user uno-text-sm" aria-hidden="true" />
@@ -131,7 +132,7 @@
                 </RouterLink>
                 <button
                   type="button"
-                  class="uno-flex uno-min-h-[32px] uno-w-full uno-cursor-pointer uno-items-center uno-gap-2 uno-border-0 uno-bg-transparent uno-px-3 uno-py-1 uno-text-left uno-font-inherit uno-text-[13px] uno-text-[#243a3d] hover:uno-bg-[#f1f5f5] focus-visible:uno-bg-[#f1f5f5]"
+                  class="uno-flex uno-min-h-[32px] uno-w-full uno-cursor-pointer uno-items-center uno-gap-2 uno-border-0 uno-bg-transparent uno-px-3 uno-py-1 uno-text-left uno-font-inherit uno-text-[13px] uno-text-[#404040] hover:uno-bg-[#f5f5f5] focus-visible:uno-bg-[#f5f5f5]"
                   @click="handleLogout"
                 >
                   <i class="pi pi-sign-out uno-text-sm" aria-hidden="true" />
@@ -158,6 +159,7 @@ import Button from 'primevue/button';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 
+import NotificationBell from '../components/NotificationBell.vue';
 import { setDefaultLocale, useI18n, type Locale } from '../i18n';
 import { navigationGroups, navigationSections } from '../router/pages';
 import { apiGet } from '../services/api';
@@ -289,9 +291,9 @@ onBeforeUnmount(() => {
   height: 100dvh;
   min-height: 0;
   padding: 16px;
-  border-right: 1px solid #2d4144;
-  background: #162326;
-  color: #f7fbfb;
+  border-right: 1px solid #e5e5e5;
+  background: #ffffff;
+  color: #262626;
 }
 
 .sidebar-navigation {
@@ -300,19 +302,19 @@ onBeforeUnmount(() => {
   margin-top: 16px;
   padding: 4px;
   scrollbar-width: thin;
-  scrollbar-color: #4e6669 transparent;
+  scrollbar-color: #a3a3a3 transparent;
 }
 
 .sidebar-section + .sidebar-section {
   margin-top: 22px;
   padding-top: 20px;
-  border-top: 1px solid #304346;
+  border-top: 1px solid #e5e5e5;
 }
 
 .sidebar-heading {
   margin: 0 0 10px;
   padding: 0 12px;
-  color: #a3b9bc;
+  color: #737373;
   font-size: 12px;
   font-weight: 600;
   line-height: 20px;
@@ -335,7 +337,7 @@ onBeforeUnmount(() => {
   min-height: 44px;
   padding: 10px 12px;
   border-radius: 8px;
-  color: #d0dfe1;
+  color: #525252;
   line-height: 24px;
   text-decoration: none;
   transition: background-color 150ms ease, color 150ms ease;
@@ -345,23 +347,23 @@ onBeforeUnmount(() => {
   flex: 0 0 20px;
   font-size: 17px;
   text-align: center;
-  color: #a3b9bc;
+  color: #737373;
 }
 
 .sidebar-link:hover {
-  background: #22373b;
-  color: #fff;
+  background: #f5f5f5;
+  color: #262626;
 }
 
 .sidebar-link:focus-visible {
-  outline: 2px solid #f4b740;
+  outline: 2px solid #d65a3a;
   outline-offset: 2px;
 }
 
 .sidebar-link-active,
 .sidebar-link-active:hover {
-  background: #334039;
-  color: #ffda83;
+  background: #fff0eb;
+  color: #92351f;
   font-weight: 600;
 }
 
@@ -376,7 +378,7 @@ onBeforeUnmount(() => {
   left: 0;
   width: 3px;
   border-radius: 0 3px 3px 0;
-  background: #f4b740;
+  background: #d65a3a;
   content: '';
 }
 

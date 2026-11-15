@@ -9,7 +9,7 @@
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <div class="uno-grid uno-gap-4">
       <label v-if="!existingAccount" class="uno-grid uno-gap-[0.35rem]">
-        <span class="uno-text-[#6f8183]">{{ t('users.username') }}</span>
+        <span class="uno-text-[#737373]">{{ t('users.username') }}</span>
         <InputText
           v-model="form.username"
           data-testid="user-form-username"
@@ -19,7 +19,7 @@
       </label>
 
       <label v-if="!existingAccount" class="uno-grid uno-gap-[0.35rem]">
-        <span class="uno-text-[#6f8183]">{{ t('users.displayName') }}</span>
+        <span class="uno-text-[#737373]">{{ t('users.displayName') }}</span>
         <InputText
           v-model="form.display_name"
           data-testid="user-form-display-name"
@@ -29,7 +29,7 @@
       </label>
 
       <label class="uno-grid uno-gap-[0.35rem]">
-        <span class="uno-text-[#6f8183]">{{ t('users.email') }}</span>
+        <span class="uno-text-[#737373]">{{ t('users.email') }}</span>
         <InputText
           v-model="form.email"
           data-testid="user-form-email"
@@ -40,7 +40,7 @@
       </label>
 
       <label class="uno-grid uno-gap-[0.35rem]">
-        <span class="uno-text-[#6f8183]">{{ t('users.role') }}</span>
+        <span class="uno-text-[#737373]">{{ t('users.role') }}</span>
         <Select
           v-model="form.role"
           data-testid="user-form-role"
@@ -52,7 +52,7 @@
       </label>
 
       <label class="uno-grid uno-gap-[0.35rem]">
-        <span class="uno-text-[#6f8183]">{{ t('users.expiresAt') }}</span>
+        <span class="uno-text-[#737373]">{{ t('users.expiresAt') }}</span>
         <DateTimeInput
           v-model="form.expires_at"
           data-testid="user-form-expires-at"

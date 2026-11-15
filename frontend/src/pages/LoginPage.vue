@@ -1,7 +1,13 @@
 <template>
-  <section class="uno-flex uno-min-h-screen uno-items-center uno-justify-center uno-bg-[#f6f7f7] uno-p-5">
+  <section class="uno-flex uno-min-h-screen uno-items-center uno-justify-center uno-bg-[#fafafa] uno-p-5">
     <Card class="uno-w-full uno-max-w-[420px]">
-      <template #title>{{ t('auth.loginTitle') }}</template>
+      <template #title>
+        <div class="uno-mb-4 uno-flex uno-items-center uno-gap-3">
+          <img :src="'/static/icons/tradingagents-ta-vermilion.svg'" alt="" aria-hidden="true" width="40" height="40" />
+          <span class="uno-text-xl uno-font-bold uno-text-[#262626]">TradingAgents</span>
+        </div>
+        {{ t('auth.loginTitle') }}
+      </template>
       <template #content>
         <form class="uno-grid uno-gap-4" @submit.prevent="submitLogin">
           <div class="uno-grid uno-gap-2">

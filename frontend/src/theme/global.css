@@ -1,0 +1,10 @@
+/* Native controls use the same brand color as PrimeVue components. */
+input[type="checkbox"],
+input[type="radio"],
+progress {
+  accent-color: var(--p-primary-color);
+}
+::selection {
+  background: #fbe4dc;
+  color: #742c1d;
+}

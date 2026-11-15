@@ -14,7 +14,7 @@
     <Message v-if="error" severity="error" :closable="false">{{ error }}</Message>
     <MetricGrid :items="metrics" />
 
-    <DataTable :value="rules" size="small" class="uno-rounded-xl uno-border uno-border-[#dce7e7] uno-bg-white">
+    <DataTable :value="rules" size="small" class="uno-rounded-xl uno-border uno-border-[#e5e5e5] uno-bg-white">
       <Column field="ticker" :header="t('common.ticker')" />
       <Column field="company_name" :header="t('common.companyName')">
         <template #body="{ data }">

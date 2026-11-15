@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import date
+from io import BytesIO
 from pathlib import Path
 
 from tradingagents.service.web_state import get_web_state_base_dir
@@ -102,20 +104,26 @@ def refresh_stock_catalog(
     resolved_cache_path = cache_path or default_stock_catalog_cache_path()
     current = _read_snapshot(resolved_cache_path)
     today_text = (today or date.today()).isoformat()
-    if current.updated_on == today_text and not force:
+    if not force and not stock_catalog_needs_refresh(cache_path=resolved_cache_path, today=today):
         return current
 
     resolved_fetchers = fetchers or default_stock_fetchers()
     markets: dict[str, list[StockCatalogItem]] = {}
     errors: dict[str, str] = {}
     for market in SUPPORTED_STOCK_MARKETS:
+        if not force and current.updated_on == today_text and current.markets.get(market) and market not in current.errors:
+            markets[market] = current.markets[market]
+            continue
         fetcher = resolved_fetchers.get(market)
         if fetcher is None:
             errors[market] = "No stock catalog fetcher configured."
             markets[market] = current.markets.get(market, [])
             continue
         try:
-            markets[market] = _normalize_catalog_items(market, fetcher())
+            items = _normalize_catalog_items(market, fetcher())
+            if not items:
+                raise RuntimeError(f"{market} stock catalog source returned no company stocks.")
+            markets[market] = items
         except Exception as exc:  # pragma: no cover - network/vendor failures vary
             errors[market] = str(exc)
             markets[market] = current.markets.get(market, [])
@@ -182,14 +190,22 @@ def stock_catalog_needs_refresh(
     cache_path: Path | None = None,
     today: date | None = None,
 ) -> bool:
-    snapshot = _read_snapshot(cache_path or default_stock_catalog_cache_path())
-    return snapshot.updated_on != (today or date.today()).isoformat()
+    path = cache_path or default_stock_catalog_cache_path()
+    snapshot = _read_snapshot(path)
+    if snapshot.updated_on != (today or date.today()).isoformat():
+        return True
+    # A successful market must not hide an empty market for the rest of the day.
+    # Back off between failed attempts instead of hammering a rate-limited source.
+    if any(not snapshot.markets.get(market) for market in SUPPORTED_STOCK_MARKETS):
+        return time.time() - path.stat().st_mtime >= 300
+    return False
 
 
 def fetch_us_company_stocks() -> list[StockCatalogItem]:
     import akshare as ak
 
-    frame = ak.get_us_stock_name()
+    fetcher = getattr(ak, "stock_us_name_sina", None) or ak.get_us_stock_name
+    frame = fetcher()
     items: list[StockCatalogItem] = []
     for row in _records(frame):
         symbol = _text_value(row, "symbol", "代码", "code", "ticker", "证券代码").upper()
@@ -201,16 +217,28 @@ def fetch_us_company_stocks() -> list[StockCatalogItem]:
 
 
 def fetch_hk_company_stocks() -> list[StockCatalogItem]:
-    import akshare as ak
+    """Read company listings from HKEX, without requesting live quote data."""
+    import pandas as pd
+    import requests
 
-    frame = ak.stock_hk_main_board_spot_em()
+    url = "https://www.hkex.com.hk/chi/services/trading/securities/securitieslists/ListOfSecurities_c.xlsx"
+    response = requests.get(url, timeout=20)
+    response.raise_for_status()
+    frame = pd.read_excel(BytesIO(response.content), header=2, dtype=str).fillna("")
+    required = {"股份代號", "股份名稱", "分類", "次分類"}
+    if not required.issubset(frame.columns):
+        raise RuntimeError("HKEX securities list columns have changed.")
     items: list[StockCatalogItem] = []
     for row in _records(frame):
-        code = _text_value(row, "代码", "symbol", "code", "证券代码")
-        name = _text_value(row, "名称", "name", "证券简称")
+        if row["分類"].strip() != "股本" or row["次分類"].strip() != "股本證券(主板)":
+            continue
+        code = _text_value(row, "股份代號")
+        name = _text_value(row, "股份名稱")
         symbol = _normalize_hk_symbol(code)
         if symbol and name:
             items.append(StockCatalogItem("hk", symbol, name, "HKEX"))
+    if not items:
+        raise RuntimeError("HKEX securities list contains no main-board company stocks.")
     return items
 
 

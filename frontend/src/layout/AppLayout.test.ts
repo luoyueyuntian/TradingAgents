@@ -12,7 +12,7 @@ import { useSession } from '../stores/session';
 function createTestRouter() {
   return createRouter({
     history: createMemoryHistory(),
-    routes: [...navigationGroups, { path: '/runs/:runId' }, { path: '/portfolio/positions' }, { path: '/tenants/:tenantId' }, { path: '/profile' }].map((item) => ({
+    routes: [...navigationGroups, { path: '/runs/:runId' }, { path: '/portfolio/positions' }, { path: '/tenants/:tenantId' }, { path: '/profile' }, { path: '/notifications' }].map((item) => ({
       path: item.path,
       component: { template: '<div />' },
     })),

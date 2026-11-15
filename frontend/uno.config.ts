@@ -1,4 +1,5 @@
 import { defineConfig, presetWind3 } from 'unocss';
+import { interfaceColors } from './src/theme/palette';
 
 export default defineConfig({
   presets: [
@@ -9,6 +10,7 @@ export default defineConfig({
     }),
   ],
   theme: {
+    colors: interfaceColors,
     fontFamily: {
       sans: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     },

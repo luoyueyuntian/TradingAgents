@@ -7,7 +7,7 @@
     @update:visible="emit('update:visible', $event)"
   >
     <div class="uno-grid uno-gap-4">
-      <p class="uno-m-0 uno-text-sm uno-text-[#4c6265]">{{ dialogMessage }}</p>
+      <p class="uno-m-0 uno-text-sm uno-text-[#525252]">{{ dialogMessage }}</p>
 
       <DataTable
         :value="historyPage.items"
