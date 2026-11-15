@@ -56,7 +56,7 @@ describe('AppLayout', () => {
     setLocale('zh-CN');
     const router = createTestRouter();
     await router.push('/');
-    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: true } } });
+    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: false } } });
     const nav = wrapper.get('aside nav');
     expect(nav.findAll('h2').map((heading) => heading.text())).toEqual(['分析与研究', '投资与协作']);
     expect(nav.text()).toContain('发起分析');
@@ -78,7 +78,7 @@ describe('AppLayout', () => {
     useSession().state.currentUser!.role = 'admin';
     const router = createTestRouter();
     await router.push(path);
-    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: true } } });
+    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: false } } });
     const active = wrapper.findAll('aside nav a[aria-current="page"]');
     expect(active).toHaveLength(1);
     expect(active[0].attributes('href')).toBe(owner);
@@ -96,7 +96,7 @@ describe('AppLayout', () => {
       global: {
         plugins: [router],
         stubs: {
-          Button: true,
+          Button: false,
           Select: true,
           Tag: true,
         },
@@ -128,7 +128,7 @@ describe('AppLayout', () => {
       global: {
         plugins: [router],
         stubs: {
-          Button: true,
+          Button: false,
           Select: true,
           Tag: true,
         },
@@ -152,7 +152,7 @@ describe('AppLayout', () => {
       global: {
         plugins: [router],
         stubs: {
-          Button: true,
+          Button: false,
           Select: true,
           Tag: true,
         },
@@ -182,7 +182,7 @@ describe('AppLayout', () => {
       global: {
         plugins: [router],
         stubs: {
-          Button: true,
+          Button: false,
           Select: true,
           Tag: true,
         },
@@ -226,7 +226,7 @@ describe('AppLayout', () => {
       global: {
         plugins: [router],
         stubs: {
-          Button: true,
+          Button: false,
           Select: true,
           Tag: true,
         },
@@ -249,7 +249,7 @@ describe('AppLayout', () => {
       global: {
         plugins: [router],
         stubs: {
-          Button: true,
+          Button: false,
           Select: true,
           Tag: true,
         },
@@ -277,7 +277,7 @@ describe('AppLayout', () => {
       global: {
         plugins: [router],
         stubs: {
-          Button: true,
+          Button: false,
           Select: true,
           Tag: true,
         },
@@ -301,7 +301,7 @@ describe('AppLayout', () => {
     vi.spyOn(apiService, 'apiPost').mockRejectedValue(new Error('Tenant membership is unavailable'));
     const router = createTestRouter();
     await router.push('/');
-    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: true } } });
+    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: false } } });
     const selector = wrapper.get('[data-testid="tenant-switcher"]');
     expect(selector.findAll('option').map(option => option.text())).toEqual(['研发团队', '投研团队']);
     await selector.setValue('tenant-b');
@@ -317,7 +317,7 @@ describe('AppLayout', () => {
     useSession().state.currentUser!.tenant_id = '';
     const router = createTestRouter();
     await router.push('/');
-    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: true } } });
+    const wrapper = mount(AppLayout, { global: { plugins: [router], stubs: { Button: false } } });
     expect(wrapper.get('[role="status"]').text()).toContain('暂无可访问租户');
     expect(wrapper.find('[data-testid="tenant-switcher"]').exists()).toBe(false);
     wrapper.unmount();

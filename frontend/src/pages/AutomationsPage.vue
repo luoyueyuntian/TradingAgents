@@ -213,15 +213,15 @@
                   class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#f5f5f5] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#404040]"
                 >
                   {{ group.name }}
-                  <button
+                  <Button text severity="secondary" rounded size="small" icon="pi pi-times"
                     type="button"
+                    style="width: 1.5rem; height: 1.5rem; padding: 0"
+                    :aria-label="t('common.removeItem', { name: group.name })"
                     :data-testid="`remove-selected-group-${group.id}`"
                     class="uno-bg-transparent uno-p-0 uno-text-[#737373]"
                     :disabled="!canWrite"
                     @click="removeSelectedGroup(group.id)"
-                  >
-                    x
-                  </button>
+                  />
                 </span>
               </div>
               <label class="uno-mt-3 uno-flex uno-items-center uno-gap-[0.55rem]">
@@ -252,15 +252,15 @@
                   class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#f5f5f5] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#404040]"
                 >
                   {{ ticker }}
-                  <button
+                  <Button text severity="secondary" rounded size="small" icon="pi pi-times"
                     type="button"
+                    style="width: 1.5rem; height: 1.5rem; padding: 0"
+                    :aria-label="t('common.removeItem', { name: ticker })"
                     :data-testid="`remove-resolved-ticker-${ticker}`"
                     class="uno-bg-transparent uno-p-0 uno-text-[#737373]"
                     :disabled="!canWrite"
                     @click="removeResolvedTicker(ticker)"
-                  >
-                    x
-                  </button>
+                  />
                 </span>
               </div>
               <p v-if="!visibleResolvedTickers.length" class="uno-mt-2 uno-text-[#737373]">No stocks resolved yet.</p>

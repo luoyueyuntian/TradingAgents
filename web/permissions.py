@@ -22,6 +22,7 @@ _PASSWORD_CHANGE_ALLOWED = {
     ("POST", "/api/auth/logout"),
 }
 _PUBLIC_AUTH_PATHS = {
+    ("GET", "/api/auth/guest"),
     ("POST", "/api/auth/login"),
     ("POST", "/api/auth/logout"),
     ("POST", "/api/auth/password-reset/request"),

@@ -2974,6 +2974,7 @@ class AuthLoginRequest(BaseModel):
 
 
 class AuthUser(BaseModel):
+    is_guest: bool = False
     account_id: str = ""
     member_id: str | None = None
     id: str

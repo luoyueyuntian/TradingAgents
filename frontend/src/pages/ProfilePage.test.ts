@@ -69,6 +69,14 @@ describe('ProfilePage', () => {
     expect(wrapper.text()).toMatch(/新邮箱已变化|target address changed/);
     wrapper.unmount();
   });
+  it('keeps the public guest profile read-only', async () => {
+    apiGet.mockResolvedValue({ ...data, user: { ...data.user, is_guest: true } });
+    const wrapper = await page(); await flushPromises();
+    expect(wrapper.find('#profile-nickname').exists()).toBe(false);
+    expect(wrapper.find('#profile-email').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="embedded-password"]').exists()).toBe(false);
+    expect(wrapper.text()).toMatch(/公开共享的访客账号|public shared guest/);
+  });
   it('does not claim a nickname save succeeded if the server rejects it', async () => {
     apiPut.mockRejectedValue(new Error('Save failed'));
     const wrapper = await page(); await flushPromises();

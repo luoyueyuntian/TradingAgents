@@ -26,6 +26,7 @@ from .auth import (
     is_user_auth_required,
 )
 from .auth_routes import _ensure_tenant_allows_access, router as auth_router
+from .guest_access import guest_request_allowed
 from .permissions import (
     has_required_role,
     is_auth_path,
@@ -130,6 +131,8 @@ async def _resolve_request_auth(request, call_next):
         return await call_next(request)
 
     if session_user is not None:
+        if not guest_request_allowed(session_user, path, method):
+            return JSONResponse({"code": "guest_read_only", "detail": "访客账号仅供展示，不能修改系统、业务数据或共享账号资料。请联系管理员使用正式账号。"}, status_code=403)
         if session_user.must_change_password and not is_password_change_allowed_path(path, method):
             return JSONResponse(
                 {"code": "password_change_required", "detail": "Password change required"},

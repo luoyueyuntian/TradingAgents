@@ -63,7 +63,7 @@
           <Button icon="pi pi-search" text rounded :aria-label="t('topbar.workspaceSearch')" @click="router.push('/workspace')" />
           <NotificationBell />
           <div ref="languageMenuRef" data-testid="language-menu" class="uno-relative">
-            <button
+            <Button text severity="secondary"
               data-testid="language-trigger"
               type="button"
               class="uno-inline-flex uno-min-h-10 uno-cursor-pointer uno-items-center uno-gap-1.5 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#404040] hover:uno-text-[#262626]"
@@ -73,12 +73,13 @@
             >
               <span>{{ currentLocaleLabel }}</span>
               <i :class="languageMenuOpen ? 'pi pi-angle-up uno-text-xs' : 'pi pi-angle-down uno-text-xs'" />
-            </button>
+            </Button>
             <div
               v-if="languageMenuOpen"
               class="uno-absolute uno-right-0 uno-top-[calc(100%+0.35rem)] uno-z-20 uno-grid uno-min-w-[150px] uno-gap-1 uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-p-2 uno-shadow-lg"
             >
-              <button
+              <Button text severity="secondary"
+                style="justify-content: space-between"
                 v-for="option in locales"
                 :key="option.value"
                 type="button"
@@ -88,7 +89,7 @@
               >
                 <span>{{ option.label }}</span>
                 <i v-if="option.value === locale" class="pi pi-check uno-text-[#415846]" />
-              </button>
+              </Button>
             </div>
           </div>
           <div
@@ -99,7 +100,7 @@
             @focusin="userMenuOpen = true"
             @focusout="handleUserMenuFocusOut"
           >
-            <button
+            <Button text severity="secondary"
               data-testid="user-menu-trigger"
               type="button"
               class="uno-inline-flex uno-min-h-10 uno-cursor-pointer uno-items-center uno-gap-1.5 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#404040] hover:uno-text-[#262626]"
@@ -107,7 +108,7 @@
             >
               <strong class="uno-max-w-[180px] uno-truncate">{{ currentUserName }}</strong>
               <i :class="userMenuOpen ? 'pi pi-angle-up uno-text-xs' : 'pi pi-angle-down uno-text-xs'" />
-            </button>
+            </Button>
             <div
               v-if="userMenuOpen"
               class="uno-absolute uno-right-0 uno-top-full uno-z-20 uno-min-w-[200px] uno-max-w-[280px] uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-py-1 uno-shadow-lg"
@@ -130,14 +131,15 @@
                   <i class="pi pi-user uno-text-sm" aria-hidden="true" />
                   <span>{{ t('profile.title') }}</span>
                 </RouterLink>
-                <button
+                <Button text severity="secondary"
                   type="button"
                   class="uno-flex uno-min-h-[32px] uno-w-full uno-cursor-pointer uno-items-center uno-gap-2 uno-border-0 uno-bg-transparent uno-px-3 uno-py-1 uno-text-left uno-font-inherit uno-text-[13px] uno-text-[#404040] hover:uno-bg-[#f5f5f5] focus-visible:uno-bg-[#f5f5f5]"
+                  style="justify-content: flex-start"
                   @click="handleLogout"
                 >
                   <i class="pi pi-sign-out uno-text-sm" aria-hidden="true" />
                   <span>{{ t('auth.logout') }}</span>
-                </button>
+                </Button>
               </nav>
             </div>
           </div>
@@ -207,6 +209,7 @@ function isNavigationActive(path: string) {
 }
 
 const roleLabelKey = computed(() => {
+  if (session.state.currentUser?.is_guest) return 'auth.roleGuest';
   const role = session.state.currentUser?.role;
   if (role === 'admin') {
     return 'auth.roleAdmin';

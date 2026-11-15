@@ -7,9 +7,9 @@
     <Tabs v-if="profile" :value="activeTab" scrollable @update:value="selectTab">
       <TabList :aria-label="t('profile.title')">
         <Tab value="account">{{ t('profile.account') }}</Tab>
-        <Tab value="email">{{ t('profile.emailTitle') }}</Tab>
-        <Tab value="password">{{ t('auth.changePasswordTitle') }}</Tab>
-        <Tab value="sessions">{{ t('profile.sessions') }}</Tab>
+        <Tab v-if="!isGuest" value="email">{{ t('profile.emailTitle') }}</Tab>
+        <Tab v-if="!isGuest" value="password">{{ t('auth.changePasswordTitle') }}</Tab>
+        <Tab v-if="!isGuest" value="sessions">{{ t('profile.sessions') }}</Tab>
         <Tab value="preferences">{{ t('profile.preferences') }}</Tab>
       </TabList>
       <TabPanels>
@@ -25,7 +25,8 @@
                 <dt>{{ t('profile.created') }}</dt><dd>{{ formatDateTime(profile.created_at) }}</dd>
                 <dt>{{ t('profile.passwordUpdated') }}</dt><dd>{{ formatDateTime(profile.password_updated_at) }}</dd>
               </dl>
-              <form class="uno-mt-5 uno-grid uno-gap-3" @submit.prevent="saveNickname">
+              <Message v-if="isGuest" severity="info" :closable="false" class="uno-mt-4">{{ t('guest.profileReadOnly') }}</Message>
+              <form v-else class="uno-mt-5 uno-grid uno-gap-3" @submit.prevent="saveNickname">
                 <label for="profile-nickname">{{ t('profile.nickname') }}</label>
                 <InputText id="profile-nickname" v-model="nickname" maxlength="80" required />
                 <Button :label="t('common.save')" type="submit" :loading="busy" :disabled="busy" />
@@ -33,7 +34,7 @@
             </template>
           </Card>
         </TabPanel>
-        <TabPanel value="email">
+        <TabPanel v-if="!isGuest" value="email">
           <Card>
             <template #title>{{ t('profile.emailTitle') }}</template>
             <template #content>
@@ -52,10 +53,10 @@
             </template>
           </Card>
         </TabPanel>
-        <TabPanel value="password">
+        <TabPanel v-if="!isGuest" value="password">
           <div id="password" class="uno-scroll-mt-24"><ForcePasswordChangePage embedded @changed="load" /></div>
         </TabPanel>
-        <TabPanel value="sessions">
+        <TabPanel v-if="!isGuest" value="sessions">
           <Card>
             <template #title>{{ t('profile.sessions') }}</template>
             <template #content>
@@ -101,7 +102,7 @@ import Tab from 'primevue/tab';
 import TabPanels from 'primevue/tabpanels';
 import TabPanel from 'primevue/tabpanel';
 import { useRoute, useRouter } from 'vue-router';
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 import PageHeader from '../components/PageHeader.vue';
 import { useI18n } from '../i18n';
@@ -114,17 +115,18 @@ const { t, locale, locales } = useI18n();
 const session = useSession();
 const route = useRoute();
 const router = useRouter();
+const profile = ref<JsonRecord | null>(null);
+const isGuest = computed(() => Boolean(profile.value?.user?.is_guest || session.state?.currentUser?.is_guest));
 const activeTab = ref('account');
-const tabValues = ['account', 'email', 'password', 'sessions', 'preferences'];
-watch(() => route.hash, (hash) => {
+const tabValues = computed(() => isGuest.value ? ['account','preferences'] : ['account', 'email', 'password', 'sessions', 'preferences']);
+watch([() => route.hash, isGuest], ([hash]) => {
   const tab = hash.slice(1);
-  activeTab.value = tabValues.includes(tab) ? tab : 'account';
+  activeTab.value = tabValues.value.includes(tab) ? tab : 'account';
 }, { immediate: true });
 function selectTab(value: string | number) {
   activeTab.value = String(value);
   void router.replace({ hash: '#' + value });
 }
-const profile = ref<JsonRecord | null>(null);
 const nickname = ref('');
 const email = ref('');
 const code = ref('');

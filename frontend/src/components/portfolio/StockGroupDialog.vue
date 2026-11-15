@@ -32,7 +32,7 @@
           class="uno-inline-flex uno-items-center uno-gap-2 uno-rounded-full uno-bg-[#f5f5f5] uno-px-3 uno-py-1 uno-text-sm uno-font-700 uno-text-[#404040]"
         >
           {{ companyNames[ticker] || ticker }}
-          <button type="button" class="uno-bg-transparent uno-p-0" @click="removeTicker(ticker)">x</button>
+          <Button text severity="secondary" rounded size="small" icon="pi pi-times" type="button" style="width: 1.5rem; height: 1.5rem; padding: 0" :aria-label="t('common.removeItem', { name: companyNames[ticker] || ticker })" @click="removeTicker(ticker)" />
         </span>
       </div>
     </template>

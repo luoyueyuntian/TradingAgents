@@ -50,6 +50,7 @@ const session = {
   canWrite: { value: true },
   state: {
     currentMemberId: 'member-1',
+    currentUser: { is_guest: false },
   },
 };
 
@@ -264,6 +265,7 @@ async function mountPage(status: string, options: { setupApis?: boolean } = {}) 
 
 describe('RunDetailPage', () => {
   beforeEach(() => {
+    session.state.currentUser.is_guest = false;
     apiDelete.mockReset();
     apiGet.mockReset();
     apiPatch.mockReset();
@@ -278,6 +280,15 @@ describe('RunDetailPage', () => {
     vi.useRealTimers();
   });
 
+  it('loads guest report details without requesting internal configuration', async () => {
+    session.state.currentUser.is_guest = true;
+    const wrapper = await mountPage('completed');
+    await flushPromises();
+    expect(apiGet.mock.calls.some(call => String(call[0]).endsWith('/debug-config'))).toBe(false);
+    expect(wrapper.find('[data-testid="run-detail-debug-card"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('guest_read_only');
+    wrapper.unmount();
+  });
   it('asks for confirmation before retrying a completed run', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const wrapper = await mountPage('completed');

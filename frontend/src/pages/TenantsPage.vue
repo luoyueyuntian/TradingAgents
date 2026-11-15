@@ -106,13 +106,14 @@
                   >
                 </td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">
-                  <button
+                  <Button
                     type="button"
-                    class="uno-font-semibold uno-text-[#262626] uno-underline-offset-2 hover:uno-underline"
+                    variant="link"
+                    size="small"
+                    class="uno-p-0 uno-font-semibold"
+                    :label="tenant.tenant_id"
                     @click="openTenant(tenant.tenant_id)"
-                  >
-                    {{ tenant.tenant_id }}
-                  </button>
+                  />
                 </td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">{{ tenant.display_name }}</td>
                 <td class="uno-px-3 uno-py-3 uno-align-top">{{ tenantStatusLabel(tenant) }}</td>

@@ -32,6 +32,7 @@ type AuthUser = {
   tenant_id: string;
   expires_at: number | null;
   must_change_password: boolean;
+  is_guest?: boolean;
 };
 
 export type TenantMembership = {
@@ -323,12 +324,14 @@ export function useSession() {
   }
 
   const mustChangePassword = computed(() => Boolean(state.currentUser?.must_change_password));
-  const isAdmin = computed(() => state.currentUser?.role === 'admin');
+  const isAdmin = computed(() => state.currentUser?.role === 'admin' && !state.currentUser?.is_guest);
   const canWrite = computed(() => {
+    if (state.currentUser?.is_guest) return false;
     const role = state.currentUser?.role;
     return role === 'analyst' || role === 'admin';
   });
   const canAnalyze = computed(() => {
+    if (state.currentUser?.is_guest) return false;
     const role = state.currentUser?.role;
     return role === 'analyst' || role === 'admin';
   });

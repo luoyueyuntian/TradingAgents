@@ -42,7 +42,7 @@
               </div>
             </div>
             <div class="notification-actions">
-              <button v-if="!item.is_read && canWrite" type="button" :disabled="saving" @click="markOne(item)">{{ t('messages.markRead') }}</button>
+              <Button v-if="!item.is_read && canWrite" type="button" text size="small" :label="t('messages.markRead')" :disabled="saving" @click="markOne(item)" />
               <RouterLink v-if="item.run_id" :to="`/runs/${encodeURIComponent(item.run_id)}`" @click="markOne(item, false)">{{ t('messages.details') }}</RouterLink>
             </div>
           </li>

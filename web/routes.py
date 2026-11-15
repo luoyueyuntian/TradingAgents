@@ -59,7 +59,7 @@ from tradingagents.settings import (
     save_settings,
 )
 
-from .auth import get_auth_scope, get_request_tenant_id
+from .auth import get_auth_scope, get_request_tenant_id, get_request_user
 from .automation import (
     create_automation_rule,
     delete_automation_rule,
@@ -68,6 +68,7 @@ from .automation import (
     run_automation_rule_now,
     update_automation_rule_enabled,
 )
+from .guest_access import is_guest_user
 from .model_catalog_refresh import load_cache, refresh_catalogs
 from .one_time_tasks import (
     cancel_one_time_task,
@@ -3542,7 +3543,7 @@ async def list_stock_markets():
 
 
 @router.get("/api/stocks", response_model=list[StockCatalogItemResponse])
-async def list_stocks(background_tasks: BackgroundTasks, market: str, q: str = "", limit: int = 100):
+async def list_stocks(background_tasks: BackgroundTasks, request: Request, market: str, q: str = "", limit: int = 100):
     """Return searchable listed company stocks for one selected market."""
     try:
         items = search_stock_catalog(market, query=q, limit=limit, refresh_if_stale=False)
@@ -3550,7 +3551,7 @@ async def list_stocks(background_tasks: BackgroundTasks, market: str, q: str = "
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    if stock_catalog_needs_refresh():
+    if not is_guest_user(get_request_user(request)) and stock_catalog_needs_refresh():
         background_tasks.add_task(refresh_stock_catalog, force=False)
     return [_stock_catalog_response(item) for item in items]
 

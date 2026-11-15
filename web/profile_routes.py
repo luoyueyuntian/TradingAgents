@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .auth_routes import _build_me_response, _ensure_user_can_login, _get_current_session
+from .guest_access import is_guest_user
 from .mail import get_smtp_settings
 from .passwords import generate_verification_code, hash_verification_code, verify_verification_code
 
@@ -95,10 +96,12 @@ def get_profile(request: Request):
     now = int(time.time()*1000)
     with profile_db(store) as conn:
         sessions = conn.execute('SELECT * FROM sessions WHERE user_id=? AND expires_at>? ORDER BY created_at DESC', (user.account_id, now)).fetchall()
+    if is_guest_user(user):
+        sessions = [s for s in sessions if s['id_hash'] == current.id_hash]
     return {
         'user': _build_me_response(user, current.expires_at).user,
         'created_at': user.created_at, 'password_updated_at': user.password_updated_at,
-        'email_verification_available': get_smtp_settings() is not None,
+        'email_verification_available': get_smtp_settings() is not None and not is_guest_user(user),
         'sessions': [{'created_at': s['created_at'], 'last_seen_at': s['last_seen_at'], 'expires_at': s['expires_at'], 'current': s['id_hash']==current.id_hash} for s in sessions],
     }
 

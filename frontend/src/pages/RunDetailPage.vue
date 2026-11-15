@@ -1,14 +1,14 @@
 <template>
   <section>
     <nav data-testid="run-detail-breadcrumb" class="uno-mb-3 uno-flex uno-items-center uno-gap-2 uno-text-sm uno-text-[#737373]">
-      <button
+      <Button text severity="secondary"
         type="button"
         class="uno-inline-flex uno-cursor-pointer uno-items-center uno-gap-1 uno-border-0 uno-bg-transparent uno-p-0 uno-text-[#404040] hover:uno-text-[#262626]"
         @click="goBack"
       >
         <i class="pi pi-angle-left uno-text-xs" />
         <span>{{ t('common.back') }}</span>
-      </button>
+      </Button>
       <span class="uno-text-[#a3a3a3]">/</span>
       <span>{{ t('runs.runDetail') }}</span>
     </nav>
@@ -182,22 +182,18 @@
           >
             <div class="uno-flex uno-flex-wrap uno-items-center uno-justify-between uno-gap-3">
               <div class="uno-flex uno-flex-wrap uno-gap-1" role="tablist" :aria-label="t('runs.reportSections')">
-                <button
+                <Button
                   v-for="section in sectionOptions"
                   :key="section.value"
                   type="button"
                   role="tab"
+                  size="small"
                   :aria-selected="selectedSectionKey === section.value"
-                  :class="[
-                    'uno-min-h-10 uno-cursor-pointer uno-rounded-lg uno-border-b-2 uno-border-transparent uno-px-3 uno-py-[0.55rem] uno-text-sm uno-font-600',
-                    selectedSectionKey === section.value
-                      ? 'uno-bg-[#262626] uno-text-white uno-shadow-sm'
-                      : 'uno-bg-transparent uno-text-[#404040] hover:uno-bg-[#fafafa] hover:uno-text-[#262626]',
-                  ]"
+                  :text="selectedSectionKey !== section.value"
+                  :severity="selectedSectionKey === section.value ? undefined : 'secondary'"
+                  :label="section.label"
                   @click="selectedSectionKey = section.value"
-                >
-                  {{ section.label }}
-                </button>
+                />
               </div>
               <div class="uno-flex uno-flex-wrap uno-items-center uno-gap-[0.55rem]">
                 <Button icon="pi pi-refresh" :label="t('common.retry')" severity="secondary" :disabled="!canWrite" @click="retryRun" />
@@ -334,20 +330,17 @@
             <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.debates') }}</summary>
             <div v-if="debateTranscripts.length" class="uno-mt-3 uno-grid uno-gap-3">
               <div class="uno-flex uno-flex-wrap uno-gap-2">
-                <button
+                <Button
                   v-for="transcript in debateTranscripts"
                   :key="transcript.name"
                   type="button"
-                  :class="[
-                    'uno-min-h-9 uno-cursor-pointer uno-rounded-lg uno-border uno-px-3 uno-py-1.5 uno-text-sm',
-                    selectedDebateTranscript?.name === transcript.name
-                      ? 'uno-border-[#262626] uno-bg-[#262626] uno-text-white'
-                      : 'uno-border-[#e5e5e5] uno-bg-white uno-text-[#404040] hover:uno-border-[#a3a3a3]',
-                  ]"
+                  size="small"
+                  :aria-pressed="selectedDebateTranscript?.name === transcript.name"
+                  :outlined="selectedDebateTranscript?.name !== transcript.name"
+                  :severity="selectedDebateTranscript?.name === transcript.name ? undefined : 'secondary'"
+                  :label="transcript.label"
                   @click="selectedDebateName = transcript.name"
-                >
-                  {{ transcript.label }}
-                </button>
+                />
               </div>
 
               <div v-if="selectedDebateTranscript" class="uno-grid uno-gap-3">
@@ -377,7 +370,7 @@
             <p v-else class="uno-m-0 uno-mt-3 uno-text-[#737373]">{{ t('runs.noDebates') }}</p>
           </details>
 
-          <details data-testid="run-detail-debug-card" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-4 uno-py-[0.85rem]">
+          <details v-if="!session.state.currentUser?.is_guest" data-testid="run-detail-debug-card" class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-white uno-px-4 uno-py-[0.85rem]">
             <summary class="uno-cursor-pointer uno-font-700">{{ t('runs.debugData') }}</summary>
             <div class="uno-mt-3 uno-grid uno-gap-3">
               <div class="uno-rounded-lg uno-border uno-border-[#e5e5e5] uno-bg-[#ffffff] uno-p-3">
@@ -1017,7 +1010,7 @@ async function loadRunDetail(options: { silent?: boolean } = {}) {
       apiGet<JsonRecord[]>('/api/members', session.apiContext.value),
       apiGet<JsonRecord[]>('/api/runs', session.apiContext.value),
       apiGet<JsonRecord[]>(`/api/runs/${encodedRunId}/timeline`, session.apiContext.value),
-      apiGet<JsonRecord>(`/api/runs/${encodedRunId}/debug-config`, session.apiContext.value),
+      session.state.currentUser?.is_guest ? Promise.resolve(null) : apiGet<JsonRecord>(`/api/runs/${encodedRunId}/debug-config`, session.apiContext.value),
     ]);
     artifacts.value = artifactRows;
     terminalOutput.value = output;
@@ -1036,7 +1029,7 @@ async function loadRunDetail(options: { silent?: boolean } = {}) {
       : '';
     [debateTranscripts.value, fullStateContent.value] = await Promise.all([
       loadDebateTranscripts(encodedRunId, artifactRows),
-      loadFullStateContent(encodedRunId, artifactRows),
+      session.state.currentUser?.is_guest ? Promise.resolve('') : loadFullStateContent(encodedRunId, artifactRows),
     ]);
     if (!selectedDebateName.value || !debateTranscripts.value.some((entry) => entry.name === selectedDebateName.value)) {
       selectedDebateName.value = debateTranscripts.value[0]?.name || '';

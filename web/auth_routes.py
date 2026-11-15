@@ -14,6 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from tradingagents.service.timestamps import current_timestamp_ms
 from tradingagents.service.web_state import get_web_auth_db_path
 
+from .guest_access import guest_record, is_guest_user, public_guest_credentials
 from .mail import (
     PasswordResetEmail,
     password_reset_mail_available,
@@ -30,13 +31,13 @@ from .passwords import (
 from .schemas import (
     AuthLoginRequest,
     AuthMeResponse,
-    AuthUser,
     AuthTenantMembership,
-    SwitchTenantRequest,
+    AuthUser,
     ChangePasswordRequest,
     PasswordResetAvailability,
     PasswordResetConfirm,
     PasswordResetRequest,
+    SwitchTenantRequest,
 )
 from .user_store import PASSWORD_RESET_MAX_ATTEMPTS, UserRecord, UserStore, tenant_is_expired
 
@@ -126,11 +127,13 @@ def _build_auth_user(user: UserRecord) -> AuthUser:
         tenant_id=user.tenant_id,
         expires_at=user.expires_at,
         must_change_password=user.must_change_password,
+        is_guest=is_guest_user(user),
     )
 
 
 def _build_me_response(user: UserRecord, session_expires_at: int) -> AuthMeResponse:
     store = _get_store()
+    guest = guest_record(user.account_id)
     tenants = [
         AuthTenantMembership(
             tenant_id=member.tenant_id,
@@ -139,12 +142,13 @@ def _build_me_response(user: UserRecord, session_expires_at: int) -> AuthMeRespo
             member_id=member.id,
         )
         for member in store.list_account_memberships(user.account_id)
+        if guest is None or member.tenant_id == guest['tenant_id']
     ]
     return AuthMeResponse(
         tenants=tenants,
         user=_build_auth_user(user),
         session_expires_at=session_expires_at,
-        password_reset=PasswordResetAvailability(available=_password_reset_available()),
+        password_reset=PasswordResetAvailability(available=_password_reset_available() and not is_guest_user(user)),
     )
 
 
@@ -175,7 +179,13 @@ def _lookup_password_reset_row(
 
 def _get_user_by_email(store: UserStore, email: str) -> UserRecord | None:
     user = store.get_account_by_identifier(email)
-    return user if user and user.email.casefold() == email.strip().casefold() else None
+    return user if user and not is_guest_user(user) and user.email.casefold() == email.strip().casefold() else None
+
+
+@router.get("/guest")
+def public_guest(response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return public_guest_credentials()
 
 
 @router.post("/login", response_model=AuthMeResponse)
@@ -288,7 +298,7 @@ def password_reset_request(
     user = _get_user_by_email(store, payload.email)
     fallback_reset_id = uuid.uuid4().hex
     code = generate_verification_code()
-    if user is None or user.disabled or _is_user_expired(user):
+    if user is None or user.disabled or _is_user_expired(user) or is_guest_user(user):
         hash_verification_code(code)
         return PasswordResetAvailability(available=True, reset_id=fallback_reset_id)
     token = store.create_password_reset_token(user.account_id, hash_verification_code(code))
@@ -327,7 +337,7 @@ def password_reset_confirm(payload: PasswordResetConfirm) -> dict[str, str]:
         raise _invalid_reset_code_error()
 
     user = store.get_account_user(token.user_id)
-    if user is None or user.disabled or _is_user_expired(user):
+    if user is None or user.disabled or _is_user_expired(user) or is_guest_user(user):
         _burn_reset_code_verification(payload.code)
         raise _invalid_reset_code_error()
     try:
