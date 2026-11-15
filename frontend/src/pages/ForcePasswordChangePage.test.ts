@@ -74,9 +74,9 @@ describe('ForcePasswordChangePage', () => {
     session.state.error = '';
     session.state.loading = false;
   });
-  it('explains session-based changes and every password rule', () => {
+  it('requires the current password and explains every password rule', () => {
     const wrapper = mountPage();
-    expect(wrapper.get('[data-testid="password-change-tips"]').text()).toMatch(/无需输入当前密码|current password is not required/);
+    expect(wrapper.get('[data-testid="password-change-tips"]').text()).toMatch(/当前登录密码|current password/);
     expect(wrapper.text()).toContain('10');
     expect(wrapper.text()).toMatch(/用户名|username/);
     expect(wrapper.text()).toMatch(/邮箱|email/);
@@ -84,17 +84,19 @@ describe('ForcePasswordChangePage', () => {
   it('explains a expired session and how to retry without showing raw errors', async () => {
     changePasswordMock.mockRejectedValue(new Error('Unauthorized'));
     const wrapper = mountPage();
+    await wrapper.get('#current-password').setValue('CurrentPass123!');
     await wrapper.get('#confirm-password').setValue('StrongPassword42!');
     await wrapper.get('#new-password').setValue('StrongPassword42!');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(wrapper.text()).not.toContain('Invalid credentials');
     expect(wrapper.text()).toMatch(/登录状态已失效|session has expired/);
-    expect(wrapper.find('#current-password').exists()).toBe(false);
+    expect(wrapper.find('#current-password').exists()).toBe(true);
     expect(pushMock).not.toHaveBeenCalled();
   });
   it('requires matching confirmation before submitting', async () => {
     const wrapper = mountPage();
+    await wrapper.get('#current-password').setValue('CurrentPass123!');
     await wrapper.get('#new-password').setValue('NewStrongPassword42!');
     await wrapper.get('#confirm-password').setValue('different');
     await wrapper.get('form').trigger('submit');
@@ -104,6 +106,7 @@ describe('ForcePasswordChangePage', () => {
   it('stays in the personal center and confirms success when embedded', async () => {
     changePasswordMock.mockResolvedValue({});
     const wrapper = mountPage({ embedded: true });
+    await wrapper.get('#current-password').setValue('CurrentPass123!');
     await wrapper.get('#new-password').setValue('NewStrongPassword42!');
     await wrapper.get('#confirm-password').setValue('NewStrongPassword42!');
     await wrapper.get('form').trigger('submit'); await flushPromises();
@@ -111,8 +114,17 @@ describe('ForcePasswordChangePage', () => {
     expect(wrapper.emitted('changed')).toHaveLength(1);
     expect(wrapper.text()).toMatch(/密码修改成功|Password changed/);
   });
-  it('does not submit missing passwords' , async () => {
+  it('does not submit without the current password', async () => {
     const wrapper = mountPage();
+    await wrapper.get('#new-password').setValue('NewStrongPassword42!');
+    await wrapper.get('#confirm-password').setValue('NewStrongPassword42!');
+    await wrapper.get('form').trigger('submit');
+    expect(changePasswordMock).not.toHaveBeenCalled();
+    expect(wrapper.text()).toMatch(/请填写当前密码|Enter your current password/);
+  });
+  it('does not submit without a new password', async () => {
+    const wrapper = mountPage();
+    await wrapper.get('#current-password').setValue('CurrentPass123!');
     await wrapper.get('form').trigger('submit');
     expect(changePasswordMock).not.toHaveBeenCalled();
     expect(wrapper.text()).toMatch(/请填写新密码|Enter a new password/);
@@ -120,11 +132,12 @@ describe('ForcePasswordChangePage', () => {
   it('sends the supplied passwords and navigates only on success', async () => {
     changePasswordMock.mockResolvedValue({});
     const wrapper = mountPage();
+    await wrapper.get('#current-password').setValue('CurrentPass123!');
     await wrapper.get('#confirm-password').setValue('NewStrongPassword42!');
     await wrapper.get('#new-password').setValue('NewStrongPassword42!');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(changePasswordMock).toHaveBeenCalledWith('NewStrongPassword42!');
+    expect(changePasswordMock).toHaveBeenCalledWith('CurrentPass123!', 'NewStrongPassword42!');
     expect(pushMock).toHaveBeenCalledWith('/');
   });
 });

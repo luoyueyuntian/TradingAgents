@@ -244,6 +244,8 @@ def change_password(
 ) -> AuthMeResponse:
     store, _raw_session_id, session, user = _get_current_session(request)
     _ensure_user_can_login(user)
+    if not verify_password(payload.old_password, user.password_hash, user.password_salt):
+        raise HTTPException(status_code=400, detail="Invalid credentials")
     try:
         validate_password_policy(
             payload.new_password,

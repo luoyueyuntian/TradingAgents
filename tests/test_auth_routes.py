@@ -369,22 +369,26 @@ def test_me_rejects_missing_or_expired_session(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("must_change", [True, False])
-def test_change_password_requires_only_new_password_for_logged_in_user(monkeypatch, tmp_path, must_change):
+@pytest.mark.parametrize("old_password", [None, "wrong-password", "StrongPass123!"])
+def test_change_password_verifies_current_password(monkeypatch, tmp_path, must_change, old_password):
     client, store = _auth_client(monkeypatch, tmp_path)
-    _create_user(store, must_change_password=must_change)
-    login = client.post(
-        "/api/auth/login",
-        json={"tenant_id": "tenant-a", "identifier": "alice", "password": "StrongPass123!"},
-    )
-    assert login.status_code == 200
-
-    response = client.post(
-        "/api/auth/change-password",
-        json={"new_password": "EvenStronger456!"},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["user"]["must_change_password"] is False
+    user = _create_user(store, must_change_password=must_change)
+    _login(client)
+    payload = {"new_password": "EvenStronger456!"}
+    if old_password is not None:
+        payload["old_password"] = old_password
+    response = client.post("/api/auth/change-password", json=payload)
+    expected = 422 if old_password is None else (400 if old_password == "wrong-password" else 200)
+    assert response.status_code == expected
+    refreshed = store.get_user(user.id)
+    if expected == 200:
+        assert not refreshed.must_change_password
+        assert refreshed.password_hash != user.password_hash
+    else:
+        assert refreshed.password_hash == user.password_hash
+        assert refreshed.must_change_password == must_change
+        if expected == 400:
+            assert response.json()["detail"] == "Invalid credentials"
 
 
 def test_change_password_rejects_weak_new_password(monkeypatch, tmp_path):
@@ -1103,4 +1107,4 @@ def test_admin_user_update_rejects_explicit_null_fields(monkeypatch, tmp_path, f
 def test_password_change_without_session_is_rejected(monkeypatch, tmp_path):
     client, store = _auth_client(monkeypatch, tmp_path)
     _create_user(store)
-    assert client.post('/api/auth/change-password', json={'new_password': 'NewStrongPassword42!'}).status_code == 401
+    assert client.post('/api/auth/change-password', json={'old_password': 'StrongPass123!', 'new_password': 'NewStrongPassword42!'}).status_code == 401

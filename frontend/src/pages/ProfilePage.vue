@@ -4,69 +4,88 @@
     <Message v-if="error" severity="error" :closable="false" role="alert">{{ error }}</Message>
     <Message v-if="notice" severity="success" :closable="false" role="status">{{ notice }}</Message>
     <Button v-if="!profile" :label="t('common.reload')" :loading="loading" @click="load" />
-    <div v-if="profile" class="uno-grid uno-gap-4 lg:uno-grid-cols-2">
-      <Card>
-        <template #title>{{ t('profile.account') }}</template>
-        <template #content>
-          <dl class="uno-grid uno-grid-cols-[auto_minmax(0,1fr)] uno-gap-x-5 uno-gap-y-3 uno-text-sm">
-            <dt>{{ t('profile.username') }}</dt><dd class="uno-break-all">{{ profile.user.username }}</dd>
-            <dt>{{ t('profile.email') }}</dt><dd class="uno-break-all">{{ profile.user.email }}</dd>
-            <dt>{{ t('profile.role') }}</dt><dd>{{ profile.user.role }}</dd>
-            <dt>{{ t('profile.tenant') }}</dt><dd>{{ profile.user.tenant_id }}</dd>
-            <dt>{{ t('profile.created') }}</dt><dd>{{ formatDateTime(profile.created_at) }}</dd>
-            <dt>{{ t('profile.passwordUpdated') }}</dt><dd>{{ formatDateTime(profile.password_updated_at) }}</dd>
-          </dl>
-          <form class="uno-mt-5 uno-grid uno-gap-3" @submit.prevent="saveNickname">
-            <label for="profile-nickname">{{ t('profile.nickname') }}</label>
-            <InputText id="profile-nickname" v-model="nickname" maxlength="80" required />
-            <Button :label="t('common.save')" type="submit" :loading="busy" :disabled="busy" />
-          </form>
-        </template>
-      </Card>
-      <Card>
-        <template #title>{{ t('profile.emailTitle') }}</template>
-        <template #content>
-          <p class="uno-mb-4 uno-text-sm uno-text-[#6f8183]">{{ t('profile.emailTip') }}</p>
-          <Message v-if="!profile.email_verification_available" severity="warn" :closable="false">{{ t('profile.mailUnavailable') }}</Message>
-          <form class="uno-grid uno-gap-3" @submit.prevent="confirmEmail">
-            <label for="profile-email">{{ t('profile.newEmail') }}</label>
-            <InputText id="profile-email" v-model="email" type="email" :disabled="busy || !profile.email_verification_available" />
-            <Button :label="t('profile.sendCode')" :loading="busy" :disabled="busy || cooldown > 0 || !email.trim() || !profile.email_verification_available" @click="requestEmail" />
-            <p v-if="cooldown" class="uno-text-sm" role="status">{{ t('profile.resendWait', { seconds: cooldown }) }}</p>
-            <p v-if="sentTo" class="uno-text-sm" role="status">{{ t('profile.sentTo', { email: sentTo }) }}</p>
-            <label for="profile-code">{{ t('profile.code') }}</label>
-            <InputText id="profile-code" v-model="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" :disabled="busy || !sentTo" />
-            <Button :label="t('profile.confirmEmail')" type="submit" :loading="busy" :disabled="busy || !sentTo || code.length !== 6" />
-          </form>
-        </template>
-      </Card>
-      <div id="password" class="uno-scroll-mt-24"><ForcePasswordChangePage embedded @changed="load" /></div>
-      <Card>
-        <template #title>{{ t('profile.sessions') }}</template>
-        <template #content>
-          <p class="uno-mb-4 uno-text-sm uno-text-[#6f8183]">{{ t('profile.sessionsTip') }}</p>
-          <ul class="uno-grid uno-gap-3">
-            <li v-for="(item, index) in profile.sessions" :key="index" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-p-3 uno-text-sm">
-              <strong>{{ item.current ? t('profile.currentSession') : t('profile.otherSession') }}</strong>
-              <p>{{ t('profile.loginTime') }}：{{ formatDateTime(item.created_at) }}</p>
-              <p>{{ t('profile.lastSeen') }}：{{ formatDateTime(item.last_seen_at) }}</p>
-              <p>{{ t('profile.expires') }}：{{ formatDateTime(item.expires_at) }}</p>
-            </li>
-          </ul>
-          <Button class="uno-mt-4" :label="t('profile.revokeOthers')" severity="secondary" :loading="busy" :disabled="busy || !profile.sessions.some((item: JsonRecord) => !item.current)" @click="revokeOthers" />
-        </template>
-      </Card>
-      <Card>
-        <template #title>{{ t('profile.preferences') }}</template>
-        <template #content>
-          <label class="uno-grid uno-gap-3" for="profile-language">
-            {{ t('profile.language') }}
-            <Select id="profile-language" v-model="locale" :options="locales" option-label="label" option-value="value" />
-          </label>
-          <p class="uno-mt-3 uno-text-sm uno-text-[#6f8183]">{{ t('profile.languageTip') }}</p>
-        </template>
-      </Card>
-    </div>
+    <Tabs v-if="profile" :value="activeTab" scrollable @update:value="selectTab">
+      <TabList :aria-label="t('profile.title')">
+        <Tab value="account">{{ t('profile.account') }}</Tab>
+        <Tab value="email">{{ t('profile.emailTitle') }}</Tab>
+        <Tab value="password">{{ t('auth.changePasswordTitle') }}</Tab>
+        <Tab value="sessions">{{ t('profile.sessions') }}</Tab>
+        <Tab value="preferences">{{ t('profile.preferences') }}</Tab>
+      </TabList>
+      <TabPanels>
+        <TabPanel value="account">
+          <Card>
+            <template #title>{{ t('profile.account') }}</template>
+            <template #content>
+              <dl class="uno-grid uno-grid-cols-[auto_minmax(0,1fr)] uno-gap-x-5 uno-gap-y-3 uno-text-sm">
+                <dt>{{ t('profile.username') }}</dt><dd class="uno-break-all">{{ profile.user.username }}</dd>
+                <dt>{{ t('profile.email') }}</dt><dd class="uno-break-all">{{ profile.user.email }}</dd>
+                <dt>{{ t('profile.role') }}</dt><dd>{{ profile.user.role }}</dd>
+                <dt>{{ t('profile.tenant') }}</dt><dd>{{ profile.user.tenant_id }}</dd>
+                <dt>{{ t('profile.created') }}</dt><dd>{{ formatDateTime(profile.created_at) }}</dd>
+                <dt>{{ t('profile.passwordUpdated') }}</dt><dd>{{ formatDateTime(profile.password_updated_at) }}</dd>
+              </dl>
+              <form class="uno-mt-5 uno-grid uno-gap-3" @submit.prevent="saveNickname">
+                <label for="profile-nickname">{{ t('profile.nickname') }}</label>
+                <InputText id="profile-nickname" v-model="nickname" maxlength="80" required />
+                <Button :label="t('common.save')" type="submit" :loading="busy" :disabled="busy" />
+              </form>
+            </template>
+          </Card>
+        </TabPanel>
+        <TabPanel value="email">
+          <Card>
+            <template #title>{{ t('profile.emailTitle') }}</template>
+            <template #content>
+              <p class="uno-mb-4 uno-text-sm uno-text-[#6f8183]">{{ t('profile.emailTip') }}</p>
+              <Message v-if="!profile.email_verification_available" severity="warn" :closable="false">{{ t('profile.mailUnavailable') }}</Message>
+              <form class="uno-grid uno-gap-3" @submit.prevent="confirmEmail">
+                <label for="profile-email">{{ t('profile.newEmail') }}</label>
+                <InputText id="profile-email" v-model="email" type="email" :disabled="busy || !profile.email_verification_available" />
+                <Button :label="t('profile.sendCode')" :loading="busy" :disabled="busy || cooldown > 0 || !email.trim() || !profile.email_verification_available" @click="requestEmail" />
+                <p v-if="cooldown" class="uno-text-sm" role="status">{{ t('profile.resendWait', { seconds: cooldown }) }}</p>
+                <p v-if="sentTo" class="uno-text-sm" role="status">{{ t('profile.sentTo', { email: sentTo }) }}</p>
+                <label for="profile-code">{{ t('profile.code') }}</label>
+                <InputText id="profile-code" v-model="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" :disabled="busy || !sentTo" />
+                <Button :label="t('profile.confirmEmail')" type="submit" :loading="busy" :disabled="busy || !sentTo || code.length !== 6" />
+              </form>
+            </template>
+          </Card>
+        </TabPanel>
+        <TabPanel value="password">
+          <div id="password" class="uno-scroll-mt-24"><ForcePasswordChangePage embedded @changed="load" /></div>
+        </TabPanel>
+        <TabPanel value="sessions">
+          <Card>
+            <template #title>{{ t('profile.sessions') }}</template>
+            <template #content>
+              <p class="uno-mb-4 uno-text-sm uno-text-[#6f8183]">{{ t('profile.sessionsTip') }}</p>
+              <ul class="uno-grid uno-gap-3">
+                <li v-for="(item, index) in profile.sessions" :key="index" class="uno-rounded-lg uno-border uno-border-[#dce7e7] uno-p-3 uno-text-sm">
+                  <strong>{{ item.current ? t('profile.currentSession') : t('profile.otherSession') }}</strong>
+                  <p>{{ t('profile.loginTime') }}：{{ formatDateTime(item.created_at) }}</p>
+                  <p>{{ t('profile.lastSeen') }}：{{ formatDateTime(item.last_seen_at) }}</p>
+                  <p>{{ t('profile.expires') }}：{{ formatDateTime(item.expires_at) }}</p>
+                </li>
+              </ul>
+              <Button class="uno-mt-4" :label="t('profile.revokeOthers')" severity="secondary" :loading="busy" :disabled="busy || !profile.sessions.some((item: JsonRecord) => !item.current)" @click="revokeOthers" />
+            </template>
+          </Card>
+        </TabPanel>
+        <TabPanel value="preferences">
+          <Card>
+            <template #title>{{ t('profile.preferences') }}</template>
+            <template #content>
+              <label class="uno-grid uno-gap-3" for="profile-language">
+                {{ t('profile.language') }}
+                <Select id="profile-language" v-model="locale" :options="locales" option-label="label" option-value="value" />
+              </label>
+              <p class="uno-mt-3 uno-text-sm uno-text-[#6f8183]">{{ t('profile.languageTip') }}</p>
+            </template>
+          </Card>
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
   </section>
 </template>
 
@@ -76,6 +95,12 @@ import Card from 'primevue/card';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import Select from 'primevue/select';
+import Tabs from 'primevue/tabs';
+import TabList from 'primevue/tablist';
+import Tab from 'primevue/tab';
+import TabPanels from 'primevue/tabpanels';
+import TabPanel from 'primevue/tabpanel';
+import { useRoute, useRouter } from 'vue-router';
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 
 import PageHeader from '../components/PageHeader.vue';
@@ -87,6 +112,18 @@ import ForcePasswordChangePage from './ForcePasswordChangePage.vue';
 
 const { t, locale, locales } = useI18n();
 const session = useSession();
+const route = useRoute();
+const router = useRouter();
+const activeTab = ref('account');
+const tabValues = ['account', 'email', 'password', 'sessions', 'preferences'];
+watch(() => route.hash, (hash) => {
+  const tab = hash.slice(1);
+  activeTab.value = tabValues.includes(tab) ? tab : 'account';
+}, { immediate: true });
+function selectTab(value: string | number) {
+  activeTab.value = String(value);
+  void router.replace({ hash: '#' + value });
+}
 const profile = ref<JsonRecord | null>(null);
 const nickname = ref('');
 const email = ref('');

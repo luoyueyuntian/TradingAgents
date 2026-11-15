@@ -114,7 +114,7 @@ def test_profile_change_is_shared_and_available_without_tenants(monkeypatch, tmp
     with store._connect() as conn:
         conn.execute('UPDATE tenants SET disabled=1')
     assert client.get('/api/auth/profile').status_code == 200
-    assert client.post('/api/auth/change-password', json={'new_password': 'UpdatedPass456!'}).status_code == 200
+    assert client.post('/api/auth/change-password', json={'old_password': 'StrongPass123!', 'new_password': 'UpdatedPass456!'}).status_code == 200
     assert client.get('/api/auth/me').status_code == 200
 
 

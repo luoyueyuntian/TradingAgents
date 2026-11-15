@@ -9,8 +9,13 @@
           </Message>
 
           <div class="uno-grid uno-gap-2 uno-text-sm" data-testid="password-change-tips">
-            <p>{{ t('auth.sessionPasswordTip') }}</p>
+            <p>{{ t('auth.verifyCurrentPasswordTip') }}</p>
             <p id="new-password-tip">{{ t('auth.newPasswordRules') }}</p>
+          </div>
+
+          <div class="uno-grid uno-gap-2">
+            <label class="uno-text-sm uno-font-600" for="current-password">{{ t('auth.currentPassword') }}</label>
+            <InputText id="current-password" v-model="currentPassword" type="password" autocomplete="current-password" required />
           </div>
 
           <div class="uno-grid uno-gap-2">
@@ -60,6 +65,7 @@ const emit = defineEmits<{ changed: [] }>();
 const router = useRouter();
 const session = useSession();
 const { t } = useI18n();
+const currentPassword = ref('');
 const confirmPassword = ref('');
 const newPassword = ref('');
 const feedback = ref('');
@@ -69,6 +75,10 @@ async function submitPasswordChange() {
   if (session.state.loading) return;
   feedback.value = '';
   success.value = '';
+  if (!currentPassword.value.trim()) {
+    feedback.value = t('auth.passwordChangeMissingCurrent');
+    return;
+  }
   if (!newPassword.value.trim()) {
     feedback.value = t('auth.passwordChangeMissingNew');
     return;
@@ -78,8 +88,8 @@ async function submitPasswordChange() {
     return;
   }
   try {
-    await session.changePassword(newPassword.value);
-    newPassword.value = ''; confirmPassword.value = '';
+    await session.changePassword(currentPassword.value, newPassword.value);
+    currentPassword.value = ''; newPassword.value = ''; confirmPassword.value = '';
     if (props.embedded) {
       success.value = t('profile.passwordSaved'); emit('changed');
     } else {

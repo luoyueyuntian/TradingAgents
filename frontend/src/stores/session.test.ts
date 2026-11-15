@@ -128,7 +128,7 @@ describe('session store', () => {
     await session.loadCurrentUser();
     await session.login('alice', 'StrongPass123!');
     await session.logout();
-    await session.changePassword('NewPass456!');
+    await session.changePassword('CurrentPass123!', 'NewPass456!');
     await session.requestPasswordReset('alice@example.com');
     await session.confirmPasswordReset('reset-123', '123456', 'NewPass456!');
 
@@ -139,6 +139,7 @@ describe('session store', () => {
     }, {});
     expect(apiPostMock).toHaveBeenNthCalledWith(2, '/api/auth/logout', {}, {});
     expect(apiPostMock).toHaveBeenNthCalledWith(3, '/api/auth/change-password', {
+      old_password: 'CurrentPass123!',
       new_password: 'NewPass456!',
     }, {});
     expect(apiPostMock).toHaveBeenNthCalledWith(4, '/api/auth/password-reset/request', {
@@ -253,9 +254,10 @@ describe('session store', () => {
     const { useSession } = await loadSessionModule();
 
     const session = useSession();
-    await session.changePassword('NewPass456!');
+    await session.changePassword('CurrentPass123!', 'NewPass456!');
 
     expect(apiPostMock).toHaveBeenCalledWith('/api/auth/change-password', {
+      old_password: 'CurrentPass123!',
       new_password: 'NewPass456!',
     }, {});
     expect(session.mustChangePassword.value).toBe(false);

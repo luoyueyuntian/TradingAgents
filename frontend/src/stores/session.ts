@@ -275,11 +275,12 @@ export function useSession() {
     });
   }
 
-  async function changePassword(newPassword: string): Promise<AuthSessionResponse> {
+  async function changePassword(oldPassword: string, newPassword: string): Promise<AuthSessionResponse> {
     state.error = '';
     return withLoading(async () => {
       try {
         const payload = await apiPost<AuthSessionResponse>('/api/auth/change-password', {
+          old_password: oldPassword,
           new_password: newPassword,
         }, authApiContext);
         applyAuthSession(payload);
